@@ -19,6 +19,7 @@ unverändert ist.
 from __future__ import annotations
 
 import hashlib
+import pathlib
 from concurrent.futures import ThreadPoolExecutor
 
 import gi
@@ -102,9 +103,15 @@ def _fetch_and_apply(
     # zeigt womöglich längst ein anderes Item und kann sich die Anfrage sparen.
     if getattr(picture, "_goldfish_poster_gen", 0) != gen:
         return
-    # Vollständige Adressen gehen an ihr Ziel (TMDB liefert Standbilder und
-    # Poster direkt aus), Pfade an den eigenen Server.
-    if server_path.startswith(("http://", "https://")):
+    # Drei Quellen: eine Datei auf der Platte (Vorschaubilder lokaler
+    # Bibliotheken), eine fremde Adresse (TMDB liefert Standbilder und Poster
+    # direkt aus) oder ein Pfad am eigenen Server.
+    if server_path.startswith("file://"):
+        try:
+            data = pathlib.Path(server_path[7:]).read_bytes()
+        except OSError:
+            return
+    elif server_path.startswith(("http://", "https://")):
         data = client.fetch_external_bytes(server_path)
     else:
         data = client.fetch_bytes(server_path)

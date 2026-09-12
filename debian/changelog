@@ -1,3 +1,22 @@
+goldfish-linux (0.1.15-1) unstable; urgency=medium
+
+  * Neu: eigene Datenträger. Ordner und angeschlossene Platten lassen sich als
+    Bibliothek einrichten; die Videos darauf werden gelistet und direkt
+    abgespielt, ganz ohne Server.
+  * Neu: Einlesen ermittelt Laufzeit und Auflösung je Datei (122 Videos in
+    anderthalb Sekunden gemessen). Bereits erfasste Dateien werden beim
+    zweiten Durchlauf übersprungen.
+  * Neu: doppelte Dateien finden — gleiche Größe und gleiche Laufzeit. Neu
+    kodierte Fassungen erkennt das bewusst nicht, damit nichts Falsches
+    gelöscht wird.
+  * Eine abgezogene Platte behält ihren Bestand in der Übersicht und ist als
+    "gerade nicht angeschlossen" gekennzeichnet.
+  * Entfernen betrifft nur die App — auf der Platte wird nichts gelöscht.
+  * Vorschaubilder stammen aus dem Zwischenspeicher des Dateimanagers, soweit
+    er schon eines angelegt hat.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 20:30:00 +0200
+
 goldfish-linux (0.1.14-1) unstable; urgency=medium
 
   * Neu: Musikbibliotheken öffnen eine Albenübersicht mit Covern und Suche

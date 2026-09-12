@@ -28,6 +28,7 @@ POSTER_CACHE_DIR = CACHE_DIR / "posters"
 
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 VIEW_PREFS_FILE = CONFIG_DIR / "view_prefs.json"
+LOCAL_LIBRARIES_FILE = CONFIG_DIR / "local_libraries.json"
 DOWNLOADS_REGISTRY_FILE = DATA_DIR / "downloads.json"
 
 

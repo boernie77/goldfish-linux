@@ -15,12 +15,14 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from .. import __version__  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
 from ..config import ViewPrefs  # noqa: E402
+from ..local_library import LocalLibraryManager  # noqa: E402
 from ..music_player import MusicPlayer  # noqa: E402
 from ..widgets.mini_player import MiniPlayer  # noqa: E402
 from .browse_page import BrowsePage  # noqa: E402
 from .collections_page import CollectionsPage  # noqa: E402
 from .downloads_page import DownloadsPage  # noqa: E402
 from .home_page import HomePage  # noqa: E402
+from .local_page import LocalLibrariesPage  # noqa: E402
 from .music_page import MusicLibraryPage  # noqa: E402
 from .playlists_page import PlaylistsPage  # noqa: E402
 
@@ -46,6 +48,9 @@ class AppContext:
         # Ein Spieler pro Fenster, unabhängig vom Videofenster — die Musik
         # läuft weiter, während man durch die Bibliotheken blättert.
         self.music = MusicPlayer(client)
+        # Lokale Bibliotheken kennen den Server nicht — sie liegen neben den
+        # Server-Bibliotheken und funktionieren auch ohne Verbindung.
+        self.local = LocalLibraryManager()
 
     def library_kind(self, library_id) -> str:
         try:
@@ -178,6 +183,12 @@ class MainWindow(Adw.ApplicationWindow):
         separator_row.set_child(Gtk.Separator(margin_top=6, margin_bottom=6))
         self.sidebar_list.append(separator_row)
 
+        local_row = self._build_sidebar_row("💾  Eigene Datenträger")
+        local_row.library = None
+        local_row.is_downloads = False
+        local_row.special = "local"
+        self.sidebar_list.append(local_row)
+
         downloads_row = self._build_sidebar_row("⬇  Downloads")
         downloads_row.library = None
         downloads_row.is_downloads = True
@@ -207,6 +218,8 @@ class MainWindow(Adw.ApplicationWindow):
             page = CollectionsPage(self.ctx, self.nav_view)
         elif special == "playlists":
             page = PlaylistsPage(self.ctx, self.nav_view)
+        elif special == "local":
+            page = LocalLibrariesPage(self.ctx, self.nav_view)
         elif row.is_downloads:
             page = DownloadsPage(self.ctx, self.nav_view)
         elif (row.library or {}).get("kind") == "music":

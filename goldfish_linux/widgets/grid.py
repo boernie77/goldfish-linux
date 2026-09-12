@@ -25,7 +25,14 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gio, GObject, Gtk  # noqa: E402
 
 from ..api import GoldfishClient  # noqa: E402
-from .card import CARD_WIDTH, AlbumCardWidget, CardWidget, FolderCardWidget, ensure_card_css  # noqa: E402
+from .card import (  # noqa: E402
+    CARD_WIDTH,
+    AlbumCardWidget,
+    CardWidget,
+    FolderCardWidget,
+    LocalCardWidget,
+    ensure_card_css,
+)
 
 
 class GridRow(GObject.Object):
@@ -209,3 +216,54 @@ class AlbumGrid(Gtk.ScrolledWindow):
     def _activate(self, album: dict) -> None:
         if self.on_album:
             self.on_album(album)
+
+
+class LocalRow(GObject.Object):
+    """Eine Zeile im Modell einer lokalen Bibliothek."""
+
+    __gtype_name__ = "GoldfishLocalRow"
+
+    def __init__(self, video: dict) -> None:
+        super().__init__()
+        self.video = video
+
+
+class LocalGrid(Gtk.ScrolledWindow):
+    """Raster für lokale Videos, mit Recycling wie die übrigen Raster — eine
+    externe Platte kann viele tausend Dateien enthalten."""
+
+    def __init__(self, client: GoldfishClient, on_video: Callable[[dict], None] | None = None) -> None:
+        super().__init__(vexpand=True, hexpand=True)
+        ensure_card_css()
+        self.client = client
+        self.on_video = on_video
+
+        self.store = Gio.ListStore.new(LocalRow)
+        factory = Gtk.SignalListItemFactory()
+        factory.connect("setup", lambda _f, li: li.set_child(LocalCardWidget(self.client, on_activate=self._activate)))
+        factory.connect("bind", lambda _f, li: li.get_child().bind(li.get_item().video))
+        factory.connect("unbind", lambda _f, li: li.get_child().unbind())
+
+        self.grid = Gtk.GridView(
+            model=Gtk.NoSelection.new(self.store),
+            factory=factory,
+            max_columns=10,
+            min_columns=1,
+            vexpand=True,
+            single_click_activate=False,
+        )
+        self.grid.add_css_class("navigation-sidebar")
+        for setter in (self.grid.set_margin_start, self.grid.set_margin_end, self.grid.set_margin_top):
+            setter(12)
+        self.grid.set_margin_bottom(24)
+        self.set_child(self.grid)
+
+    def set_videos(self, videos: list[dict]) -> None:
+        self.store.splice(0, self.store.get_n_items(), [LocalRow(v) for v in videos])
+        adjustment = self.get_vadjustment()
+        if adjustment is not None:
+            adjustment.set_value(0)
+
+    def _activate(self, video: dict) -> None:
+        if self.on_video:
+            self.on_video(video)

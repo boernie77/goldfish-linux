@@ -611,3 +611,96 @@ class AlbumCardWidget(Gtk.Box):
     def _on_clicked(self, *_args) -> None:
         if self.album and self.on_activate:
             self.on_activate(self.album)
+
+
+class LocalCardWidget(Gtk.Box):
+    """Wiederverwendbare Kachel für ein Video aus einer lokalen Bibliothek.
+
+    Im Breitformat wie Privatvideos, weil es dort keine Poster gibt. Das Bild
+    stammt, falls vorhanden, aus dem Zwischenspeicher des Dateimanagers; sonst
+    bleibt die Fläche leer. Eigene Vorschaubilder zu erzeugen bräuchte ffmpeg,
+    das auf dem Zielsystem nicht vorausgesetzt werden kann.
+    """
+
+    def __init__(self, client: GoldfishClient, on_activate: Callable[[dict], None] | None = None) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        ensure_card_css()
+        self.client = client
+        self.on_activate = on_activate
+        self.video: dict | None = None
+        self.set_size_request(CARD_WIDTH_WIDE, -1)
+        self.set_hexpand(False)
+        self.set_halign(Gtk.Align.START)
+        self.set_valign(Gtk.Align.START)
+
+        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
+        self.picture.set_size_request(CARD_WIDTH_WIDE, card_height_for("private", CARD_WIDTH_WIDE))
+        self.picture.set_hexpand(False)
+        self.picture.add_css_class("gf-card-image")
+        self.overlay = Gtk.Overlay(child=self.picture)
+        self.overlay.set_overflow(Gtk.Overflow.HIDDEN)
+
+        self.res_label = Gtk.Label(halign=Gtk.Align.START, valign=Gtk.Align.END, margin_start=6, margin_bottom=6)
+        self.res_label.add_css_class("gf-badge")
+        self.overlay.add_overlay(self.res_label)
+
+        self.duration_label = Gtk.Label(halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6)
+        self.duration_label.add_css_class("gf-badge")
+        self.overlay.add_overlay(self.duration_label)
+        self.append(self.overlay)
+
+        self.title_label = Gtk.Label(
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=CARD_WIDTH_WIDE,
+        )
+        self.title_label.add_css_class("gf-card-title")
+        self.append(self.title_label)
+
+        self.sub_label = Gtk.Label(
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=CARD_WIDTH_WIDE,
+        )
+        self.sub_label.add_css_class("gf-card-sub")
+        self.append(self.sub_label)
+
+        click = Gtk.GestureClick()
+        click.connect("released", self._on_clicked)
+        self.picture.add_controller(click)
+        self.picture.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+
+    def bind(self, video: dict) -> None:
+        from ..formatting import format_duration, format_resolution, format_size
+        from ..local_library import system_thumbnail
+
+        self.video = video
+        title = video.get("title") or ""
+        self.title_label.set_text(title)
+        self.set_tooltip_text(video.get("path") or title)
+        self.sub_label.set_text(format_size(video.get("sizeBytes") or 0))
+
+        res = format_resolution(video.get("width") or 0, video.get("height") or 0)
+        self.res_label.set_text(res)
+        self.res_label.set_visible(bool(res))
+        duration = format_duration(video.get("durationSec") or 0)
+        self.duration_label.set_text(duration)
+        self.duration_label.set_visible(bool(duration))
+
+        thumb = system_thumbnail(video.get("path") or "")
+        load_poster_async(
+            self.picture,
+            self.client,
+            f"file://{thumb}" if thumb else None,
+            decode_width=CARD_WIDTH_WIDE,
+        )
+
+    def unbind(self) -> None:
+        self.video = None
+        load_poster_async(self.picture, self.client, None)
+
+    def _on_clicked(self, *_args) -> None:
+        if self.video and self.on_activate:
+            self.on_activate(self.video)
