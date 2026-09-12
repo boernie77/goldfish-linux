@@ -110,6 +110,18 @@ apt list --installed 2>/dev/null | grep libadwaita
 Zeigt die Ausgabe eine Version unter `1.4`, ist dein System für Goldfish
 Linux (aktuell) leider zu alt — siehe „Bekannte Einschränkungen" unten.
 
+**„Verbindung fehlgeschlagen: … Read timed out"** beim Anmelden — die App
+versucht es seit Version 0.1.1 automatisch ein zweites Mal (manche
+selbstgehosteten Server brauchen für den allerersten Request nach einer
+Weile Inaktivität spürbar länger). Passiert es weiterhin:
+- Prüfe, ob die Server-Adresse im Browser vom selben Rechner aus erreichbar
+  ist (dieselbe Adresse in einen Browser-Tab eingeben).
+- Bist du im selben Heimnetz wie der Goldfish-Server? Dann probiere statt
+  der öffentlichen Adresse (z. B. `https://goldfish.example.com`) direkt die
+  lokale Netzwerkadresse (z. B. `http://192.168.1.50:8098`) — manche Router
+  haben Probleme damit, eine eigene öffentliche Domain aus dem eigenen Netz
+  heraus aufzulösen ("NAT-Hairpinning").
+
 ### App wieder deinstallieren
 
 ```bash

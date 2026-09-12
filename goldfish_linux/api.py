@@ -10,11 +10,21 @@ identisch für Stream- und Transcode-Playlist-URLs.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin, urlparse, urlencode, urlunparse, parse_qsl
 
 import requests
+
+# Manche selbstgehosteten Server (Heimnetz hinter Tunnel/Reverse-Proxy)
+# brauchen für den ALLERERSTEN Request nach einer Weile Inaktivität spürbar
+# länger (beobachtet: ~6s statt <0.3s bei Folge-Requests) — vermutlich ein
+# Aufwach-/Verbindungsaufbau-Effekt auf dem Weg zum Server. 20s Timeout +
+# ein automatischer Retry deckt das ab, ohne bei einem echt nicht
+# erreichbaren Server ewig zu hängen.
+DEFAULT_TIMEOUT = 20
+RETRY_ON_TIMEOUT = 1
 
 
 class GoldfishAPIError(Exception):
@@ -67,10 +77,25 @@ class GoldfishClient:
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
         url = self._url(path)
-        try:
-            resp = self.session.request(method, url, timeout=kwargs.pop("timeout", 15), **kwargs)
-        except requests.RequestException as exc:
-            raise GoldfishAPIError(f"Verbindung fehlgeschlagen: {exc}") from exc
+        timeout = kwargs.pop("timeout", DEFAULT_TIMEOUT)
+        resp = None
+        last_timeout_exc: requests.Timeout | None = None
+        for attempt in range(RETRY_ON_TIMEOUT + 1):
+            try:
+                resp = self.session.request(method, url, timeout=timeout, **kwargs)
+                break
+            except requests.Timeout as exc:
+                last_timeout_exc = exc
+                if attempt < RETRY_ON_TIMEOUT:
+                    time.sleep(0.5)
+                continue
+            except requests.RequestException as exc:
+                raise GoldfishAPIError(f"Verbindung fehlgeschlagen: {exc}") from exc
+        if resp is None:
+            raise GoldfishAPIError(
+                f"Verbindung fehlgeschlagen (auch nach erneutem Versuch keine Antwort "
+                f"innerhalb von {timeout}s): {last_timeout_exc}"
+            ) from last_timeout_exc
         if resp.status_code >= 400:
             message = resp.reason
             try:

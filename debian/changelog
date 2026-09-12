@@ -1,3 +1,14 @@
+goldfish-linux (0.1.1-1) unstable; urgency=medium
+
+  * Fix: falsches, selbstgezeichnetes App-Icon durch das echte
+    Goldfish-Icon (Twemoji-Tropenfisch, identisch zu Web-App/Mac/iOS)
+    ersetzt.
+  * Fix: Login-Timeout erhöht (15s → 20s) + automatischer Retry bei
+    Zeitüberschreitung — manche selbstgehosteten Server brauchen für den
+    allerersten Request nach einer Weile Inaktivität spürbar länger.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 14:48:56 +0200
+
 goldfish-linux (0.1.0-1) unstable; urgency=medium
 
   * Erste Veröffentlichung: Login, Bibliotheks-/Ordner-Browser, Streaming-
