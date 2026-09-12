@@ -7,11 +7,22 @@ Nativer Linux-Desktop-Client für den Goldfish-Server (separates Repo
 für Debian 12+/Ubuntu 24.04+/Mint 22+ paketiert (ältere Systeme mit
 libadwaita < 1.4 werden bewusst NICHT unterstützt).
 
-**Bei jeder Server-API-Änderung prüfen:** `goldfish_linux/api.py` — nutzt
-`/api/auth/login`, `/api/libraries`, `/api/libraries/{id}/folders`,
-`/api/items`, `/api/playback/{id}` + den `?session=<token>`-Query-Fallback
-(ursprünglich für Cast-Receiver gedacht) für die Video-Wiedergabe ohne
-Cookie-Jar, `/api/download/{id}`, `/api/items/{id}/watched|favorite`.
+**Bei jeder Server-API-Änderung prüfen:** `goldfish_linux/api.py`. Der Client
+kennt inzwischen rund 80 Endpunkte — neben Anmeldung, Bibliotheken, Ordnern,
+Items und Wiedergabe auch Staffeln, Besetzung, Trailer, Personen,
+Fortsetz-Position, Alben, Sammlungen, Playlists, Startseiten- und
+Reiter-Einstellungen, Vorschaubilder, Untertitel (eingebettet, Whisper, OCR),
+Gesehen-Sync und optimierte Downloads. Für die Wiedergabe ohne Cookie-Speicher
+wird weiterhin der `?session=<token>`-Fallback genutzt (ursprünglich für
+Cast-Empfänger gedacht).
+
+**Zwei Eigenheiten des Servers, die im Client dokumentiert sind:**
+`playback.Profile` trägt im Go-Code keine JSON-Tags, die Qualitätsstufen
+kommen deshalb GROSS geschrieben an (`ID`, `Label`, `MaxHeight`, …) — als
+einziges Objekt der ganzen API; `api.PlaybackProfile` normalisiert das.
+Und `/api/subtitle/{id}/{idx}.vtt` extrahiert die Spur beim ERSTEN Abruf per
+ffmpeg und blockiert so lange, weshalb dort ein eigenes Zeitlimit von 120
+Sekunden gilt.
 
 **⚠ Memory-Hinweis:** Ältere, chronologische Bugfix-Historie (bis v0.1.6)
 wurde in Sessions erarbeitet, die im Server-Repo (`~/Projekte/Videoplayer/`)
@@ -24,17 +35,62 @@ mehr verlässlich** — der Code hier ist inzwischen deutlich weiter
 Anlage dieser Datei bereits v0.1.15 mit Musik/Home/Sammlungen/lokalen
 Bibliotheken, also weit über die in der Memory beschriebene v0.1.6 hinaus).
 
-## 📍 Aktueller Stand
+## 📍 Aktueller Stand (Stand: 2026-09-12, abends)
 
-**Immer per `git log --oneline -10` und `goldfish_linux/__init__.py
-__version__` prüfen, nicht diese Datei** — der Stand ändert sich schneller,
-als CLAUDE.md gepflegt werden kann. Bei Bedarf `README.md` und
-`debian/changelog` im Repo für die Feature-Historie seit v0.1.6 lesen.
+- **Neueste veröffentlichte Version: v0.1.15.** Zwischen v0.1.6 und v0.1.15
+  lief auf einem echten Linux-Rechner (X11, GTK 4.14, libadwaita 1.5) ein
+  Ausbau in acht Etappen mit dem Ziel, funktional zur Mac-App aufzuschließen.
+  Jede Etappe ist ein eigener Commit samt Tag und Release.
+- **Alles unten Beschriebene ist am echten System geprüft**, nicht nur
+  kompiliert — inklusive Wiedergabe mit Bild, Untertiteln, Springen im
+  Umwandlungsmodus und lokaler 4K-HEVC-Wiedergabe.
+
+### Was seit v0.1.6 dazugekommen ist
+
+| Version | Inhalt |
+|---|---|
+| 0.1.7 | Startfehler behoben (siehe unten) |
+| 0.1.8 | Kachelraster mit TMDB-Postern statt Textliste |
+| 0.1.9 | Sortierung, Filter (Gesehen, Favoriten, Auflösung, Genre), Suche |
+| 0.1.10 | Detailansicht: Besetzung, FSK, Trailer, Ton-/Untertitel-/Qualitätswahl, Versionen |
+| 0.1.11 | Player: eigene Steuerleiste, Untertitel im Bild, Weiterschauen, Vorschaubilder, Transcode-Springen |
+| 0.1.12 | Startseite, Staffelansicht, Sammlungen, Playlists |
+| 0.1.13 | Kachelbreiten-Fix (siehe unten) |
+| 0.1.14 | Musik: Alben, Titelliste, Abspielleiste, Warteschlange |
+| 0.1.15 | Eigene Datenträger als lokale Bibliotheken |
+
+Offen ist nur noch: SSO über Authentik, eigenes Passwort ändern,
+Gesehen-Sync mit einem zweiten Konto, Zufallswiedergabe mit Ordnerauswahl,
+kleinere Downloads statt Original, Buchstabenleiste A–Z, und die
+vollständige TMDB-Filmografie auf der Personenseite (dort erscheinen
+derzeit nur die vorhandenen Titel).
+
+### ⚠ Korrektur zur früheren Diagnose des Startfehlers
+
+Die Vermutung aus v0.1.6 — `Adw.ToolbarView.add_bottom_bar` mit einem
+einfachen `Gtk.Label` sei der Auslöser — **war falsch**. Sie entstand auf
+macOS ohne Möglichkeit, GTK4 auszuführen. Der tatsächliche Fehler saß in
+`app.py`, `do_activate()`: im Zweig "gespeicherte Sitzung vorhanden" wurde
+nur ein Hintergrund-Thread gestartet und **kein Fenster erzeugt**.
+`Gtk.Application` beendet sich aber, sobald seine Fensterliste leer ist —
+die App quittete mit Exit-Code 0, bevor der Thread das Hauptfenster zeigen
+konnte. Deshalb trat es NUR mit gespeicherter Anmeldung auf; ein leeres
+Konfigurationsverzeichnis nahm den Anmelde-Zweig und startete normal. Fix
+in v0.1.7: `hold()` über die Prüfung, `release()` erst nach dem `present()`.
+
+**Lehre für künftige Arbeit an diesem Repo:** Diagnosen nicht auf einem
+System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
+`~/Projekte/GoldfishLinux` kann es — dort prüfen.
 
 ## Tech-Stack & Architektur-Entscheidungen
 
-- **`Gtk.Video`-Widget** (eingebauter GTK4-Player, GStreamer-Backend) statt
-  eigenem playbin-Wiring — bekommt Play/Pause/Seek/Vollbild gratis.
+- **Player: `Gtk.MediaFile` als Paintable in einem `Gtk.Picture`, mit eigener
+  Steuerleiste** (seit v0.1.11). `Gtk.Video` war die erste Wahl, ist aber eine
+  Sackgasse, sobald mehr als Play/Pause gebraucht wird: seine Steuerleiste ist
+  fest eingebaut und von außen nicht erreichbar — kein Untertitel über dem
+  Bild, keine Vorschaubilder am Fortschrittsbalken, kein eigener Balken. Vor
+  dem Umbau am echten HLS-Stream geprüft, dass Position, Dauer, Springen und
+  Lautstärke über `Gtk.MediaFile` erreichbar sind.
 - Auth für den Player: kein Cookie-Jar in GStreamer möglich → nutzt den
   `?session=<token>`-Query-Fallback, den der Server ursprünglich für
   Cast-Receiver (Chromecast/FireTV) bereitstellt
@@ -49,11 +105,12 @@ als CLAUDE.md gepflegt werden kann. Bei Bedarf `README.md` und
   `super().__init__()` und übergeben es als `child=`-Kwarg.
 - `Adw.Spinner` bewusst NICHT genutzt (braucht libadwaita ≥ 1.6, neuer als
   die Mindestanforderung) — überall `Gtk.Spinner()` + `.start()`.
-- `Adw.ToolbarView.add_top_bar`/`add_bottom_bar` NIE für beliebige Widgets
-  nutzen, nur für tatsächliche Bar-artige Widgets (AdwHeaderBar/
-  GtkActionBar/AdwTabBar) — ein einfaches `Gtk.Label` dort verursachte in
-  v0.1.5 vermutlich einen Startup-Crash (v0.1.6 tauscht es gegen einen
-  normalen `Gtk.Box`-Sibling).
+- `Adw.ToolbarView.add_top_bar`/`add_bottom_bar` sind laut Doku für
+  Bar-artige Widgets gedacht (AdwHeaderBar/GtkActionBar/AdwTabBar); ein
+  einfaches `Gtk.Label` dort ist nicht ausdrücklich belegt. Die Versionsanzeige
+  liegt deshalb als normaler `Gtk.Box`-Sibling darunter. **Der frühere Verdacht,
+  das habe den Startfehler von v0.1.5 verursacht, war falsch** — siehe die
+  Korrektur oben.
 - **GTK-Widget-Parenting-Regel:** beim händischen Widget-Aufbau IMMER erst
   ganz unten (innerster Container) anfangen und von innen nach außen genau
   EINMAL pro Widget parenten — nie ein Widget "vorläufig" an einen
@@ -79,6 +136,79 @@ als CLAUDE.md gepflegt werden kann. Bei Bedarf `README.md` und
   dem Server-Repo wiederverwenden (Twemoji-Tropenfisch 🐠, CC-BY 4.0),
   identisches Branding über alle Plattformen.
 
+## Fallstricke, die in Etappe 01–08 aufgetreten sind
+
+- **Breitenmessung von Kacheln:** ein `Gtk.Label` mit Umbruch und `lines=2`
+  fordert bei vorgegebener Höhe die volle Textbreite an, damit der Text
+  ungekürzt passt — nachgemessen 297 statt 168 Pixel bei einem langen
+  Filmtitel. Die Kachel bekommt entsprechend mehr Platz zugeteilt, zeichnet
+  nur ihre Sollbreite und hinterlässt eine sichtbare Lücke zum Nachbarn.
+  Weder `max-width-chars`, `width-request` noch `halign` ändern daran etwas,
+  und eine überschriebene `do_measure` greift bei einer `Gtk.Box`-Unterklasse
+  in PyGObject NICHT (mit einer Zählung geprüft: null Aufrufe). **Deshalb sind
+  Kacheltitel einzeilig mit Auslassung, der volle Titel steht im Tooltip.**
+- **Lange Listen brauchen `Gtk.GridView`, nicht `Gtk.FlowBox`.** Eine FlowBox
+  erzeugt für jedes Element ein Widget: 2717 Album-Kacheln kosteten **4,65
+  Sekunden blockierten Hauptablauf** (nachgemessen). Sichtbar wurde das an
+  einer laufenden Musikwiedergabe, deren Position scheinbar stillstand,
+  während die Engine isoliert einwandfrei zählte. FlowBox ist nur für kurze
+  Listen richtig (Staffeln einer Serie, Teile einer Sammlung).
+- **`Gtk.Picture` meldet die Pixelbreite des geladenen Bildes als natürliche
+  Breite.** Ein zu groß dekodiertes Bild macht die Kachel breiter als gewollt
+  — `load_poster_async` bekommt deshalb die Zielbreite mitgegeben.
+- **Abgelöste `Gtk.MediaFile` unbedingt abklemmen.** Beim Springen im
+  Umwandlungsmodus entsteht ein neues Medium; das alte meldet danach den
+  Fehler seiner beendeten Umwandlung, und ohne Trennung legt sich
+  "Wiedergabe fehlgeschlagen" über den laufenden Film. Zusätzlich prüft jeder
+  Handler, ob er vom aktuellen Medium kommt.
+- **Springen bei serverseitiger Umwandlung** geht nicht mit `media.seek()`:
+  ein wachsender HLS-Stream kennt weder die Gesamtdauer (`get_duration()`
+  bleibt 0) noch Positionen jenseits des Erzeugten. Die Dauer kommt aus
+  `item["durationSec"]`, ein Sprung startet eine neue Umwandlung ab der
+  Zielsekunde (`start=`, `fresh=1`, plus ein pro Fenster stabiler `_t`-Token,
+  damit die periodischen Playlist-Abrufe die Umwandlung nicht dauernd
+  abbrechen). `_virtual_offset` rechnet die Position um.
+- **`Gtk.Spinner` erst nach dem Einhängen starten**, sonst fehlt die
+  Frame-Clock und es erscheint `gdk_frame_clock_get_frame_time: assertion
+  'GDK_IS_FRAME_CLOCK (frame_clock)' failed`.
+- **Gespeicherte Anmeldung nur verwerfen, wenn der Server sie ablehnt.** Ein
+  Zeitüberschreiten oder ein 502 vom Reverse-Proxy sagen nichts über ihre
+  Gültigkeit. Vorher wurde bei jedem Fehler der Token gelöscht — bei einem
+  kurz überlasteten Server verlor man dadurch die Anmeldung (real passiert).
+- **Ordnernavigation hat drei Fälle** (wie im Browser, `grid.js`): in der
+  Bibliothekswurzel Ordnerkacheln plus die Items der Wurzel (`folder="/"`),
+  in einem Ordner mit gesetztem `folder_nav.drilldown` seine direkten
+  Unterordner plus die unmittelbar darin liegenden Dateien (serverseitig
+  gibt es kein "nur direkte Kinder", also clientseitig nachfiltern), und im
+  Regelfall gar keine Ordnerkacheln, sondern die Dateien rekursiv flach.
+  Fehlt der dritte Fall, erscheinen dieselben Dateien doppelt — derselbe
+  Fehler wie einst in den Apple-Apps.
+- **`/api/playback/{id}` ist teuer** (ffprobe serverseitig). Nie in Schleifen
+  über viele Items aufrufen; eine Suche über 40 Titel hat den Server in einen
+  Timeout gezogen. Für Musik wird er gar nicht gebraucht (siehe unten).
+
+## Was diese App bewusst anders macht als die Mac-App
+
+Jeweils nachgeprüft, nicht vermutet:
+
+- **Musik läuft immer direkt, auch FLAC und WAV.** GStreamer spielt alle hier
+  vorkommenden Audioformate selbst, deshalb geht es auf `/api/stream/{id}`
+  statt über `/api/playback/{id}`. Das erspart pro Titelwechsel einen
+  ffprobe-Lauf. Der Browser muss FLAC und WAV umwandeln, weil kein Browser
+  sie zuverlässig abspielt — eine Einschränkung von dort, nicht von hier.
+- **Lokale Bibliotheken brauchen keine Formatanpassung.** Die Mac-App wandelt
+  Dateien um, die macOS nicht abspielen kann, und pflegt dafür einen
+  Zwischenspeicher. Hier gegenstandslos: MKV, MP4, AVI, WMV, HEVC, H.264,
+  VP9, AV1, AC3, DTS und E-AC3 laufen direkt (Plugins einzeln geprüft, am
+  schwierigsten Fall getestet: 4K-MKV mit HEVC und TrueHD Atmos 7.1).
+- **Eingelesen wird mit `GstPbutils.Discoverer`, nicht mit ffprobe.** ffprobe
+  und ffmpeg sind auf dem Zielsystem nicht zwingend installiert (hier:
+  fehlen beide), GStreamer dagegen schon. Gemessen 0,12 Sekunden pro Datei,
+  122 Videos in anderthalb Sekunden.
+- **Vorschaubilder lokaler Dateien** kommen aus dem Zwischenspeicher des
+  Dateimanagers (`thumbnail::path` über Gio); eigene zu erzeugen bräuchte
+  wieder ffmpeg.
+
 ## Packaging
 
 `.deb` via debhelper (`debian/rules` mit `--buildsystem=none`, native
@@ -90,19 +220,33 @@ Source-Format `3.0 (native)`) — kopiert `goldfish_linux/` 1:1 nach
 Workflow-YAML, sonst scheitert `softprops/action-gh-release` am
 Standard-`GITHUB_TOKEN`.
 
-## ⚠ Wichtigste offene Lücke
+## Prüfen am echten System
 
-Der komplette Code wurde auf macOS geschrieben **ohne jede Möglichkeit,
-GTK4/libadwaita/GStreamer lokal zu testen** (kein `gi`-Modul verfügbar).
-Nur statisch geprüft: `python3 -m py_compile` + `pyflakes`. **Vor jedem
-produktiven Einsatz unbedingt auf einem echten Debian 12+/Ubuntu 24.04+/
-Mint 22+ installieren und die komplette App-Kette durchklicken.**
+Bis v0.1.6 entstand der Code auf macOS, ohne GTK4 ausführen zu können — das
+hat eine falsche Fehlerdiagnose verursacht (siehe oben). Seit v0.1.7 wird auf
+einem echten Linux-Rechner gearbeitet und geprüft.
 
-## v1-Grenzen (bewusst)
+Nützliche Griffe dort: `timeout 20 python3 -m goldfish_linux` im Repo — Exit
+124 heißt "Fenster lief", Exit 0 heißt "App hat sich sofort beendet". Fenster
+finden mit `wmctrl -lp` (Titel genau `Goldfish`; ein `grep Goldfish` trifft
+auch Browser-Tabs). Screenshots mit `gnome-screenshot -w -f <pfad>` — dabei
+zählt das AKTIVE Fenster, also vorher mit `wmctrl -i -a <id>` nach vorn
+holen, sonst landet ein fremdes Fenster im Bild. ImageMagick `import` und
+`xdotool` sind nicht installiert.
 
-Kein Cast/AirPlay, keine Staffel-Ansicht mit TMDB-Layout (nur normale
-Ordner-Navigation), kein Admin-Bereich, kein Genre-/Auflösungs-Filter, kein
-Resume ab letzter Position.
+Für Ansichten, die nur per Mausklick erreichbar sind, hilft ein kurzes
+Treiberskript, das `GoldfishApplication` startet und die Seiten direkt auf
+den Navigationsstapel legt — schneller und verlässlicher als der Versuch,
+Klicks zu erzeugen.
+
+## Bewusst nicht übernommen
+
+Cast und AirPlay (auf Linux ohne Entsprechung), ein eigenes Fenster pro
+Video (macOS-Eigenheit), die Serververwaltung (bleibt wie in allen Clients
+dem Browser überlassen), der Regler für den Vorlaufpuffer lokaler
+Bibliotheken (bei GStreamer ohne erkennbaren Nutzen) und das Zusammenlegen
+mehrerer Datenträger zu einer Kachel (reine Bequemlichkeit; die Suche
+innerhalb einer Bibliothek deckt den Zweck ab).
 
 ## Versionierung
 
