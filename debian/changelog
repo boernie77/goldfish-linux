@@ -1,3 +1,17 @@
+goldfish-linux (0.1.4-1) unstable; urgency=medium
+
+  * Fix (der eigentliche Grund für "keine Inhalte angezeigt"): in der
+    Ordner-/Item-Liste einer Bibliothek wurde dieselbe Box zuerst dem
+    ScrolledWindow und danach fälschlich nochmal dem Adw.Clamp als Kind
+    zugewiesen. GTK verweigert das zweite set_child() (Widget hat schon
+    einen Parent) — die Box mit allen Ordnern/Videos landete dadurch
+    komplett unverbunden im Widget-Baum, sichtbar als leere Seite trotz
+    korrekt geladener Daten. Log-Beleg: "adw_clamp_set_child: assertion
+    'gtk_widget_get_parent (child) == NULL' failed" beim Öffnen einer
+    Bibliothek mit Inhalt.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:11:57 +0200
+
 goldfish-linux (0.1.3-1) unstable; urgency=medium
 
   * Fix: Root-Ansicht einer Bibliothek sendete `folder=""` an den Server —

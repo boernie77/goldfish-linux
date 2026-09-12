@@ -107,9 +107,15 @@ class BrowsePage(Adw.NavigationPage):
         self.toolbar_view.set_content(status)
 
     def _show_results(self, folders: list[dict], items: list[dict]) -> None:
+        # WICHTIG: `box` erst am Ende in `clamp` einhängen (siehe unten) —
+        # NICHT vorher schon per scrolled.set_child(box), sonst hat `box`
+        # bereits einen Parent und `adw_clamp_set_child` weist es mit
+        # "assertion 'gtk_widget_get_parent (child) == NULL' failed" ab.
+        # `box` bleibt dann komplett unverbunden im Widget-Baum — sichtbar
+        # als leere Ansicht trotz korrekt geladener Daten (realer Bug,
+        # gefixt nach User-Report "keine Inhalte angezeigt").
         scrolled = Gtk.ScrolledWindow(vexpand=True)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12, margin_bottom=24)
-        scrolled.set_child(box)
 
         if not folders and not items:
             status = Adw.StatusPage(
