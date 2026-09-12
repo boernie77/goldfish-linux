@@ -10,43 +10,146 @@ Analog zu den bereits existierenden Goldfish-Apps für
 [Apple-Plattformen](https://github.com/boernie77/goldfish-apple) — nur eben
 für Debian-basierte Linux-Desktops (Debian, Ubuntu, Linux Mint, …).
 
-## Voraussetzungen
+---
 
-- Ein laufender Goldfish-Server (Version mit dem `/api/…`-Endpunkten aus
-  diesem Repo — jede halbwegs aktuelle Goldfish-Installation reicht).
-- **Debian 12 (Bookworm) oder neuer**, **Ubuntu 24.04 LTS oder neuer**,
-  **Linux Mint 22 oder neuer** (bzw. jede andere Distribution mit
-  **libadwaita ≥ 1.4** und **GTK4 ≥ 4.10** — ältere Systeme wie Ubuntu 22.04/
-  Mint 21.x haben nur libadwaita 1.0 und werden aktuell **nicht**
-  unterstützt, siehe „Bekannte Einschränkungen" unten).
+## 🚀 Installation für Einsteiger (Linux Mint, Ubuntu, Debian)
 
-## Installation (empfohlener Weg: .deb)
+Diese Anleitung setzt **keinerlei Vorwissen** voraus — jeder Befehl, der
+nötig ist, steht hier. Du brauchst nur ein Terminal-Fenster.
 
-### Option A — Ein-Kommando-Installer
+### Schritt 1: Terminal öffnen
+
+- **Linux Mint (Cinnamon):** Tastenkombination `Strg` + `Alt` + `T`, oder im
+  Startmenü nach „Terminal" suchen.
+- **Ubuntu:** genauso, `Strg` + `Alt` + `T`.
+
+Es öffnet sich ein schwarzes Fenster mit einer blinkenden Eingabezeile —
+dort werden die folgenden Befehle eingegeben.
+
+### Schritt 2: Installationsbefehl ausführen
+
+Diesen kompletten Befehl in das Terminal **hineinkopieren** (markieren,
+`Strg`+`Umschalt`+`C` zum Kopieren aus dieser Anleitung, dann im Terminal mit
+`Strg`+`Umschalt`+`V` einfügen) und mit `Enter` bestätigen:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/boernie77/goldfish-linux/main/install.sh | bash
 ```
 
-Lädt das aktuellste `.deb`-Release von GitHub herunter und installiert es
-per `apt install` — das löst alle Abhängigkeiten (GTK4, libadwaita,
-GStreamer-Plugins) automatisch mit auf.
+Was jetzt passiert:
 
-### Option B — .deb manuell herunterladen
+1. Das Skript prüft kurz, ob dein System passt (Debian/Ubuntu/Mint).
+2. Es lädt automatisch die aktuellste Version von Goldfish Linux herunter.
+3. Es fragt einmal nach deinem **Benutzer-Passwort** (nicht sichtbar beim
+   Tippen — das ist normal bei Linux-Terminals, einfach tippen und `Enter`
+   drücken). Das ist nötig, um Software zu installieren (`sudo`).
+4. Danach installiert es Goldfish Linux inklusive aller benötigten
+   Zusatzprogramme (GTK4, libadwaita, GStreamer-Videocodecs) automatisch.
 
-1. Aktuellstes `.deb` von der [Releases-Seite](https://github.com/boernie77/goldfish-linux/releases)
-   herunterladen.
-2. Installieren:
+Am Ende erscheint:
+
+```
+✓ Goldfish Linux ist installiert!
+```
+
+### Schritt 3: App starten
+
+Zwei Möglichkeiten:
+
+- **Über das Anwendungsmenü:** unten links (oder wo dein Startmenü liegt)
+  öffnen, „Goldfish" eintippen, anklicken.
+- **Direkt im Terminal:**
+  ```bash
+  goldfish
+  ```
+
+Beim allerersten Start fragt die App:
+
+- **Server-Adresse** deines Goldfish-Servers, z. B. `http://192.168.1.50:8098`
+  oder `https://goldfish.example.com` (die Adresse, unter der du Goldfish
+  sonst im Browser öffnest).
+- **Benutzername** und **Passwort** deines Goldfish-Kontos.
+
+Danach bist du drin — links eine Bibliothek anklicken, durch Ordner
+navigieren, ein Video anklicken → „▶ Abspielen".
+
+### Falls etwas nicht klappt
+
+**„curl: command not found"** — sehr selten, aber falls es passiert:
+```bash
+sudo apt update
+sudo apt install curl
+```
+und den Befehl aus Schritt 2 danach erneut ausführen.
+
+**„Unable to locate package" / Installation schlägt fehl** — die
+Paketliste deines Systems ist veraltet. Einmal auffrischen:
+```bash
+sudo apt update
+```
+und den Befehl aus Schritt 2 danach erneut ausführen.
+
+**Die App startet, aber Videos spielen nicht ab (schwarzes Bild, kein
+Ton)** — meistens fehlen einzelne GStreamer-Codec-Pakete. Im Terminal
+nachinstallieren:
+```bash
+sudo apt install gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad gstreamer1.0-libav
+```
+Danach die App einmal komplett schließen und neu öffnen. Hilft das nicht,
+bitte als [GitHub-Issue](https://github.com/boernie77/goldfish-linux/issues)
+melden — am besten mit der genauen Fehlermeldung.
+
+**„Diese Distribution wird nicht unterstützt" / die Navigationsleiste sieht
+kaputt aus oder die App stürzt beim Start ab** — dein System hat eine zu
+alte libadwaita-Version (unter 1.4). Das betrifft ältere Systeme wie
+**Ubuntu 22.04 LTS** oder **Linux Mint 21.x**. Version prüfen:
+```bash
+apt list --installed 2>/dev/null | grep libadwaita
+```
+Zeigt die Ausgabe eine Version unter `1.4`, ist dein System für Goldfish
+Linux (aktuell) leider zu alt — siehe „Bekannte Einschränkungen" unten.
+
+### App wieder deinstallieren
+
+```bash
+sudo apt remove goldfish-linux
+```
+
+Persönliche Daten (Server-Login, heruntergeladene Videos) bleiben dabei
+erhalten, für den Fall, dass du die App später neu installierst. Komplett
+entfernen inklusive dieser Daten:
+```bash
+sudo apt remove goldfish-linux
+rm -rf ~/.config/goldfish-linux ~/.local/share/goldfish-linux ~/.cache/goldfish-linux
+```
+
+---
+
+## Voraussetzungen (Kurzfassung für Fortgeschrittene)
+
+- Ein laufender Goldfish-Server (Version mit den `/api/…`-Endpunkten aus
+  [diesem Server-Repo](https://github.com/boernie77/goldfish) — jede
+  halbwegs aktuelle Goldfish-Installation reicht).
+- **Debian 12 (Bookworm) oder neuer**, **Ubuntu 24.04 LTS oder neuer**,
+  **Linux Mint 22 oder neuer** (bzw. jede andere Distribution mit
+  **libadwaita ≥ 1.4** und **GTK4 ≥ 4.10**).
+
+## Andere Installationswege
+
+### Manuell (ohne das install.sh-Skript)
+
+1. `.deb`-Datei von der [Releases-Seite](https://github.com/boernie77/goldfish-linux/releases)
+   im Browser herunterladen.
+2. Im Ordner mit der heruntergeladenen Datei ein Terminal öffnen (im
+   Dateimanager meist Rechtsklick → „Im Terminal öffnen") und:
    ```bash
    sudo apt install ./goldfish-linux_*.deb
    ```
 
-Nach der Installation ist „Goldfish" im Anwendungsmenü zu finden, oder per
-Terminal direkt mit `goldfish` startbar.
+### Aus dem Quellcode bauen
 
-## Aus dem Quellcode bauen
-
-Falls kein Release verfügbar ist, oder du selbst Änderungen testen willst:
+Falls du selbst Änderungen testen willst, oder kein Release verfügbar ist:
 
 ```bash
 git clone https://github.com/boernie77/goldfish-linux.git
@@ -84,8 +187,7 @@ die einen eigenen `goldfish`-Befehl im PATH haben wollen — für die
 
 ## Benutzung
 
-1. Beim ersten Start: Server-Adresse (z. B. `https://goldfish.example.com`
-   oder `http://192.168.1.50:8098`), Benutzername und Passwort eingeben.
+1. Beim ersten Start: Server-Adresse, Benutzername und Passwort eingeben.
 2. Die Anmeldung bleibt über Neustarts hinweg erhalten (Session-Cookie wird
    lokal unter `~/.config/goldfish-linux/settings.json` gespeichert — das
    Passwort selbst wird nie gespeichert). Läuft die Session ab, erscheint
@@ -147,18 +249,21 @@ Repos). Aktuell **nicht** enthalten:
   nach Titel) — Suche pro Ordner funktioniert.
 - Kein automatisches „Fortsetzen ab letzter Position" (Resume) beim erneuten
   Öffnen — `Gtk.Video` startet aktuell immer von vorn.
-- **Nicht getestet auf Ubuntu 22.04/Linux Mint 21.x** (libadwaita 1.0 dort
+- **Nicht unterstützt: Ubuntu 22.04/Linux Mint 21.x** (libadwaita 1.0 dort
   zu alt für `Adw.NavigationSplitView`/`Adw.NavigationView`/
   `Adw.ToolbarView`, die erst mit libadwaita 1.4 eingeführt wurden). Ein
   Downgrade der UI auf `Adw.Leaflet`/`Adw.HeaderBar` für ältere Systeme wäre
   technisch möglich, ist aber bewusst nicht Teil von v1.
 - **Wichtig:** Der gesamte Code wurde sorgfältig gegen die echte
-  Server-API geschrieben, konnte in dieser Entwicklungsumgebung aber
-  **nicht auf einem echten Linux-Desktop mit GTK4 getestet werden** (die
-  Entwicklung lief auf macOS ohne GTK4/libadwaita/GStreamer). Bitte nach der
-  ersten Installation gegenprüfen und Probleme als GitHub-Issue melden —
-  gerade Video-Wiedergabe (GStreamer-Plugin-Verfügbarkeit variiert je nach
-  System) ist ein realistischer erster Stolperstein.
+  Server-API geschrieben und die `.deb`-Paketierung erfolgreich über
+  GitHub Actions gebaut/verifiziert — die eigentliche GTK4-App (Login,
+  Navigation, Video-Wiedergabe) konnte aber während der Entwicklung
+  **nicht auf einem echten Linux-Desktop getestet werden** (die
+  Entwicklung lief auf macOS ohne GTK4/libadwaita/GStreamer). Bitte nach
+  der ersten Installation gegenprüfen und Probleme als
+  [GitHub-Issue](https://github.com/boernie77/goldfish-linux/issues)
+  melden — am hilfreichsten sind dabei die genaue Fehlermeldung und die
+  Ausgabe von `goldfish` bei Start im Terminal (statt über das Menü).
 
 ## Mitentwickeln / Fehler melden
 
