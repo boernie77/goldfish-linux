@@ -16,6 +16,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..theme import apply_color_scheme  # noqa: E402
 
 
 class SettingsPage(Adw.NavigationPage):
@@ -249,6 +250,23 @@ class SettingsPage(Adw.NavigationPage):
             lambda row, _p: self.ctx.view_prefs.set_alpha_sidebar(row.get_active()),
         )
         group.add(self.alpha_switch)
+
+        # Rein lokal (Gerät), nicht auf dem Server — manche Desktops (z. B.
+        # Cinnamon auf Linux Mint) melden ihre Dunkelmodus-Einstellung nicht
+        # über das Portal, das libadwaita sonst automatisch abfragt; ohne
+        # diesen Schalter bliebe die App dort dauerhaft hell.
+        scheme_options = ["system", "light", "dark"]
+        scheme_labels = Gtk.StringList.new(["Systemeinstellung", "Hell", "Dunkel"])
+        self.scheme_row = Adw.ComboRow(title="Erscheinungsbild", subtitle="Nur auf diesem Gerät", model=scheme_labels)
+        self.scheme_row.set_selected(scheme_options.index(self.ctx.view_prefs.color_scheme()))
+
+        def _on_scheme_changed(row: Adw.ComboRow, _param) -> None:
+            value = scheme_options[row.get_selected()]
+            self.ctx.view_prefs.set_color_scheme(value)
+            apply_color_scheme(value)
+
+        self.scheme_row.connect("notify::selected", _on_scheme_changed)
+        group.add(self.scheme_row)
         return group
 
     def _toast(self, message: str) -> bool:

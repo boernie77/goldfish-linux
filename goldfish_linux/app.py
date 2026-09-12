@@ -13,8 +13,9 @@ from gi.repository import Adw, Gio, GLib  # noqa: E402
 
 from . import APP_ID
 from .api import GoldfishAPIError, GoldfishClient
-from .config import Settings, ensure_dirs
+from .config import Settings, ViewPrefs, ensure_dirs
 from .downloads import DownloadManager
+from .theme import apply_color_scheme
 from .windows.login_window import LoginWindow
 from .windows.main_window import MainWindow
 
@@ -30,6 +31,9 @@ class GoldfishApplication(Adw.Application):
     def __init__(self) -> None:
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         ensure_dirs()
+        # Vor jedem Fenster (auch dem Login-Fenster) — sonst blitzt beim Start
+        # kurz das helle Theme auf, bevor die Einstellungen greifen.
+        apply_color_scheme(ViewPrefs().color_scheme())
         self.settings = Settings()
         self.client = GoldfishClient()
         self.downloads: DownloadManager | None = None

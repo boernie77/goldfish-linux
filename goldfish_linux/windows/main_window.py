@@ -10,7 +10,8 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+gi.require_version("Gdk", "4.0")
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .. import __version__  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
@@ -18,6 +19,7 @@ from ..config import ViewPrefs  # noqa: E402
 from ..local_library import LocalLibraryManager  # noqa: E402
 from ..music_player import MusicPlayer  # noqa: E402
 from ..widgets.mini_player import MiniPlayer  # noqa: E402
+from ..widgets.poster import load_poster_async  # noqa: E402
 from .browse_page import BrowsePage  # noqa: E402
 from .collections_page import CollectionsPage  # noqa: E402
 from .downloads_page import DownloadsPage  # noqa: E402
@@ -28,6 +30,37 @@ from .playlists_page import PlaylistsPage  # noqa: E402
 from .settings_page import SettingsPage  # noqa: E402
 
 _KIND_ICON = {"movies": "🎬", "tv": "📺", "music": "🎵", "private": "📁"}
+
+# Runde Vorschaubild-Kachel vor jeder Bibliothek in der Seitenleiste (analog
+# zur Mac/iOS-App), statt nur eines Emoji-Icons. Solange kein Vorschaubild
+# geladen ist (oder die Bibliothek leer ist), bleibt das Art-Kürzel als
+# Fallback SICHTBAR darunter — die Bild-Kachel liegt als Overlay-Kind darüber
+# und deckt es erst ab, sobald tatsächlich etwas geladen wurde.
+_AVATAR_SIZE = 28
+_AVATAR_CSS = b"""
+.gf-sidebar-avatar-bg {
+  background-color: alpha(@window_fg_color, 0.08);
+  border-radius: 9999px;
+  font-size: 0.85rem;
+}
+.gf-sidebar-avatar {
+  border-radius: 9999px;
+}
+"""
+_avatar_css_loaded = False
+
+
+def _ensure_avatar_css() -> None:
+    global _avatar_css_loaded
+    if _avatar_css_loaded:
+        return
+    display = Gdk.Display.get_default()
+    if display is None:
+        return
+    provider = Gtk.CssProvider()
+    provider.load_from_data(_AVATAR_CSS)
+    Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    _avatar_css_loaded = True
 
 
 class AppContext:
@@ -76,10 +109,16 @@ class AppContext:
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app, client: GoldfishClient, downloads, username: str):
         super().__init__(application=app, title="Goldfish")
+        _ensure_avatar_css()
         self.set_default_size(1120, 720)
         self.client = client
         self.downloads = downloads
         self.ctx = AppContext(app, self, client, downloads)
+        # Bibliotheks-ID → Vorschaubild-Pfad, einmal pro Bibliothek ermittelt
+        # (kostet einen Zufalls-Item-Aufruf) und über Seitenleisten-Neuaufbauten
+        # hinweg behalten, damit ein Wechsel in den Einstellungen nicht jedes
+        # Mal alle Vorschaubilder neu anfordert.
+        self._library_previews: dict[int, str | None] = {}
 
         self.toast_overlay = Adw.ToastOverlay()
         self.set_content(self.toast_overlay)
@@ -219,7 +258,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.sidebar_list.append(divider)
 
         for library in libraries:
-            row = self._build_sidebar_row(f"{_KIND_ICON.get(library.get('kind'), '📁')}  {library['name']}")
+            row = self._build_library_row(library)
             row.library = library
             row.is_downloads = False
             row.special = ""
@@ -273,6 +312,66 @@ class MainWindow(Adw.ApplicationWindow):
         label = Gtk.Label(label=label_text, xalign=0, margin_top=10, margin_bottom=10, margin_start=12, margin_end=12)
         row.set_child(label)
         return row
+
+    def _build_library_row(self, library: dict) -> Gtk.ListBoxRow:
+        """Zeile mit rundem Vorschaubild statt nur einem Art-Emoji (analog zur
+        Mac/iOS-App). Das Emoji bleibt als Fallback SICHTBAR unter dem Bild
+        (Gtk.Overlay) — bis ein Vorschaubild geladen ist (oder wenn die
+        Bibliothek leer ist und keins existiert), sieht man weiterhin die
+        Art auf einen Blick."""
+        row = Gtk.ListBoxRow()
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=10,
+            margin_top=8,
+            margin_bottom=8,
+            margin_start=12,
+            margin_end=12,
+        )
+        emoji = _KIND_ICON.get(library.get("kind"), "📁")
+        avatar_bg = Gtk.Label(label=emoji, width_request=_AVATAR_SIZE, height_request=_AVATAR_SIZE)
+        avatar_bg.add_css_class("gf-sidebar-avatar-bg")
+        overlay = Gtk.Overlay(child=avatar_bg)
+        picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER)
+        picture.set_overflow(Gtk.Overflow.HIDDEN)
+        picture.add_css_class("gf-sidebar-avatar")
+        overlay.add_overlay(picture)
+        overlay.set_measure_overlay(picture, False)
+        box.append(overlay)
+
+        label = Gtk.Label(label=library.get("name") or "", xalign=0, hexpand=True)
+        box.append(label)
+        row.set_child(box)
+
+        self._load_library_preview(library, picture)
+        return row
+
+    def _load_library_preview(self, library: dict, picture: Gtk.Picture) -> None:
+        try:
+            lib_id = int(library.get("id") or 0)
+        except (TypeError, ValueError):
+            return
+        if not lib_id:
+            return
+        cached = self._library_previews.get(lib_id)
+        if cached is not None:
+            if cached:
+                load_poster_async(picture, self.client, cached, decode_width=_AVATAR_SIZE * 3)
+            return
+        threading.Thread(
+            target=self._fetch_library_preview_worker, args=(lib_id, picture), daemon=True
+        ).start()
+
+    def _fetch_library_preview_worker(self, lib_id: int, picture: Gtk.Picture) -> None:
+        try:
+            path = self.client.library_preview_path(lib_id) or ""
+        except Exception:  # noqa: BLE001 — ein fehlendes Vorschaubild ist kein Fehlerfall
+            path = ""
+        # "" gespeichert = schon versucht, nichts gefunden (leere Bibliothek) —
+        # unterscheidet sich von "noch nie versucht" (Schlüssel fehlt ganz).
+        self._library_previews[lib_id] = path
+        if path:
+            GLib.idle_add(load_poster_async, picture, self.client, path, _AVATAR_SIZE * 3, None)
 
     def _on_sidebar_row_activated(self, _listbox, row: Gtk.ListBoxRow) -> None:
         if not hasattr(row, "is_downloads"):

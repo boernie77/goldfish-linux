@@ -1,3 +1,19 @@
+goldfish-linux (0.1.27-1) unstable; urgency=medium
+
+  * Bibliotheken in der Seitenleiste zeigen jetzt ein rundes Vorschaubild
+    (ein Zufalls-Item aus der jeweiligen Bibliothek) statt nur eines
+    Art-Emojis — angelehnt an die Mac/iOS-App. Das Emoji bleibt als
+    Platzhalter sichtbar, bis ein Bild geladen ist bzw. wenn die Bibliothek
+    leer ist. Betrifft nur echte Server-Bibliotheken, nicht Startseite/
+    Sammlungen/Playlists/Einstellungen/Eigene Datenträger/Downloads.
+  * Neue Einstellung "Erscheinungsbild" (System/Hell/Dunkel) unter
+    Einstellungen → Anzeige — rein lokal auf diesem Gerät gespeichert.
+    Manche Desktops (z. B. Cinnamon auf Linux Mint) melden ihre
+    Dunkelmodus-Einstellung nicht über das Portal, das libadwaita sonst
+    automatisch abfragt; die App blieb dort bisher immer hell.
+
+ -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 00:45:00 +0200
+
 goldfish-linux (0.1.26-1) unstable; urgency=medium
 
   * Hardware-Videodekodierung ergänzt (`gstreamer1.0-vaapi`, auf

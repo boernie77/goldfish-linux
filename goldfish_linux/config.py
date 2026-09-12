@@ -187,3 +187,19 @@ class ViewPrefs:
     def clear_sort(self, library_id: int, folder: str) -> None:
         if self._data.pop(self._key(library_id, folder), None) is not None:
             self._save()
+
+    def color_scheme(self) -> str:
+        """"system" | "light" | "dark". Standard: "system".
+
+        Bewusst hier und nicht serverseitig: das betrifft die Darstellung auf
+        DIESEM Gerät, nicht den Goldfish-Account. Manche Desktops (z. B.
+        Cinnamon auf Linux Mint) melden ihre Dunkelmodus-Einstellung nicht
+        über das Portal, das libadwaita sonst automatisch abfragt — ohne
+        diesen Schalter bliebe die App dort für immer hell, egal was das
+        System-Theme sagt."""
+        value = self._data.get("colorScheme", "system")
+        return value if value in ("system", "light", "dark") else "system"
+
+    def set_color_scheme(self, value: str) -> None:
+        self._data["colorScheme"] = value if value in ("system", "light", "dark") else "system"
+        self._save()
