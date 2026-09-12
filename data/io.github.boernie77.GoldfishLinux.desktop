@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Goldfish
+GenericName=Video-Player
+Comment=Client für den selbstgehosteten Goldfish-Videoserver
+Comment[en]=Client for the self-hosted Goldfish video server
+Exec=goldfish
+Icon=io.github.boernie77.GoldfishLinux
+Terminal=false
+Categories=AudioVideo;Video;Player;
+StartupNotify=true

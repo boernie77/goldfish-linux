@@ -1,0 +1,7 @@
+goldfish-linux (0.1.0-1) unstable; urgency=medium
+
+  * Erste Veröffentlichung: Login, Bibliotheks-/Ordner-Browser, Streaming-
+    Wiedergabe (Direct Play/Transcode über den GTK4-GStreamer-Player) sowie
+    Offline-Downloads mit lokaler Wiedergabe.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 14:13:39 +0200

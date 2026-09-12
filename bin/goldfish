@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Launcher für die per .deb installierte goldfish-linux-Anwendung."""
+import sys
+
+from goldfish_linux.__main__ import main
+
+if __name__ == "__main__":
+    sys.exit(main())

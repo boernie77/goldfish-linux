@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b7fd6"/>
+      <stop offset="1" stop-color="#1a5aa8"/>
+    </linearGradient>
+    <linearGradient id="fish" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb347"/>
+      <stop offset="1" stop-color="#ff7a1a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#bg)"/>
+  <g>
+    <!-- Schwanzflosse -->
+    <path d="M34 64 L14 46 L20 64 L14 82 Z" fill="url(#fish)"/>
+    <!-- Körper -->
+    <path d="M34 64 C34 42 58 30 80 34 C100 38 112 52 112 64 C112 76 100 90 80 94 C58 98 34 86 34 64 Z" fill="url(#fish)"/>
+    <!-- Rückenflosse -->
+    <path d="M62 34 C66 24 78 22 86 26 C78 30 72 34 68 40 Z" fill="#ff7a1a"/>
+    <!-- Bauchflosse -->
+    <path d="M64 92 C66 100 76 104 84 102 C78 98 72 94 68 88 Z" fill="#ff7a1a"/>
+    <!-- Auge -->
+    <circle cx="92" cy="58" r="6" fill="#1a1a1a"/>
+    <circle cx="94" cy="56" r="2" fill="#ffffff"/>
+  </g>
+</svg>

@@ -1,0 +1,32 @@
+Source: goldfish-linux
+Section: video
+Priority: optional
+Maintainer: boernie77 <boernie77@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/boernie77/goldfish-linux
+Rules-Requires-Root: no
+
+Package: goldfish-linux
+Architecture: all
+Depends: ${misc:Depends},
+ python3 (>= 3.10),
+ python3-gi,
+ python3-gi-cairo,
+ python3-requests,
+ gir1.2-gtk-4.0,
+ gir1.2-adw-1 (>= 1.4),
+ gir1.2-gdkpixbuf-2.0,
+ gir1.2-glib-2.0,
+ gstreamer1.0-plugins-base,
+ gstreamer1.0-plugins-good,
+ gstreamer1.0-plugins-bad,
+ gstreamer1.0-libav
+Description: Nativer Desktop-Client für den Goldfish-Videoserver
+ Goldfish Linux ist ein GTK4/libadwaita-Client für selbstgehostete
+ Goldfish-Videoserver (siehe github.com/boernie77/goldfish): Anmelden,
+ Bibliotheken/Ordner durchsuchen, Filme/Serien/Videos direkt streamen
+ (Direct Play/Transcode) oder für die Offline-Wiedergabe herunterladen.
+ .
+ Getestet auf Debian 12+, Ubuntu 24.04+ und Linux Mint 22+ (benötigt
+ libadwaita 1.4 oder neuer für die moderne Navigationsleiste).

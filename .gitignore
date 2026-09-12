@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+debian/.debhelper/
+debian/goldfish-linux/
+debian/files
+debian/*.debhelper.log
+debian/*.substvars
+debian/debhelper-build-stamp
+*.buildinfo
+*.changes

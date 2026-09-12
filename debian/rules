@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+
+# --buildsystem=none: reiner Python-Quellcode ohne Kompilier-/Test-Schritt.
+# Verhindert außerdem, dass dh wegen der vorhandenen pyproject.toml
+# automatisch das pybuild-Buildsystem wählt (die Datei dient nur dem
+# lokalen `pip install -e .`-Workflow für Entwicklung/Tests außerhalb des
+# .deb-Pakets, siehe README). Alle Dateien werden stattdessen 1:1 über
+# debian/goldfish-linux.install platziert.
+%:
+	dh $@ --buildsystem=none

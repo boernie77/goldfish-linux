@@ -1,0 +1,4 @@
+goldfish_linux usr/lib/python3/dist-packages
+bin/goldfish usr/bin
+data/io.github.boernie77.GoldfishLinux.desktop usr/share/applications
+data/icons/io.github.boernie77.GoldfishLinux.svg usr/share/icons/hicolor/scalable/apps
