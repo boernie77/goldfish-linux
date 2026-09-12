@@ -1,3 +1,18 @@
+goldfish-linux (0.1.29-1) unstable; urgency=medium
+
+  * Behoben (vom Benutzer gemeldet): Filme/Bluray/Urlaubsvideos zeigten kein
+    Vorschaubild in der neuen runden Seitenleisten-Kachel, blieben beim
+    Emoji stehen. Zwei Ursachen behoben: (1) ein einzelner Zufallstreffer
+    konnte auf ein Item ohne Poster/Thumbnail fallen (unbestätigte
+    Zuordnung, Thumbnail noch nicht erzeugt) — `library_preview_path`
+    versucht jetzt bis zu 5 Zufallstreffer, bevor es aufgibt. (2) ein
+    einmaliger Netzwerk-/Serverfehler beim ersten Versuch wurde dauerhaft
+    als "kein Vorschaubild" gespeichert und nie erneut versucht — jetzt wird
+    nur ein ECHTES "nichts gefunden" gemerkt, ein Fehler löst beim nächsten
+    Seitenleisten-Neuaufbau einen neuen Versuch aus.
+
+ -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 01:30:00 +0200
+
 goldfish-linux (0.1.28-1) unstable; urgency=medium
 
   * Behoben (vom Benutzer gemeldet): "Zufällig aus allen Playlists" in der

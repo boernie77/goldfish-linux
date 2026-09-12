@@ -739,18 +739,26 @@ class GoldfishClient:
             return f"/api/thumb/{item['id']}"
         return None
 
-    def library_preview_path(self, library_id: int) -> str | None:
+    def library_preview_path(self, library_id: int, attempts: int = 5) -> str | None:
         """Ein repräsentatives Vorschaubild für die Bibliothek — für die
         runden Kacheln in der Seitenleiste (analog zur Mac/iOS-App). Zieht
         dafür ein Zufalls-Item und nimmt dessen Poster/Cover/Thumbnail; `None`
-        wenn die Bibliothek leer ist. Kein zusätzlicher Server-Endpoint nötig."""
-        item = self.random_item(library_id=library_id)
-        if not item:
-            return None
-        album_id = item.get("musicAlbumId")
-        if album_id:
-            return self.album_cover_path(album_id)
-        return self.poster_path_for_item(item)
+        wenn die Bibliothek leer ist. Kein zusätzlicher Server-Endpoint nötig.
+
+        **Mehrere Versuche**, nicht nur einer: ein einzelner Zufallstreffer
+        kann auf ein Item ohne Poster/Vorschaubild fallen (unbestätigte
+        Zuordnung, noch kein Thumbnail erzeugt) — ohne Wiederholung bliebe
+        die Bibliothek dann dauerhaft ohne Bild, obwohl die meisten anderen
+        Titel darin sehr wohl eins hätten."""
+        for _ in range(max(1, attempts)):
+            item = self.random_item(library_id=library_id)
+            if not item:
+                return None
+            album_id = item.get("musicAlbumId")
+            path = self.album_cover_path(album_id) if album_id else self.poster_path_for_item(item)
+            if path:
+                return path
+        return None
 
     def absolute(self, path: str) -> str:
         return self._url(path)

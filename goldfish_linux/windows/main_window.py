@@ -365,9 +365,14 @@ class MainWindow(Adw.ApplicationWindow):
     def _fetch_library_preview_worker(self, lib_id: int, picture: Gtk.Picture) -> None:
         try:
             path = self.client.library_preview_path(lib_id) or ""
-        except Exception:  # noqa: BLE001 — ein fehlendes Vorschaubild ist kein Fehlerfall
-            path = ""
-        # "" gespeichert = schon versucht, nichts gefunden (leere Bibliothek) —
+        except Exception:  # noqa: BLE001 — ein Netzwerk-/Serverfehler ist KEIN
+            # "kein Vorschaubild vorhanden" — nichts merken, sonst bleibt eine
+            # Bibliothek nach einem einmaligen Aussetzer für den Rest der
+            # Sitzung ohne Bild stehen. Der nächste Seitenleisten-Neuaufbau
+            # (z. B. nach den Einstellungen) versucht es einfach erneut.
+            return
+        # "" gespeichert = wirklich versucht UND nichts gefunden (leere
+        # Bibliothek oder alle Stichproben ohne Poster/Thumbnail) —
         # unterscheidet sich von "noch nie versucht" (Schlüssel fehlt ganz).
         self._library_previews[lib_id] = path
         if path:
