@@ -1,3 +1,27 @@
+goldfish-linux (0.1.11-1) unstable; urgency=medium
+
+  * Neu: eigene Steuerleiste im Wiedergabefenster — Abspielen und Pause,
+    Fortschrittsbalken, Zeit und Gesamtdauer, Lautstärke, Vollbild. Tastatur:
+    Leertaste hält an, Pfeiltasten springen zehn Sekunden, F schaltet Vollbild,
+    Esc verlässt es. Im Vollbild verschwindet die Leiste, wenn die Maus ruht.
+  * Neu: gewählte Untertitel werden ins Bild eingeblendet — eingebettete,
+    von Whisper erzeugte und per OCR gewonnene.
+  * Neu: Weiterschauen. Beim Abspielen fragt die App, ob von vorn oder an der
+    alten Stelle begonnen wird; die Position wird während der Wiedergabe alle
+    zehn Sekunden gesichert. Ab neunzig Prozent gilt ein Titel als gesehen.
+  * Neu: Vorschaubilder beim Zeigen auf den Fortschrittsbalken, wenn der Server
+    sie für den Titel erzeugt hat.
+  * Neu: am Ende läuft der nächste Titel der Liste von selbst weiter.
+  * Fix: bei umgewandelten Videos zeigte die Anzeige keine Gesamtdauer und
+    Springen war unmöglich — ein wachsender HLS-Stream kennt beides nicht. Die
+    Dauer kommt jetzt vom Server, und ein Sprung startet die Umwandlung ab der
+    Zielstelle neu.
+  * Fix: nach einem Sprung erschien "Wiedergabe fehlgeschlagen", obwohl der
+    Film weiterlief — das abgelöste Medium meldete den Fehler seiner beendeten
+    Umwandlung. Alte Medien werden jetzt abgeklemmt.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 18:05:00 +0200
+
 goldfish-linux (0.1.10-1) unstable; urgency=medium
 
   * Neu: die Detailansicht zeigt Poster, Kenndaten als Plaketten (Jahr,

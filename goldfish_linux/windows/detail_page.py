@@ -37,7 +37,7 @@ from .player_window import PlayerWindow  # noqa: E402
 
 
 class DetailPage(Adw.NavigationPage):
-    def __init__(self, ctx, nav_view: Adw.NavigationView, item: dict):
+    def __init__(self, ctx, nav_view: Adw.NavigationView, item: dict, queue: list[dict] | None = None):
         metadata = item.get("metadata") or {}
         title = metadata.get("title") or item.get("title") or "Unbenannt"
 
@@ -64,6 +64,10 @@ class DetailPage(Adw.NavigationPage):
         self.item = item
         self.item_id = int(item["id"])
         self.box = box
+        # Die Liste, aus der dieser Titel geöffnet wurde — damit am Ende von
+        # selbst der nächste läuft (Folge auf Folge). Ohne Liste bleibt es bei
+        # diesem einen Titel.
+        self.queue = queue or []
 
         # Vorwahl für den Player; wird von den Menüs unten gesetzt.
         self.chosen_profile = ""
@@ -163,7 +167,7 @@ class DetailPage(Adw.NavigationPage):
         play = Gtk.Button(label="▶ Abspielen")
         play.add_css_class("suggested-action")
         play.add_css_class("pill")
-        play.connect("clicked", lambda *_: self._open_player())
+        play.connect("clicked", lambda *_: self._play_with_resume_check())
         row.append(play)
 
         self.trailer_button = Gtk.Button(label="🎬 Trailer", visible=False)
@@ -303,7 +307,11 @@ class DetailPage(Adw.NavigationPage):
 
     # -- Wiedergabe ------------------------------------------------------
 
-    def _open_player(self, local_path: str | None = None) -> None:
+    def _open_player(self, local_path: str | None = None, start_position: float = 0.0) -> None:
+        # Nur eine Warteschlange mitgeben, wenn der Titel tatsächlich darin
+        # vorkommt — nach einem Wechsel der Version ist das sonst der falsche
+        # Platz, und es würde bei einem fremden Titel weiterlaufen.
+        index = next((i for i, it in enumerate(self.queue) if int(it["id"]) == self.item_id), -1)
         window = PlayerWindow(
             self.ctx.application,
             self.ctx.client,
@@ -311,9 +319,53 @@ class DetailPage(Adw.NavigationPage):
             local_path=local_path,
             profile=self.chosen_profile,
             audio_index=self.chosen_audio,
+            subtitle=self.chosen_subtitle,
+            start_position=start_position,
+            queue=self.queue if index >= 0 else None,
+            queue_index=max(0, index),
         )
         window.set_transient_for(self.ctx.window)
         window.present()
+
+    def _play_with_resume_check(self) -> None:
+        """Fragt nach, wenn der Titel schon einmal angesehen wurde.
+
+        Die Position steckt nicht im Item, sondern hinter einem eigenen
+        Endpunkt — deshalb erst fragen, dann entscheiden. Läuft im Hintergrund,
+        damit ein langsamer Server den Knopf nicht einfriert."""
+
+        def worker() -> None:
+            try:
+                position = self.ctx.client.get_resume(self.item_id)
+            except GoldfishAPIError:
+                position = 0.0
+            GLib.idle_add(self._after_resume_lookup, position)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _after_resume_lookup(self, position: float) -> bool:
+        duration = self.item.get("durationSec") or 0
+        # Unter einer Minute lohnt die Frage nicht, und kurz vor dem Ende
+        # wäre "fortsetzen" sinnlos — dann von vorn, wie im Browser.
+        if position < 60 or (duration and position > duration * 0.95):
+            self._open_player()
+            return False
+
+        dialog = Adw.MessageDialog(
+            transient_for=self.ctx.window,
+            heading="Weiterschauen?",
+            body=f"Du warst bei {format_duration(position)} von {format_duration(duration)}.",
+        )
+        dialog.add_response("start", "Von Anfang")
+        dialog.add_response("resume", f"Bei {format_duration(position)} fortsetzen")
+        dialog.set_default_response("resume")
+        dialog.set_response_appearance("resume", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect(
+            "response",
+            lambda _d, response: self._open_player(start_position=position if response == "resume" else 0.0),
+        )
+        dialog.present()
+        return False
 
     def _on_trailer_clicked(self, button: Gtk.Button) -> None:
         metadata = self.item.get("metadata") or {}

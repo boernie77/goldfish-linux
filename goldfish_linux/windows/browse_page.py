@@ -57,6 +57,7 @@ class BrowsePage(Adw.NavigationPage):
         self.drilldown = drilldown
         self.toolbar_view = toolbar_view
         self.grid: CardGrid | None = None
+        self.shown_items: list[dict] = []
         self.search_entry = search_entry
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_text = ""
@@ -119,6 +120,7 @@ class BrowsePage(Adw.NavigationPage):
             )
             status.set_vexpand(True)
             self.grid = None
+            self.shown_items = []
             self.toolbar_view.set_content(status)
             return
 
@@ -134,6 +136,7 @@ class BrowsePage(Adw.NavigationPage):
                 on_toggle_watched=self._toggle_watched,
                 on_toggle_favorite=self._toggle_favorite,
             )
+        self.shown_items = items
         self.grid.set_content(folders, items)
         if self.toolbar_view.get_content() is not self.grid:
             self.toolbar_view.set_content(self.grid)
@@ -182,8 +185,9 @@ class BrowsePage(Adw.NavigationPage):
         self.nav_view.push(page)
 
     def _open_detail(self, item: dict) -> None:
-        page = DetailPage(self.ctx, self.nav_view, item)
-        self.nav_view.push(page)
+        # Die gerade gezeigte Liste als Warteschlange mitgeben, damit am Ende
+        # eines Titels von selbst der nächste läuft.
+        self.nav_view.push(DetailPage(self.ctx, self.nav_view, item, queue=self.shown_items))
 
     def _on_search_changed(self, entry: Gtk.SearchEntry) -> None:
         self.search_text = entry.get_text().strip()

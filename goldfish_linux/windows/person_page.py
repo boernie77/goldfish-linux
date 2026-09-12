@@ -86,6 +86,7 @@ class PersonPage(Adw.NavigationPage):
             on_toggle_watched=lambda it, w: self._state_call(lambda: self.ctx.client.set_watched(it["id"], w)),
             on_toggle_favorite=lambda it, f: self._state_call(lambda: self.ctx.client.set_favorite(it["id"], f)),
         )
+        self.shown_items = items
         grid.set_content([], items)
         outer.append(grid)
         self.toolbar_view.set_content(outer)
@@ -135,7 +136,7 @@ class PersonPage(Adw.NavigationPage):
     def _open_detail(self, item: dict) -> None:
         from .detail_page import DetailPage
 
-        self.nav_view.push(DetailPage(self.ctx, self.nav_view, item))
+        self.nav_view.push(DetailPage(self.ctx, self.nav_view, item, queue=getattr(self, "shown_items", [])))
 
     def _state_call(self, call) -> None:
         def worker() -> None:
