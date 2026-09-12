@@ -59,12 +59,13 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.13 | Kachelbreiten-Fix (siehe unten) |
 | 0.1.14 | Musik: Alben, Titelliste, Abspielleiste, Warteschlange |
 | 0.1.15 | Eigene Datenträger als lokale Bibliotheken |
+| 0.1.16 | Einstellungen, SSO, Buchstabenleiste, Zufall, kleinere Downloads |
+| 0.1.17 | Mehrere Datenträger zu einem Eintrag zusammenlegen |
 
-Noch nicht gebaut: SSO über Authentik, eigenes Passwort ändern,
-Gesehen-Sync mit einem zweiten Konto, Zufallswiedergabe mit Ordnerauswahl,
-kleinere Downloads statt Original, Buchstabenleiste A–Z, und die
-vollständige TMDB-Filmografie auf der Personenseite (dort erscheinen
-derzeit nur die vorhandenen Titel).
+Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
+Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
+SSO-Anmeldung, die nur bis zum Laden der Authentik-Seite gegengeprüft ist,
+nicht bis zum Ende durchgespielt.
 
 ### ⚠ Korrektur zur früheren Diagnose des Startfehlers
 
@@ -244,10 +245,14 @@ Klicks zu erzeugen.
 
 Cast und AirPlay (auf Linux ohne Entsprechung), ein eigenes Fenster pro
 Video (macOS-Eigenheit), die Serververwaltung (bleibt wie in allen Clients
-dem Browser überlassen), der Regler für den Vorlaufpuffer lokaler
-Bibliotheken (bei GStreamer ohne erkennbaren Nutzen) und das Zusammenlegen
-mehrerer Datenträger zu einer Kachel (reine Bequemlichkeit; die Suche
-innerhalb einer Bibliothek deckt den Zweck ab).
+dem Browser überlassen), die Formatanpassung lokaler Dateien (GStreamer
+spielt alles direkt ab) und der Regler für den Vorlaufpuffer lokaler
+Bibliotheken (bei GStreamer ohne erkennbaren Nutzen).
+
+Das Zusammenlegen mehrerer Datenträger stand hier ursprünglich auch —
+die Begründung ("reine Bequemlichkeit") hat der Benutzer zu Recht
+zurückgewiesen, seit 0.1.17 ist es gebaut (`local_library.py`:
+`merged_roots`/`merged_library`/`visible_libraries`/`find_duplicates`).
 
 ## Versionierung
 
