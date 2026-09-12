@@ -69,6 +69,97 @@ class AuthStatus:
     setup_needed: bool
 
 
+@dataclass
+class PlaybackProfile:
+    """Eine Qualitätsstufe. `max_height == 0` heißt „Original, kein Deckel"."""
+
+    id: str
+    label: str
+    max_height: int
+    video_kbps: int
+    audio_kbps: int
+
+    @classmethod
+    def from_json(cls, raw: dict) -> PlaybackProfile:
+        # Groß geschriebene Schlüssel, weil das Go-Struct keine JSON-Tags hat;
+        # die camelCase-Varianten trotzdem mitgelesen, falls der Server sie
+        # irgendwann nachrüstet.
+        def pick(*keys: str, default: Any = 0) -> Any:
+            for key in keys:
+                if key in raw:
+                    return raw[key]
+            return default
+
+        return cls(
+            id=str(pick("ID", "id", default="")),
+            label=str(pick("Label", "label", default="")),
+            max_height=int(pick("MaxHeight", "maxHeight") or 0),
+            video_kbps=int(pick("VideoKbps", "videoKbps") or 0),
+            audio_kbps=int(pick("AudioKbps", "audioKbps") or 0),
+        )
+
+
+@dataclass
+class TrickplayCue:
+    """Ein Vorschaubild im Sprite-Sheet: Zeitfenster plus Ausschnitt."""
+
+    start: float
+    end: float
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+def _parse_vtt_timestamp(raw: str) -> float | None:
+    """`HH:MM:SS.mmm` oder `MM:SS.mmm` in Sekunden."""
+    parts = raw.strip().split(":")
+    if not 2 <= len(parts) <= 3:
+        return None
+    try:
+        seconds = 0.0
+        for part in parts:
+            seconds = seconds * 60 + float(part)
+    except ValueError:
+        return None
+    return seconds
+
+
+def parse_trickplay_vtt(text: str) -> list[TrickplayCue]:
+    """Parst das Sprite-Manifest des Servers (`internal/trickplay/worker.go`,
+    `writeVTT`): auf eine Zeitzeile `HH:MM:SS.mmm --> HH:MM:SS.mmm` folgt eine
+    Zeile `sprite.jpg#xywh=x,y,w,h`.
+
+    Bewusst über die tatsächlichen Werte geparst statt aus Intervall und
+    Rasterbreite nachgerechnet — so übersteht der Client eine künftige
+    Formatänderung auf Serverseite, ohne angefasst zu werden."""
+    cues: list[TrickplayCue] = []
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if "-->" not in line:
+            i += 1
+            continue
+        halves = line.split("-->")
+        start = _parse_vtt_timestamp(halves[0]) if len(halves) == 2 else None
+        end = _parse_vtt_timestamp(halves[1]) if len(halves) == 2 else None
+        # Nächste nicht-leere Zeile trägt den Ausschnitt.
+        j = i + 1
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        if start is not None and end is not None and j < len(lines) and "xywh=" in lines[j]:
+            try:
+                nums = lines[j].split("xywh=", 1)[1].strip().split(",")
+                if len(nums) == 4:
+                    x, y, w, h = (int(float(n)) for n in nums)
+                    cues.append(TrickplayCue(start=start, end=end, x=x, y=y, width=w, height=h))
+            except (ValueError, IndexError):
+                pass  # einzelne kaputte Zeile überspringen, Rest bleibt nutzbar
+        i = j + 1
+    return cues
+
+
 class GoldfishClient:
     """Ein Client pro Server-Verbindung. Nicht thread-safe für Login/Logout,
     aber `requests.Session` selbst ist für parallele GET-Requests (z. B.
@@ -148,6 +239,9 @@ class GoldfishClient:
     def post(self, path: str, json_body: dict | None = None) -> Any:
         return self._request("POST", path, json=json_body or {})
 
+    def delete(self, path: str, json_body: dict | None = None) -> Any:
+        return self._request("DELETE", path, json=json_body or {})
+
     # -- Auth ----------------------------------------------------------
 
     def login(self, server_url: str, username: str, password: str) -> AuthStatus:
@@ -194,8 +288,19 @@ class GoldfishClient:
         sort_dir: str = "",
         watched: str = "",
         favorite: str = "",
+        buckets: list[str] | None = None,
+        genres: list[str] | None = None,
+        person_id: int | None = None,
+        match: str = "",
     ) -> list[dict]:
-        params: dict[str, str] = {"sort": sort}
+        """Die Hauptliste. Alle Filter sind optional und werden serverseitig
+        mit UND verknüpft; `buckets` (Auflösung) und `genres` sind innerhalb
+        ihrer Gruppe ODER-verknüpft, weil der Server sie als wiederholten
+        `bucket=`/`genre=`-Parameter erwartet.
+
+        `person_id` ist eine TMDB-Personen-ID und macht die Liste
+        bibliotheksübergreifend — alles, worin diese Person mitspielt."""
+        params: dict[str, Any] = {"sort": sort}
         if library_id:
             params["libraryId"] = str(library_id)
         if folder:
@@ -208,6 +313,14 @@ class GoldfishClient:
             params["watched"] = watched
         if favorite:
             params["favorite"] = favorite
+        if buckets:
+            params["bucket"] = buckets
+        if genres:
+            params["genre"] = genres
+        if person_id:
+            params["personId"] = str(person_id)
+        if match:
+            params["match"] = match
         return self.get("/api/items", params) or []
 
     def item(self, item_id: int) -> dict:
@@ -216,8 +329,25 @@ class GoldfishClient:
     # -- Wiedergabe -----------------------------------------------------
 
     def playback_info(self, item_id: int, mode: str = "auto", profile: str = "orig") -> dict:
+        """Streams, Untertitel und die Wiedergabe-URL für ein Item.
+
+        Auch die Datenquelle für die Ton- und Untertitelauswahl: `item.streams`
+        allein kennt die erzeugten KI- und OCR-Untertitel nicht, dieser
+        Endpoint schon. `profile` wirkt im Auto-Modus als Qualitätsdeckel und
+        erzwingt eine Umwandlung, wenn das Item ihn überschreitet."""
         params = {"mode": mode, "profile": profile}
         return self.get(f"/api/playback/{item_id}", params) or {}
+
+    def playback_profiles(self, item_id: int) -> list[PlaybackProfile]:
+        """Die wählbaren Qualitätsstufen für dieses Item.
+
+        ACHTUNG, Server-Eigenheit: `playback.Profile` trägt im Go-Code KEINE
+        JSON-Tags, die Felder kommen deshalb groß geschrieben an (`ID`,
+        `Label`, `MaxHeight`, `VideoKbps`, `AudioKbps`) — anders als jedes
+        andere Feld der API, das camelCase ist. Hier einmal zentral in eine
+        Dataclass normalisiert, damit die Oberfläche nicht darüber stolpert."""
+        info = self.playback_info(item_id)
+        return [PlaybackProfile.from_json(p) for p in (info.get("profiles") or [])]
 
     def playback_start(self, item_id: int) -> None:
         try:
@@ -245,6 +375,334 @@ class GoldfishClient:
 
     def set_favorite(self, item_id: int, favorite: bool) -> None:
         self.put(f"/api/items/{item_id}/favorite", {"favorite": favorite})
+
+    # -- Items: Varianten, Zufall, Staffeln -------------------------------
+
+    def variants(self, item_id: int) -> list[dict]:
+        """Alle Geschwister-Dateien mit derselben `metadataId` (inkl. `item_id`
+        selbst) — Datenquelle für die Varianten-Auswahl im Detail-Dialog.
+
+        Bewusst dieser Endpoint und NICHT die gerade geladene Grid-Liste: nur
+        er ist bibliotheksübergreifend vollständig (siehe CLAUDE.md
+        „Merge-Duplikate", dritter Bugfix — der Browser hatte genau deshalb
+        einen zu kurzen Varianten-Dropdown)."""
+        return self.get(f"/api/items/{item_id}/variants") or []
+
+    def random_item(
+        self,
+        library_id: int | None = None,
+        library_ids: list[int] | None = None,
+        folder_selections: list[tuple[int, str]] | None = None,
+        folder: str = "",
+        search: str = "",
+        playlist_id: int | None = None,
+        album_id: int | None = None,
+        person_id: int | None = None,
+    ) -> dict:
+        """Ein zufälliges Item. Die Pool-Auswahl folgt der Prioritätenkette aus
+        CLAUDE.md („Shuffle-Play"): Playlist, Person, Album, manuelle
+        Ordner-Auswahl, sonst Bibliothek.
+
+        `folder_selections` sind `(library_id, rel_path)`-Paare und werden als
+        wiederholter `folderSel=<libId>:<relPath>`-Parameter geschickt —
+        damit lässt sich der Zufall über mehrere Ordner UND Bibliotheken
+        hinweg einschränken. `rel_path=""` meint die ganze Bibliothek."""
+        params: dict[str, Any] = {}
+        if playlist_id:
+            params["playlistId"] = str(playlist_id)
+        elif person_id:
+            params["personId"] = str(person_id)
+        elif album_id:
+            params["albumId"] = str(album_id)
+        elif folder_selections:
+            params["folderSel"] = [f"{lib}:{rel}" for lib, rel in folder_selections]
+        elif library_ids:
+            params["libraryId"] = [str(i) for i in library_ids]
+        elif library_id:
+            params["libraryId"] = str(library_id)
+        if folder:
+            params["folder"] = folder
+        if search:
+            params["search"] = search
+        return self.get("/api/items/random", params) or {}
+
+    def seasons(self, library_id: int, folder: str, refresh: bool = False) -> dict:
+        """Staffel-Struktur eines Serien-Ordners: `{show, seasons: [...]}`.
+
+        Ein leeres `seasons`-Array ist ein regulärer Fall, kein Fehler — der
+        Ordner hat dann keine TMDB-Staffel-Struktur (z. B. Tatort mit
+        Kommissar-Unterordnern). Aufrufer sollen dann auf die normale
+        Ordner-Ansicht zurückfallen, wie der Browser es tut."""
+        params: dict[str, str] = {"folder": folder}
+        if refresh:
+            params["refresh"] = "true"
+        return self.get(f"/api/libraries/{library_id}/seasons", params) or {}
+
+    def genres(self, library_id: int) -> list[str]:
+        """Trefferliste für den Genre-Filter, serverseitig pro Bibliothek
+        gescoped: Filme/Serien aus `metadata.genres`, Musik aus `items.genre`.
+        Privat-Bibliotheken liefern immer eine leere Liste."""
+        data = self.get(f"/api/libraries/{library_id}/genres") or {}
+        return data.get("genres") or []
+
+    def home(self) -> dict:
+        """Startseiten-Streifen: `{sections: [{library, continue, nextUp,
+        recent}], showContinue, showNextUp}` — bereits serverseitig nach der
+        effektiven Benutzer-Reihenfolge sortiert und ACL-gefiltert."""
+        return self.get("/api/home") or {}
+
+    # -- Metadaten: Besetzung, Trailer, Personen --------------------------
+
+    def cast(self, metadata_id: int) -> list[dict]:
+        """Besetzung zu einer Metadata-ID. Wichtig: der Endpoint arbeitet auf
+        `metadata_id`, NICHT auf `item_id` (dieselbe Konvention, die auch die
+        Android-App kennt). Bei Episoden liefert der Server automatisch
+        Show-Hauptcast plus Episoden-Gäste."""
+        return self.get(f"/api/metadata/{metadata_id}/cast") or []
+
+    def trailer(self, metadata_id: int) -> dict | None:
+        """YouTube-Trailer-Info für einen Film. 404 ist der Normalfall (kein
+        Trailer gefunden, TMDB aus, oder keine Film-Metadata) und kommt hier
+        als `None` zurück — Aufrufer blenden den Button dann einfach aus."""
+        try:
+            return self.get(f"/api/metadata/{metadata_id}/trailer") or None
+        except GoldfishAPIError as exc:
+            if exc.status == 404:
+                return None
+            raise
+
+    def trailer_stream_path(self, metadata_id: int) -> str | None:
+        """Lässt den Server den Trailer per yt-dlp herunterladen und zu EINER
+        MP4 muxen; liefert den relativen Pfad zur fertigen Datei.
+
+        Für den GTK-Player die richtige Wahl gegenüber dem iframe-Embed des
+        Browsers: `Gtk.Video` braucht eine einzelne Datei-URL. Der Aufruf
+        blockiert, solange der Download läuft (Trailer sind kurz), und kann
+        mit 502 fehlschlagen — dann `None`, und der Aufrufer fällt auf
+        „extern öffnen" zurück."""
+        data = self.get(f"/api/metadata/{metadata_id}/trailer-stream") or {}
+        return data.get("url") or None
+
+    def person(self, tmdb_id: int) -> dict:
+        """Bio-Daten und vollständige Filmografie einer Person, live von TMDB
+        (serverseitig gecacht). Fällt serverseitig auf den lokalen
+        `people`-Eintrag zurück, wenn TMDB aus ist."""
+        return self.get(f"/api/person/{tmdb_id}") or {}
+
+    def person_profile_path(self, tmdb_id: int) -> str:
+        return f"/api/person/{tmdb_id}/profile"
+
+    # -- Fortsetz-Position -------------------------------------------------
+
+    def get_resume(self, item_id: int) -> float:
+        """Gespeicherte Wiedergabeposition in Sekunden, 0 wenn keine.
+
+        Eigener Endpoint, weil `resumePosSec` bewusst NICHT in der
+        `/api/items/{id}`-Antwort steckt (der `GetItemFor`-Query listet die
+        Spalte nicht auf) — dieselbe Konvention, auf die sich auch die
+        Android-App verlässt."""
+        data = self.get(f"/api/items/{item_id}/resume") or {}
+        try:
+            return float(data.get("positionSec") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def set_resume(self, item_id: int, position_sec: float) -> None:
+        self.put(f"/api/items/{item_id}/resume", {"positionSec": position_sec})
+
+    # -- Musik -------------------------------------------------------------
+
+    def albums(self, library_id: int, genres: list[str] | None = None) -> list[dict]:
+        """Album-Kacheln einer Musik-Bibliothek. Eigener Endpoint statt des
+        generischen `/api/items` — die kanonische Album-Gruppierung entsteht
+        serverseitig aus `GroupMusicAlbums`, nicht aus der Ordnerstruktur."""
+        params: dict[str, Any] = {}
+        if genres:
+            params["genre"] = genres
+        return self.get(f"/api/libraries/{library_id}/albums", params) or []
+
+    def album(self, album_id: int) -> dict:
+        """Album-Detail mit Titelliste, serverseitig nach `track_no` sortiert."""
+        return self.get(f"/api/albums/{album_id}") or {}
+
+    def set_album_favorite(self, album_id: int, favorite: bool) -> None:
+        self.put(f"/api/albums/{album_id}/favorite", {"favorite": favorite})
+
+    def album_cover_path(self, album_id: int) -> str:
+        """Cover-Pfad. Fehlt ein Cover, antwortet der Server mit einem Redirect
+        auf `/placeholder.svg` — `requests` folgt dem automatisch."""
+        return f"/api/poster/album/{album_id}"
+
+    # -- Sammlungen --------------------------------------------------------
+
+    def collections(self) -> list[dict]:
+        return self.get("/api/collections") or []
+
+    def collection_parts(self, collection_id: int) -> list[dict]:
+        """Alle Teile einer Sammlung, vorhandene wie fehlende. Ein nicht
+        vorhandener Teil trägt `owned: false` — auch dann, wenn die Datei
+        existiert, der Benutzer aber keinen Zugriff darauf hat (der Server
+        verschweigt den Unterschied bewusst)."""
+        return self.get(f"/api/collections/{collection_id}/items") or []
+
+    def hide_collection_part(self, collection_id: int, tmdb_movie_id: int) -> None:
+        self.post(f"/api/collections/{collection_id}/parts/{tmdb_movie_id}/hide")
+
+    def unhide_collection_part(self, collection_id: int, tmdb_movie_id: int) -> None:
+        self.delete(f"/api/collections/{collection_id}/parts/{tmdb_movie_id}/hide")
+
+    def collection_poster_path(self, collection_id: int) -> str:
+        return f"/api/poster/collection/{collection_id}"
+
+    # -- Playlists ---------------------------------------------------------
+
+    def playlists(self, kind: str = "video") -> list[dict]:
+        """Playlists des angemeldeten Benutzers. `kind` trennt Video und Musik
+        strikt (Server: `playlists.kind`) — ein Musiktitel kann nicht in eine
+        Video-Playlist wandern. `kind=""` liefert beide."""
+        params = {"kind": kind} if kind else None
+        return self.get("/api/playlists", params) or []
+
+    def create_playlist(self, name: str, kind: str = "video") -> dict:
+        return self.post("/api/playlists", {"name": name, "kind": kind}) or {}
+
+    def rename_playlist(self, playlist_id: int, name: str) -> None:
+        self.put(f"/api/playlists/{playlist_id}", {"name": name})
+
+    def delete_playlist(self, playlist_id: int) -> None:
+        self.delete(f"/api/playlists/{playlist_id}")
+
+    def playlist_items(self, playlist_id: int) -> list[dict]:
+        return self.get(f"/api/playlists/{playlist_id}/items") or []
+
+    def add_to_playlist(self, playlist_id: int, item_id: int) -> bool:
+        """`True` wenn tatsächlich hinzugefügt, `False` wenn schon drin — der
+        Server unterscheidet das über `RowsAffected` des `INSERT OR IGNORE`,
+        damit die Oberfläche „ist bereits in X" melden kann."""
+        data = self.post(f"/api/playlists/{playlist_id}/items", {"itemId": item_id}) or {}
+        return bool(data.get("added"))
+
+    def remove_from_playlist(self, playlist_id: int, item_id: int) -> None:
+        self.delete(f"/api/playlists/{playlist_id}/items/{item_id}")
+
+    def reorder_playlist(self, playlist_id: int, item_ids: list[int]) -> None:
+        self.put(f"/api/playlists/{playlist_id}/items", {"itemIds": item_ids})
+
+    def playlists_for_item(self, item_id: int) -> list[dict]:
+        """Für die Häkchen im „Zu Playlist hinzufügen"-Dialog."""
+        return self.get(f"/api/items/{item_id}/playlists") or []
+
+    # -- Startseite & Reiterleiste (pro Benutzer) --------------------------
+
+    def home_preferences(self) -> dict:
+        """`{libraries: [...], showContinue, showNextUp}` — welche Bibliotheken
+        auf der Startseite erscheinen, in welcher Reihenfolge, plus die beiden
+        globalen Streifen-Schalter."""
+        return self.get("/api/home/preferences") or {}
+
+    def set_home_preference(self, library_id: int, on_home: bool) -> None:
+        self.put(f"/api/home/preferences/{library_id}", {"onHome": on_home})
+
+    def set_home_order(self, library_ids: list[int]) -> None:
+        self.put("/api/home/order", {"ids": library_ids})
+
+    def set_home_strips(self, show_continue: bool | None = None, show_next_up: bool | None = None) -> None:
+        body: dict[str, bool] = {}
+        if show_continue is not None:
+            body["showContinue"] = show_continue
+        if show_next_up is not None:
+            body["showNextUp"] = show_next_up
+        self.put("/api/home/strips", body)
+
+    def nav_preferences(self) -> dict:
+        """Eigene Tabelle, bewusst getrennt von den Startseiten-Einstellungen:
+        Reiterleiste und Startseite sollen unabhängig steuerbar sein (siehe
+        CLAUDE.md „Pro-User-Overrides, DREI unabhängige Achsen")."""
+        return self.get("/api/nav/preferences") or {}
+
+    def set_nav_preference(self, library_id: int, on_nav: bool) -> None:
+        self.put(f"/api/nav/preferences/{library_id}", {"onNav": on_nav})
+
+    def set_nav_order(self, library_ids: list[int]) -> None:
+        self.put("/api/nav/order", {"ids": library_ids})
+
+    # -- Vorschaubilder beim Spulen (Trickplay) ----------------------------
+
+    def trickplay_cues(self, item_id: int) -> list[TrickplayCue]:
+        """Parst das Sprite-Manifest. Gibt eine leere Liste zurück, wenn es
+        keine Vorschaubilder gibt (404 bei `trickplayStatus != "done"`) — der
+        Player lässt die Vorschau dann einfach weg."""
+        raw = self.fetch_bytes(f"/api/trickplay/{item_id}/thumbs.vtt")
+        if not raw:
+            return []
+        try:
+            return parse_trickplay_vtt(raw.decode("utf-8", errors="replace"))
+        except ValueError:
+            return []
+
+    def trickplay_sprite_bytes(self, item_id: int) -> bytes | None:
+        """Das komplette Sprite-Sheet als JPEG. Bewusst über diese Session
+        geladen (nicht als URL an ein Bild-Widget gegeben), damit die
+        Cookie-Anmeldung greift."""
+        return self.fetch_bytes(f"/api/trickplay/{item_id}/sprite.jpg")
+
+    # -- Untertitel --------------------------------------------------------
+
+    def subtitle_vtt(self, item_id: int, stream_index: int, timeout: float = 120) -> str | None:
+        """Eingebetteten Text-Untertitel als WebVTT holen.
+
+        `stream_index` ist der ABSOLUTE ffmpeg-Stream-Index aus
+        `playback_info()["streams"]`, nicht der n-te Untertitel — der Server
+        gibt ihn direkt an `ffmpeg -map 0:<idx>` weiter.
+
+        Beim ERSTEN Abruf extrahiert der Server die Spur per ffmpeg und
+        blockiert so lange; erst danach liegt sie in seinem Cache. Deshalb das
+        großzügige Standard-Timeout — mit den 10 s von `fetch_bytes` läuft ein
+        kalter Abruf zuverlässig ins Leere (in der Erstprüfung genau so
+        passiert). Bild-Untertitel (PGS/VOBSUB) lehnt der Server mit 415 ab,
+        das kommt hier ebenfalls als `None` zurück."""
+        raw = self.fetch_bytes(f"/api/subtitle/{item_id}/{stream_index}.vtt", timeout=timeout)
+        return raw.decode("utf-8", errors="replace") if raw else None
+
+    def generated_subtitle_vtt(self, item_id: int, language: str) -> str | None:
+        """Von Whisper erzeugten Untertitel holen (`🎤 … (KI)`)."""
+        raw = self.fetch_bytes(f"/api/generated-subtitle/{item_id}/{language}.vtt")
+        return raw.decode("utf-8", errors="replace") if raw else None
+
+    def ocr_subtitle_vtt(self, item_id: int, language: str) -> str | None:
+        """Per OCR aus Bild-Untertiteln erzeugten Untertitel holen
+        (`📝 … (OCR)`)."""
+        raw = self.fetch_bytes(f"/api/ocr-subtitle/{item_id}/{language}.vtt")
+        return raw.decode("utf-8", errors="replace") if raw else None
+
+    # -- Eigenes Konto -----------------------------------------------------
+
+    def change_password(self, old_password: str, new_password: str) -> None:
+        """Der Server prüft das alte Passwort (403 bei falsch) und verlangt
+        mindestens 6 Zeichen für das neue (400 sonst). Beide Fehlertexte
+        kommen über `GoldfishAPIError` direkt anzeigefertig an."""
+        self.put("/api/auth/password", {"oldPassword": old_password, "newPassword": new_password})
+
+    # -- Gesehen-Sync zwischen zwei Konten ---------------------------------
+
+    def other_users(self) -> list[dict]:
+        """Nur ID und Benutzername, für die Partner-Auswahl."""
+        return self.get("/api/users/names") or []
+
+    def watch_links(self) -> list[dict]:
+        """Eigene Verknüpfungen, aktive und offene."""
+        return self.get("/api/watch-links") or []
+
+    def request_watch_link(self, username: str) -> None:
+        self.post("/api/watch-links", {"username": username})
+
+    def confirm_watch_link(self, partner_id: int) -> None:
+        self.post(f"/api/watch-links/{partner_id}/confirm")
+
+    def unlink_watch_link(self, partner_id: int) -> None:
+        """Dient auch zum Ablehnen einer offenen Anfrage — der Server löscht in
+        beiden Fällen einfach die Zeile."""
+        self.delete(f"/api/watch-links/{partner_id}")
 
     # -- URLs -------------------------------------------------------------
 
@@ -275,10 +733,43 @@ class GoldfishClient:
     def absolute(self, path: str) -> str:
         return self._url(path)
 
-    def download_response(self, item_id: int) -> requests.Response:
-        """Startet einen Streaming-Download der Originaldatei. Aufrufer muss
-        `resp.close()` sicherstellen (via `with` oder try/finally)."""
-        url = self._url(f"/api/download/{item_id}")
+    def download_url(self, item_id: int, compat: bool = False, profile: str = "") -> str:
+        """Download-URL. Ohne Argumente die unveränderte Originaldatei.
+
+        `compat=True` lässt den Server vorher prüfen, ob die Datei überhaupt
+        direkt abspielbar ist, und legt sonst einmalig eine passende Kopie an.
+        `profile` (z. B. "720p") deckelt zusätzlich Auflösung und Bitrate —
+        aber nur, wenn das Item sie tatsächlich überschreitet; "orig" oder
+        leer heißt bewusst kein Deckel."""
+        params: dict[str, str] = {}
+        if compat:
+            params["compat"] = "1"
+        if profile and profile != "orig":
+            params["profile"] = profile
+        path = f"/api/download/{item_id}"
+        if not params:
+            return self._url(path)
+        return self._url(path) + "?" + urlencode(params)
+
+    def compat_download_status(self, item_id: int, profile: str = "") -> dict:
+        """Fortschritt der serverseitigen Formatanpassung:
+        `{state, percent, message}` mit `state` aus `ready|preparing|error|idle`.
+        Stößt sie an, falls nötig — der Aufrufer ruft also einfach wiederholt
+        auf, bis `ready`.
+
+        `profile` MUSS mit dem übereinstimmen, das `download_url` für denselben
+        Download benutzt, sonst wird ein anderer Server-Cache-Pfad geprüft als
+        der Download danach anfordert."""
+        params: dict[str, str] = {}
+        if profile and profile != "orig":
+            params["profile"] = profile
+        return self.get(f"/api/download/{item_id}/compat-status", params) or {}
+
+    def download_response(self, item_id: int, compat: bool = False, profile: str = "") -> requests.Response:
+        """Startet einen Streaming-Download. Aufrufer muss `resp.close()`
+        sicherstellen (via `with` oder try/finally). Argumente wie bei
+        `download_url`."""
+        url = self.download_url(item_id, compat=compat, profile=profile)
         try:
             resp = self.session.get(url, stream=True, timeout=30)
         except requests.RequestException as exc:
@@ -288,12 +779,15 @@ class GoldfishClient:
             raise GoldfishAPIError(f"Download fehlgeschlagen: HTTP {resp.status_code}", status=resp.status_code)
         return resp
 
-    def fetch_bytes(self, path: str) -> bytes | None:
+    def fetch_bytes(self, path: str, timeout: float = 10) -> bytes | None:
         """Für Poster/Thumbnails: kleine Bilder synchron laden (wird vom
-        Aufrufer aus einem Hintergrund-Thread heraus benutzt)."""
+        Aufrufer aus einem Hintergrund-Thread heraus benutzt).
+
+        `timeout` hochsetzen für Endpunkte, die serverseitig erst etwas
+        erzeugen müssen — siehe `subtitle_vtt`."""
         url = self._url(path)
         try:
-            resp = self.session.get(url, timeout=10)
+            resp = self.session.get(url, timeout=timeout)
         except requests.RequestException:
             return None
         if resp.status_code != 200:
