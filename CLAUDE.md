@@ -13,29 +13,23 @@ libadwaita < 1.4 werden bewusst NICHT unterstützt).
 (ursprünglich für Cast-Receiver gedacht) für die Video-Wiedergabe ohne
 Cookie-Jar, `/api/download/{id}`, `/api/items/{id}/watched|favorite`.
 
-**⚠ Memory-Hinweis:** Die volle, chronologische Bugfix-Historie (v0.1.1 bis
-v0.1.6) wurde in Sessions erarbeitet, die im Server-Repo
-(`~/Projekte/Videoplayer/`) liefen, und liegt dort als Memory
-`project_feature_goldfish_linux` — pro Arbeitsverzeichnis gespeichert, eine
-Session, die nur in diesem Repo arbeitet, sieht sie NICHT automatisch. Die
-durable Fakten (Architektur-Entscheidungen, bekannte Gotchas, aktueller
-Stand) sind deshalb unten in dieser CLAUDE.md dupliziert.
+**⚠ Memory-Hinweis:** Ältere, chronologische Bugfix-Historie (bis v0.1.6)
+wurde in Sessions erarbeitet, die im Server-Repo (`~/Projekte/Videoplayer/`)
+liefen, und liegt dort als Memory `project_feature_goldfish_linux` — pro
+Arbeitsverzeichnis gespeichert, eine Session, die nur in diesem Repo
+arbeitet, sieht sie NICHT automatisch. Die durable Architektur-Fakten daraus
+sind unten dupliziert. **Für den AKTUELLEN Stand ist diese Memory NICHT
+mehr verlässlich** — der Code hier ist inzwischen deutlich weiter
+(`git log`/`__version__` in `goldfish_linux/__init__.py` prüfen; Stand bei
+Anlage dieser Datei bereits v0.1.15 mit Musik/Home/Sammlungen/lokalen
+Bibliotheken, also weit über die in der Memory beschriebene v0.1.6 hinaus).
 
-## 📍 Aktueller Stand (Stand: 2026-09-12)
+## 📍 Aktueller Stand
 
-- **Neueste veröffentlichte Version: v0.1.6** — Tag gesetzt, Release mit
-  `.deb`-Asset live: https://github.com/boernie77/goldfish-linux/releases/tag/v0.1.6
-- **⚠ OFFEN:** der v0.1.6-Fix (Startup-Crash nach v0.1.5) wurde **NICHT
-  verifiziert** (auf macOS nicht reproduzierbar). Nächster Schritt, sobald
-  am echten Linux-Rechner getestet wird:
-  1. `curl -fsSL https://raw.githubusercontent.com/boernie77/goldfish-linux/main/install.sh | bash`
-     erneut ausführen (zieht v0.1.6).
-  2. App NICHT über das Menü, sondern im Terminal mit `goldfish` starten.
-  3. Kompletten Terminal-Output hierher — das war beim Auffinden von v0.1.4
-     bereits DER entscheidende Diagnoseschritt.
-  4. Falls v0.1.6 startet: weiter durchklicken (Bibliotheken, Ordner,
-     Abspielen, Download, Offline-Wiedergabe) — noch nie auf echtem Linux
-     komplett verifiziert.
+**Immer per `git log --oneline -10` und `goldfish_linux/__init__.py
+__version__` prüfen, nicht diese Datei** — der Stand ändert sich schneller,
+als CLAUDE.md gepflegt werden kann. Bei Bedarf `README.md` und
+`debian/changelog` im Repo für die Feature-Historie seit v0.1.6 lesen.
 
 ## Tech-Stack & Architektur-Entscheidungen
 
