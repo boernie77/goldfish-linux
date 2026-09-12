@@ -1,3 +1,23 @@
+goldfish-linux (0.1.7-1) unstable; urgency=medium
+
+  * Fix: die App startete mit gespeicherter Anmeldung gar nicht mehr — kein
+    Fenster, keine Fehlermeldung, Exit-Code 0. Ursache war NICHT die
+    Versionsanzeige aus 0.1.5 (der 0.1.6-Fix war die falsche Spur), sondern
+    do_activate(): im Zweig "gespeicherte Session vorhanden" wurde nur ein
+    Hintergrund-Thread für die Session-Prüfung gestartet und kein Fenster
+    erzeugt. Gtk.Application beendet sich aber, sobald seine Fensterliste leer
+    ist — die App quittete sofort, bevor der Thread das Hauptfenster zeigen
+    konnte. Der Fehler ist älter als 0.1.5 und wurde erst sichtbar, als der
+    Login durch 0.1.2-0.1.4 funktionierte und zum ersten Mal ein Token
+    gespeichert wurde. Fix: hold() über die Session-Prüfung, release() erst
+    nach dem present() des Fensters.
+  * Fix: die Session-Prüfung beim Start läuft jetzt mit eigenem kurzem Timeout
+    (6 s statt 20 s + Wiederholung). Solange sie läuft, ist noch kein Fenster
+    sichtbar — bei nicht erreichbarem Server erscheint dadurch zügig der
+    Login-Dialog statt einer scheinbar nicht startenden App.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:40:00 +0200
+
 goldfish-linux (0.1.6-1) unstable; urgency=medium
 
   * Fix: mutmaßlicher Absturz beim Start durch 0.1.5 behoben — die

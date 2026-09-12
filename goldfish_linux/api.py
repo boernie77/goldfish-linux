@@ -136,8 +136,11 @@ class GoldfishClient:
         except ValueError:
             return resp.content
 
-    def get(self, path: str, params: dict | None = None) -> Any:
-        return self._request("GET", path, params=params)
+    def get(self, path: str, params: dict | None = None, timeout: float | None = None) -> Any:
+        kwargs: dict = {"params": params}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        return self._request("GET", path, **kwargs)
 
     def put(self, path: str, json_body: dict | None = None) -> Any:
         return self._request("PUT", path, json=json_body or {})
@@ -158,8 +161,8 @@ class GoldfishClient:
             self.session_token = token
         return self.status()
 
-    def status(self) -> AuthStatus:
-        data = self.get("/api/auth/status") or {}
+    def status(self, timeout: float | None = None) -> AuthStatus:
+        data = self.get("/api/auth/status", timeout=timeout) or {}
         return AuthStatus(
             logged_in=bool(data.get("loggedIn")),
             username=data.get("username", ""),
