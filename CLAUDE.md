@@ -35,17 +35,18 @@ mehr verlässlich** — der Code hier ist inzwischen deutlich weiter
 Anlage dieser Datei bereits v0.1.15 mit Musik/Home/Sammlungen/lokalen
 Bibliotheken, also weit über die in der Memory beschriebene v0.1.6 hinaus).
 
-## 📍 Aktueller Stand (Stand: 2026-09-12, abends)
+## 📍 Aktueller Stand
 
-- **Neueste veröffentlichte Version: v0.1.15.** Zwischen v0.1.6 und v0.1.15
-  lief auf einem echten Linux-Rechner (X11, GTK 4.14, libadwaita 1.5) ein
-  Ausbau in acht Etappen mit dem Ziel, funktional zur Mac-App aufzuschließen.
-  Jede Etappe ist ein eigener Commit samt Tag und Release.
-- **Alles unten Beschriebene ist am echten System geprüft**, nicht nur
-  kompiliert — inklusive Wiedergabe mit Bild, Untertiteln, Springen im
-  Umwandlungsmodus und lokaler 4K-HEVC-Wiedergabe.
+**Immer per `git log --oneline -10` und `goldfish_linux/__init__.py
+__version__` prüfen, nicht diese Datei** — der Stand ändert sich schneller,
+als CLAUDE.md gepflegt werden kann. Die Feature-Historie im Einzelnen steht
+in `debian/changelog`.
 
-### Was seit v0.1.6 dazugekommen ist
+Was unten folgt, ist bewusst nur das Dauerhafte: was in welcher Etappe
+entstanden ist (als Orientierung, wo man suchen muss), die Fallstricke, und
+die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
+
+### Wo was entstanden ist
 
 | Version | Inhalt |
 |---|---|
@@ -59,7 +60,7 @@ Bibliotheken, also weit über die in der Memory beschriebene v0.1.6 hinaus).
 | 0.1.14 | Musik: Alben, Titelliste, Abspielleiste, Warteschlange |
 | 0.1.15 | Eigene Datenträger als lokale Bibliotheken |
 
-Offen ist nur noch: SSO über Authentik, eigenes Passwort ändern,
+Noch nicht gebaut: SSO über Authentik, eigenes Passwort ändern,
 Gesehen-Sync mit einem zweiten Konto, Zufallswiedergabe mit Ordnerauswahl,
 kleinere Downloads statt Original, Buchstabenleiste A–Z, und die
 vollständige TMDB-Filmografie auf der Personenseite (dort erscheinen
