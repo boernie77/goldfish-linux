@@ -60,6 +60,16 @@ _CSS = b"""
   font-weight: bold;
 }
 .gf-badge-rating { background-color: alpha(#1c1c1c, 0.8); }
+/* Gruen wie im Browser (.collection-complete, rgba(22,163,74,.92)). Dieses
+   Stylesheet ist ein bytes-Literal und darf deshalb nur ASCII enthalten. */
+.gf-badge-ok {
+  background-color: alpha(#16a34a, 0.92);
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: bold;
+}
 .gf-toggle {
   background-color: alpha(#000000, 0.6);
   border-radius: 50%;
@@ -109,6 +119,7 @@ class CardWidget(Gtk.Box):
         on_activate: Callable[[dict], None] | None = None,
         on_toggle_watched: Callable[[dict, bool], None] | None = None,
         on_toggle_favorite: Callable[[dict, bool], None] | None = None,
+        scroller: Gtk.ScrolledWindow | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.client = client
@@ -117,6 +128,11 @@ class CardWidget(Gtk.Box):
         self.on_toggle_watched = on_toggle_watched
         self.on_toggle_favorite = on_toggle_favorite
         self.item: dict | None = None
+        # Die Bildlaufleiste, in der diese Kachel liegt — damit das Poster
+        # erst geladen wird, wenn die Kachel in Sicht ist. Der Aufrufer muss
+        # sie mitgeben; sie SELBST zu suchen (Elternkette hochlaufen) bringt
+        # GTK zum Absturz, siehe Kopf von widgets/poster.py.
+        self.scroller = scroller
 
         self.set_size_request(CARD_WIDTH, -1)
         # halign ist hier der entscheidende Teil: ohne ihn streckt ein
@@ -282,7 +298,13 @@ class CardWidget(Gtk.Box):
         self._apply_watched(bool(item.get("watched")))
         self._apply_favorite(bool(item.get("favorite")))
 
-        load_poster_async(self.picture, self.client, self.client.poster_path_for_item(item), decode_width=CARD_WIDTH)
+        load_poster_async(
+            self.picture,
+            self.client,
+            self.client.poster_path_for_item(item),
+            decode_width=CARD_WIDTH,
+            scroller=self.scroller,
+        )
 
     def unbind(self) -> None:
         """Vom GridView beim Recycling gerufen: laufendes Poster-Laden
@@ -343,12 +365,19 @@ class FolderCardWidget(Gtk.Box):
     Serienposter, Name und Anzahl. Trägt bei zusammengeführten Serienordnern
     ein 🔗 und bei vom Auto-Scan ausgenommenen Ordnern ein 🚫."""
 
-    def __init__(self, client: GoldfishClient, kind: str, on_activate: Callable[[dict], None] | None = None) -> None:
+    def __init__(
+        self,
+        client: GoldfishClient,
+        kind: str,
+        on_activate: Callable[[dict], None] | None = None,
+        scroller: Gtk.ScrolledWindow | None = None,
+    ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.client = client
         self.kind = kind
         self.on_activate = on_activate
         self.folder: dict | None = None
+        self.scroller = scroller
         self.set_size_request(CARD_WIDTH, -1)
 
         self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
@@ -408,7 +437,7 @@ class FolderCardWidget(Gtk.Box):
             path = f"/api/poster/metadata/{folder['metadataId']}"
         elif folder.get("thumbItemId"):
             path = f"/api/thumb/{folder['thumbItemId']}"
-        load_poster_async(self.picture, self.client, path, decode_width=CARD_WIDTH)
+        load_poster_async(self.picture, self.client, path, decode_width=CARD_WIDTH, scroller=self.scroller)
 
     def unbind(self) -> None:
         self.folder = None
@@ -429,7 +458,9 @@ class SimpleCard(Gtk.Box):
     Sammlung), da lohnt die Umschaltmechanik nicht.
 
     `dimmed` blendet zurück, was nicht vorhanden ist; `badge` steht unten
-    rechts, `corner` oben links.
+    rechts, `corner` oben links. `corner_ok` färbt die Ecke grün — für
+    "vollständig" im Sinne einer erledigten Sache, nicht als weiteres
+    schwarzes Abzeichen.
     """
 
     def __init__(
@@ -440,6 +471,7 @@ class SimpleCard(Gtk.Box):
         subtitle: str = "",
         badge: str = "",
         corner: str = "",
+        corner_ok: bool = False,
         aspect: str = "movies",
         dimmed: bool = False,
         on_click: Callable[[], None] | None = None,
@@ -469,7 +501,7 @@ class SimpleCard(Gtk.Box):
 
         if corner:
             label = Gtk.Label(label=corner, halign=Gtk.Align.START, valign=Gtk.Align.START, margin_start=6, margin_top=6)
-            label.add_css_class("gf-badge")
+            label.add_css_class("gf-badge-ok" if corner_ok else "gf-badge")
             overlay.add_overlay(label)
         if badge:
             label = Gtk.Label(label=badge, halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6)
@@ -541,12 +573,18 @@ class AlbumCardWidget(Gtk.Box):
     wurde. Mit Recycling entstehen nur die sichtbaren Kacheln.
     """
 
-    def __init__(self, client: GoldfishClient, on_activate: Callable[[dict], None] | None = None) -> None:
+    def __init__(
+        self,
+        client: GoldfishClient,
+        on_activate: Callable[[dict], None] | None = None,
+        scroller: Gtk.ScrolledWindow | None = None,
+    ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         ensure_card_css()
         self.client = client
         self.on_activate = on_activate
         self.album: dict | None = None
+        self.scroller = scroller
         self.set_size_request(CARD_WIDTH, -1)
         self.set_hexpand(False)
         self.set_halign(Gtk.Align.START)
@@ -602,6 +640,7 @@ class AlbumCardWidget(Gtk.Box):
             self.client,
             self.client.album_cover_path(int(album["id"])),
             decode_width=CARD_WIDTH,
+            scroller=self.scroller,
         )
 
     def unbind(self) -> None:
@@ -622,12 +661,18 @@ class LocalCardWidget(Gtk.Box):
     das auf dem Zielsystem nicht vorausgesetzt werden kann.
     """
 
-    def __init__(self, client: GoldfishClient, on_activate: Callable[[dict], None] | None = None) -> None:
+    def __init__(
+        self,
+        client: GoldfishClient,
+        on_activate: Callable[[dict], None] | None = None,
+        scroller: Gtk.ScrolledWindow | None = None,
+    ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         ensure_card_css()
         self.client = client
         self.on_activate = on_activate
         self.video: dict | None = None
+        self.scroller = scroller
         self.set_size_request(CARD_WIDTH_WIDE, -1)
         self.set_hexpand(False)
         self.set_halign(Gtk.Align.START)
@@ -695,6 +740,7 @@ class LocalCardWidget(Gtk.Box):
             self.client,
             f"file://{thumb}" if thumb else None,
             decode_width=CARD_WIDTH_WIDE,
+            scroller=self.scroller,
         )
 
     def unbind(self) -> None:

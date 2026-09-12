@@ -69,21 +69,46 @@ class CollectionsPage(Adw.NavigationPage):
         self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, child=flow))
 
     def _collection_card(self, col: dict) -> Gtk.Widget:
+        """Kachel einer Reihe, samt Vollständigkeits-Kennzeichnung.
+
+        **Die Rechnung ist dieselbe wie im Browser** (`cards.js
+        renderCollectionCard`) und hat zwei Abzüge, die beide wichtig sind:
+        vom Benutzer ausgeblendete Teile (`hiddenCount`, etwa "Kevin – Allein
+        in New York 3" ohne Kevin) und noch nicht erschienene (`unreleasedCount`)
+        zählen NICHT als fehlend. Sonst wäre jede Reihe mit einer
+        angekündigten Fortsetzung dauerhaft unvollständig. Beide Felder
+        schickt der Server nur, wenn sie nicht 0 sind.
+
+        Vollständig heißt grünes "✓ komplett" — so wie in den anderen Apps
+        auch. Ein bloßer Haken ging zwischen den übrigen Abzeichen unter."""
         have = col.get("movieCount") or 0
-        total = col.get("partCount") or 0
+        parts = col.get("partCount") or 0
+        hidden = col.get("hiddenCount") or 0
+        unreleased = col.get("unreleasedCount") or 0
+        total = max(0, parts - hidden)
+        released_total = max(0, total - unreleased)
+        complete = parts > 0 and have >= released_total
         # Ohne Poster der Reihe das Poster des ältesten enthaltenen Films.
         image = (
             f"/api/poster/collection/{col['id']}"
             if col.get("posterPath")
             else (f"/api/poster/metadata/{col['fallbackMetaId']}" if col.get("fallbackMetaId") else None)
         )
+        if complete and unreleased:
+            tooltip = f"Alle erschienenen Filme vorhanden — {unreleased} noch nicht erschienen"
+        elif complete:
+            tooltip = "Sammlung komplett"
+        else:
+            tooltip = f"{max(0, released_total - have)} von {released_total} erschienenen Filmen fehlen"
         return SimpleCard(
             self.ctx.client,
             image,
             (col.get("name") or "").replace(" Filmreihe", ""),
             subtitle=f"{have} von {total} Filmen" if total else f"{have} Filme",
             badge=f"{have}/{total}" if total else str(have),
-            corner="✓" if total and have >= total else "",
+            corner="✓ komplett" if complete else "",
+            corner_ok=complete,
+            tooltip=tooltip,
             on_click=lambda c=col: self._open(c),
         )
 

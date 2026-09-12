@@ -319,13 +319,24 @@ class HomePrefsPage(Adw.NavigationPage):
         return False
 
     def _library_group(self, title: str, libraries: list[dict], key: str, setter) -> Adw.PreferencesGroup:
+        """Eine Schaltergruppe pro Achse (Startseite bzw. Reiterleiste).
+
+        **Der Schlüssel heißt `libraryId`, nicht `id`** — diese beiden
+        Endpunkte liefern eine eigene Zeilenform (`internal/api/nav.go`,
+        `home.go`), nicht das übliche Bibliotheks-Objekt. Mit `lib["id"]`
+        stirbt der Signal-Handler an einem KeyError, und weil GTK den Fehler
+        nur auf die Konsole schreibt, wirkt das Umschalten schlicht wirkungslos
+        — genau so gemeldet worden."""
         group = Adw.PreferencesGroup(title=title)
         if not libraries:
             group.add(Adw.ActionRow(title="Keine Bibliotheken sichtbar"))
             return group
         for library in libraries:
+            library_id = int(library.get("libraryId") or library.get("id") or 0)
+            if not library_id:
+                continue
             row = Adw.SwitchRow(title=library.get("name") or "", active=bool(library.get(key, True)))
-            row.connect("notify::active", lambda r, _p, lib=library: setter(int(lib["id"]), r.get_active()))
+            row.connect("notify::active", lambda r, _p, lid=library_id: setter(lid, r.get_active()))
             group.add(row)
         return group
 
@@ -333,17 +344,33 @@ class HomePrefsPage(Adw.NavigationPage):
         self._background(lambda: self.ctx.client.set_home_strips(show_continue, show_next_up))
 
     def _set_home(self, library_id: int, state: bool) -> None:
+        # Die Startseite liest ihre Streifen bei jedem Öffnen neu — hier ist
+        # nach dem Speichern nichts weiter zu tun.
         self._background(lambda: self.ctx.client.set_home_preference(library_id, state))
 
     def _set_nav(self, library_id: int, state: bool) -> None:
-        self._background(lambda: self.ctx.client.set_nav_preference(library_id, state))
+        # Die Seitenleiste steht dauerhaft und muss aktiv nachgezogen werden,
+        # sonst bliebe eine gerade abgewählte Bibliothek bis zum Neustart
+        # sichtbar.
+        self._background(
+            lambda: self.ctx.client.set_nav_preference(library_id, state),
+            after=self._refresh_sidebar,
+        )
 
-    def _background(self, call) -> None:
+    def _refresh_sidebar(self) -> None:
+        window = self.ctx.window
+        if hasattr(window, "reload_libraries"):
+            window.reload_libraries()
+
+    def _background(self, call, after=None) -> None:
         def worker() -> None:
             try:
                 call()
             except GoldfishAPIError as exc:
                 GLib.idle_add(self._toast, f"Nicht gespeichert: {exc}")
+                return
+            if after is not None:
+                GLib.idle_add(lambda: (after(), False)[1])
 
         threading.Thread(target=worker, daemon=True).start()
 

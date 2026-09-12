@@ -7,6 +7,7 @@ privat: der Server liefert nur die eigenen, auch einem Verwalter.
 
 from __future__ import annotations
 
+import random
 import threading
 
 import gi
@@ -27,12 +28,19 @@ class PlaylistsPage(Adw.NavigationPage):
         add = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="Neue Playlist")
         add.connect("clicked", lambda *_: self._ask_new())
         header.pack_end(add)
+        shuffle = Gtk.Button(
+            icon_name="media-playlist-shuffle-symbolic",
+            tooltip_text="Zufällig aus allen Playlists",
+        )
+        shuffle.connect("clicked", lambda *_: self._play_random())
+        header.pack_start(shuffle)
         toolbar_view.add_top_bar(header)
 
         super().__init__(title="Playlists", tag="playlists", child=toolbar_view)
         self.ctx = ctx
         self.nav_view = nav_view
         self.toolbar_view = toolbar_view
+        self.entries: list[dict] = []
 
         self._reload()
 
@@ -53,6 +61,7 @@ class PlaylistsPage(Adw.NavigationPage):
 
     def _apply(self, video: list[dict], music: list[dict]) -> bool:
         entries = video + music
+        self.entries = entries
         if not entries:
             _error(
                 self.toolbar_view,
@@ -80,6 +89,40 @@ class PlaylistsPage(Adw.NavigationPage):
             aspect="music" if music else "movies",
             on_click=lambda p=pl: self.nav_view.push(PlaylistItemsPage(self.ctx, self.nav_view, p)),
         )
+
+    def _play_random(self) -> None:
+        """Ein zufälliger Titel aus allen Playlists zusammen.
+
+        Der Server kann nur innerhalb EINER Playlist zufällig ziehen
+        (`playlistId=`). Damit trotzdem jeder Titel dieselbe Chance hat, wird
+        die Playlist vorher nach ihrer Länge gewichtet gezogen — das ergibt
+        zusammen eine Gleichverteilung über alle enthaltenen Titel und kostet
+        nur eine Abfrage."""
+        candidates = [pl for pl in self.entries if (pl.get("itemCount") or 0) > 0]
+        if not candidates:
+            _toast(self, "Die Playlists sind leer.")
+            return
+        weights = [pl.get("itemCount") or 0 for pl in candidates]
+        playlist = random.choices(candidates, weights=weights, k=1)[0]
+
+        def worker() -> None:
+            try:
+                item = self.ctx.client.random_item(playlist_id=int(playlist["id"]))
+            except GoldfishAPIError as exc:
+                GLib.idle_add(_toast, self, f"Kein Zufallstreffer: {exc}")
+                return
+            if not item:
+                GLib.idle_add(_toast, self, "Kein passender Titel gefunden.")
+                return
+            GLib.idle_add(self._open_random, item, playlist)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _open_random(self, item: dict, playlist: dict) -> bool:
+        page = PlaylistItemsPage(self.ctx, self.nav_view, playlist)
+        self.nav_view.push(page)
+        page.start_with(item)
+        return False
 
     def _ask_new(self) -> None:
         dialog = Adw.MessageDialog(
@@ -125,6 +168,12 @@ class PlaylistItemsPage(Adw.NavigationPage):
         delete = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Playlist löschen")
         delete.connect("clicked", lambda *_: self._ask_delete())
         header.pack_end(delete)
+        shuffle = Gtk.Button(
+            icon_name="media-playlist-shuffle-symbolic",
+            tooltip_text="Playlist in zufälliger Reihenfolge abspielen",
+        )
+        shuffle.connect("clicked", lambda *_: self._play_shuffled())
+        header.pack_start(shuffle)
         toolbar_view.add_top_bar(header)
 
         super().__init__(title=playlist.get("name") or "Playlist", tag=f"playlist-{playlist['id']}", child=toolbar_view)
@@ -133,6 +182,7 @@ class PlaylistItemsPage(Adw.NavigationPage):
         self.playlist = playlist
         self.toolbar_view = toolbar_view
         self.items: list[dict] = []
+        self._start_item: dict | None = None
 
         _busy(toolbar_view)
         threading.Thread(target=self._load, daemon=True).start()
@@ -164,6 +214,19 @@ class PlaylistItemsPage(Adw.NavigationPage):
         )
         grid.set_content([], items)
         self.toolbar_view.set_content(grid)
+        if self._start_item is not None:
+            item, self._start_item = self._start_item, None
+            # Die Warteschlange ist jetzt die ganze Playlist, beginnend beim
+            # gezogenen Titel — sonst endete der Zufallstreffer nach einem Stück.
+            ids = [i.get("id") for i in items]
+            start = ids.index(item.get("id")) if item.get("id") in ids else 0
+            queue = items[start:] + items[:start]
+            if self._is_music():
+                self.ctx.music.play_queue(queue, 0)
+            else:
+                from .detail_page import DetailPage
+
+                self.nav_view.push(DetailPage(self.ctx, self.nav_view, queue[0], queue=queue))
         return False
 
     def _open_item(self, item: dict) -> None:
@@ -171,6 +234,33 @@ class PlaylistItemsPage(Adw.NavigationPage):
 
         # Die Playlist ist die Warteschlange — das ist ihr eigentlicher Sinn.
         self.nav_view.push(DetailPage(self.ctx, self.nav_view, item, queue=self.items))
+
+    def _is_music(self) -> bool:
+        return self.playlist.get("kind") == "music"
+
+    def _play_shuffled(self) -> None:
+        """Die ganze Playlist in zufälliger Reihenfolge.
+
+        Nicht bloß ein zufälliger Titel: gemischt wird die komplette Liste, die
+        danach als Warteschlange weiterläuft — genau das meint "Shuffle Play".
+        Sind die Titel noch nicht geladen, wartet der Knopf auf sie."""
+        if not self.items:
+            _toast(self, "Die Playlist ist leer.")
+            return
+        order = list(self.items)
+        random.shuffle(order)
+        if self._is_music():
+            self.ctx.music.play_queue(order, 0)
+            return
+        from .detail_page import DetailPage
+
+        self.nav_view.push(DetailPage(self.ctx, self.nav_view, order[0], queue=order))
+
+    def start_with(self, item: dict) -> None:
+        """Von der Übersicht aus: diese Playlist öffnen und mit genau diesem
+        Titel beginnen. Die Titel sind beim Öffnen noch nicht geladen, deshalb
+        wird der Wunsch gemerkt und in `_apply` ausgeführt."""
+        self._start_item = item
 
     def _ask_rename(self) -> None:
         dialog = Adw.MessageDialog(transient_for=self.ctx.window, heading="Playlist umbenennen")

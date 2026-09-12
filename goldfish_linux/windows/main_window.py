@@ -136,6 +136,13 @@ class MainWindow(Adw.ApplicationWindow):
 
         self._load_libraries()
 
+    def reload_libraries(self) -> None:
+        """Seitenleiste neu aufbauen. Wird auch von den Einstellungen gerufen,
+        wenn sich die Auswahl für die Reiterleiste geändert hat — sonst müsste
+        man die App neu starten, damit eine abgewählte Bibliothek verschwindet
+        (genau das ist vor 0.1.18 passiert)."""
+        self._load_libraries()
+
     def _load_libraries(self) -> None:
         threading.Thread(target=self._load_libraries_worker, daemon=True).start()
 
@@ -150,15 +157,40 @@ class MainWindow(Adw.ApplicationWindow):
             # passiert (z. B. unerwartete Antwortform des Servers).
             GLib.idle_add(self.show_toast, f"Bibliotheken konnten nicht geladen werden: {exc}")
             return
+        # Welche Bibliotheken in der Leiste erscheinen und in welcher
+        # Reihenfolge, entscheidet der Benutzer in den Einstellungen
+        # ("Startseite & Reiter"). Der Server führt das pro Benutzer in einer
+        # eigenen Tabelle; ohne diese Abfrage stünden auch abgewählte
+        # Bibliotheken in der Leiste. Schlägt sie fehl, bleibt es bei allen —
+        # eine leere Leiste wäre das schlechtere Ergebnis.
+        prefs: dict[int, tuple[bool, int]] = {}
+        try:
+            for row in (self.client.nav_preferences().get("libraries") or []):
+                lib_id = int(row.get("libraryId") or 0)
+                if lib_id:
+                    prefs[lib_id] = (bool(row.get("onNav", True)), int(row.get("order") or 0))
+        except Exception:  # noqa: BLE001 — Sichtbarkeit ist Komfort, nicht Kern
+            prefs = {}
         if not libraries:
             GLib.idle_add(
                 self.show_toast,
                 "Keine Bibliotheken sichtbar — hat dein Benutzer Zugriff auf mindestens eine Bibliothek?",
             )
-        GLib.idle_add(self._populate_sidebar, libraries)
+        GLib.idle_add(self._populate_sidebar, libraries, prefs)
 
-    def _populate_sidebar(self, libraries: list[dict]) -> None:
+    def _populate_sidebar(self, libraries: list[dict], prefs: dict[int, tuple[bool, int]] | None = None) -> None:
+        prefs = prefs or {}
+        # Die Arten ALLER Bibliotheken merken, auch der ausgeblendeten: andere
+        # Seiten kennen oft nur eine Bibliotheks-ID und brauchen die Art (etwa
+        # die Detailansicht für die Wahl der Playlist-Art).
         self.ctx.library_kinds = {int(lib["id"]): (lib.get("kind") or "") for lib in libraries if lib.get("id")}
+        # Beim Neuaufbau erst leeren — sonst hängen die alten Zeilen darunter.
+        while (row := self.sidebar_list.get_first_child()) is not None:
+            self.sidebar_list.remove(row)
+
+        visible = [lib for lib in libraries if prefs.get(int(lib.get("id") or 0), (True, 0))[0]]
+        visible.sort(key=lambda lib: prefs.get(int(lib.get("id") or 0), (True, 0))[1])
+        libraries = visible
         # Zuerst die übergreifenden Ansichten, dann die Bibliotheken — dieselbe
         # Ordnung wie im Browser, wo Startseite, Sammlungen und Playlists eigene
         # Knöpfe in der Kopfzeile haben.

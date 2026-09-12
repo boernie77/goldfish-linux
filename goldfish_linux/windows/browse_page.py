@@ -65,6 +65,14 @@ class BrowsePage(Adw.NavigationPage):
         self.search_entry = search_entry
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_text = ""
+        # Ein Film liegt fast immer in seinem eigenen Release-Ordner —
+        # Ordnerkacheln wären dort sinnlos (siehe `_load_worker`).
+        self._always_flat = (library.get("kind") or "") == "movies"
+        # Zähler gegen überholte Antworten: tippt man schnell, kommen die
+        # Antworten nicht zwangsläufig in der Reihenfolge zurück, in der sie
+        # gestellt wurden. Nur die jeweils neueste darf ins Raster.
+        self._load_seq = 0
+        self._search_timeout = 0
 
         self.view_prefs = ctx.view_prefs
         self.filters = FilterState()
@@ -247,15 +255,30 @@ class BrowsePage(Adw.NavigationPage):
         self.nav_view.push(DetailPage(self.ctx, self.nav_view, item, queue=self.shown_items))
 
     def _on_search_changed(self, entry: Gtk.SearchEntry) -> None:
+        """Nicht bei jedem Tastendruck laden.
+
+        "Matrix" wären sonst sechs Abfragen hintereinander, jede über die ganze
+        Bibliothek inklusive Besetzungsnamen — der Grund, warum sich die Suche
+        zäh anfühlte. 300 ms nach dem letzten Zeichen genügen; ein bereits
+        wartender Lauf wird verworfen."""
         self.search_text = entry.get_text().strip()
+        if self._search_timeout:
+            GLib.source_remove(self._search_timeout)
+        self._search_timeout = GLib.timeout_add(300, self._run_search)
+
+    def _run_search(self) -> bool:
+        self._search_timeout = 0
         self._load(search=self.search_text)
+        return False  # einmalig
 
     def _on_filters_changed(self) -> None:
         """Eine Sortierung, die die Ordnerstruktur übergeht, wird nur dort
         gemerkt, wo ohnehin keine Ordnerkacheln stehen — siehe
         `config.ViewPrefs`. Im Wurzel- oder Drilldown-Fall würde sie die
         Kacheln beim nächsten Öffnen dauerhaft verstecken."""
-        shows_folder_tiles = not self.folder or self.drilldown
+        # In einer Film-Bibliothek stehen nie Ordnerkacheln, also kann eine
+        # flache Sortierung dort auch nichts verstecken.
+        shows_folder_tiles = (not self.folder or self.drilldown) and not self._always_flat
         if self.filters.is_flat and shows_folder_tiles:
             self.view_prefs.clear_sort(self.library["id"], self.folder)
         else:
@@ -305,12 +328,34 @@ class BrowsePage(Adw.NavigationPage):
         # sonst bliebe die neue Liste unerklärlich leer.
         if self.alpha is not None:
             self.alpha.reset()
+        self._load_seq += 1
+        # **Der Ladekreis tritt bei JEDEM Laden an die Stelle des Rasters —
+        # bewusst.** Das Raster stattdessen stehen zu lassen, bis die neuen
+        # Kacheln da sind, sähe ruhiger aus, lässt GTK aber über die eigenen
+        # Kacheln stolpern: ein Modellwechsel in einem SICHTBAREN Raster, das
+        # dabei stark schrumpft (3170 Kacheln auf einen Suchtreffer), erzeugt
+        # reproduzierbar acht Meldungen der Art `gtk_widget_measure: assertion
+        # 'GTK_IS_WIDGET (widget)' failed` samt `set_child_visible` und
+        # `allocate` — geprüft mit splice() UND mit komplett neuem Modell, mit
+        # und ohne Poster-Laden. Hängt das Raster während des Wechsels dagegen
+        # nicht im Fenster, bleibt es still (je drei Läufe gegengeprüft).
+        # Dass die Suche jetzt entprellt ist, nimmt dem Ladekreis ohnehin den
+        # Schrecken: er erscheint einmal statt bei jedem Tastendruck.
         self._show_loading()
-        threading.Thread(target=self._load_worker, args=(search,), daemon=True).start()
+        threading.Thread(target=self._load_worker, args=(search, self._load_seq), daemon=True).start()
 
-    def _load_worker(self, search: str) -> None:
+    def _load_worker(self, search: str, seq: int = 0) -> None:
         """Bildet die Navigationsfälle des Browsers nach (grid.js).
 
+        0. **Film-Bibliotheken sind immer flach** (`_always_flat`). Ein Film
+           liegt üblicherweise in seinem eigenen Release-Ordner: die
+           Filme-Bibliothek dieses Servers bringt 2808 solcher Ordner mit,
+           jeder mit genau einer Datei und ohne eigene TMDB-Zuordnung. Als
+           Ordnerkacheln wären das 2808 Kacheln mit Release-Dateinamen und
+           ohne Poster — genau das war der Grund, warum in "Filme" weder
+           Filmcover noch richtige Titel erschienen und die Ansicht sich zäh
+           anfühlte. Der Browser macht es ebenso (`grid.js`: `flatView =
+           state.flatView || lib.kind === "movies" || isShuffle`).
         1. **Suche**: nie Ordnerkacheln. Der Ordner bleibt als Bereich gesetzt,
            in der Wurzel sucht sie damit über die ganze Bibliothek. Der Server
            durchsucht dabei auch Besetzungsnamen, Künstler und Album — dafür ist
@@ -355,7 +400,7 @@ class BrowsePage(Adw.NavigationPage):
             if search:
                 folders = []
                 items = client.items(lib_id, folder=self.folder, search=search, **common)
-            elif f.is_flat or f.favorites_only:
+            elif f.is_flat or f.favorites_only or self._always_flat:
                 folders = []
                 items = client.items(lib_id, folder=self.folder, **common)
             elif not self.folder:
@@ -374,13 +419,17 @@ class BrowsePage(Adw.NavigationPage):
                 folders = []
                 items = client.items(lib_id, folder=self.folder, **common)
         except GoldfishAPIError as exc:
-            GLib.idle_add(self._show_error, str(exc))
+            if seq == self._load_seq:
+                GLib.idle_add(self._show_error, str(exc))
             return
         except Exception as exc:  # noqa: BLE001 — ein Hintergrund-Thread darf
             # nie stumm sterben, sonst bleibt die Seite für immer auf dem
             # Lade-Spinner hängen ("keine Inhalte", ohne jede Fehlermeldung).
-            GLib.idle_add(self._show_error, f"Unerwarteter Fehler: {exc}")
+            if seq == self._load_seq:
+                GLib.idle_add(self._show_error, f"Unerwarteter Fehler: {exc}")
             return
+        if seq != self._load_seq:
+            return  # ein neuerer Lauf ist unterwegs
         GLib.idle_add(self._show_results, folders, items)
 
 

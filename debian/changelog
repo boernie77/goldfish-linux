@@ -1,3 +1,32 @@
+goldfish-linux (0.1.18-1) unstable; urgency=medium
+
+  * Behoben (vom Benutzer gemeldet): in "Filme" fehlten die Filmcover, und auf
+    den Kacheln stand der Dateiname statt des Filmtitels. Film-Bibliotheken
+    wurden wie Serien behandelt und zeigten deshalb 2808 Release-Ordner als
+    Kacheln — ohne Poster und ohne Zuordnung. Filme erscheinen jetzt immer als
+    flache Liste mit Poster, Titel und Jahr, genau wie im Browser.
+  * Deutlich flüssiger: pro Bibliotheksaufruf werden nur noch die Poster
+    geladen, die man tatsächlich sieht — gemessen 12 statt 385 Bildanfragen an
+    den Server. Fertige Bilder bleiben im Speicher, und aufbereitet werden sie
+    im Hintergrund statt im Hauptablauf, wo sie das Blättern bremsten.
+  * Die Suche wartet jetzt das Ende der Eingabe ab (300 ms) statt bei jedem
+    Tastendruck neu zu laden; "Matrix" löste vorher sechs Abfragen aus.
+  * Startseite: "Fortsetzen" und "Als nächstes" stehen jetzt je in EINER Zeile
+    über alle gewählten Bibliotheken hinweg, darunter "Zuletzt hinzugefügt" je
+    Bibliothek — dieselbe Anordnung wie im Browser.
+  * Behoben: abgewählte Bibliotheken standen weiterhin in der Seitenleiste,
+    und die Schalter unter "Startseite und Reiterleiste" bewirkten nichts.
+    Die Seitenleiste richtet sich jetzt nach der Auswahl und zieht sofort
+    nach, wenn man dort etwas umschaltet.
+  * Sammlungen zeigen ein grünes "✓ komplett" statt eines Hakens, wie in den
+    anderen Apps. Ausgeblendete und noch nicht erschienene Teile zählen dabei
+    nicht als fehlend — eine Reihe mit angekündigter Fortsetzung gilt weiter
+    als vollständig.
+  * Playlists: Zufallswiedergabe in der Übersicht (zieht aus allen Playlists)
+    und in einer Playlist (spielt sie gemischt ab).
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 19:35:00 +0200
+
 goldfish-linux (0.1.17-1) unstable; urgency=medium
 
   * Neu: mehrere eigene Datenträger lassen sich zu einem Eintrag zusammenlegen

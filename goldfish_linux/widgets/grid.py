@@ -115,14 +115,18 @@ class CardGrid(Gtk.ScrolledWindow):
     def _on_setup(self, _factory, list_item: Gtk.ListItem) -> None:
         stack = Gtk.Stack(hhomogeneous=False, vhomogeneous=False)
         stack.set_size_request(CARD_WIDTH, -1)
+        # `scroller=self`: die Kachel soll ihr Poster erst laden, wenn sie in
+        # Sicht ist. Die Leiste wird ausdrücklich mitgegeben — eine Kachel darf
+        # sie nicht selbst suchen (Kopf von widgets/poster.py).
         card = CardWidget(
             self.client,
             self.kind,
             on_activate=self._activate_item,
             on_toggle_watched=self.on_toggle_watched,
             on_toggle_favorite=self.on_toggle_favorite,
+            scroller=self,
         )
-        folder_card = FolderCardWidget(self.client, self.kind, on_activate=self._activate_folder)
+        folder_card = FolderCardWidget(self.client, self.kind, on_activate=self._activate_folder, scroller=self)
         stack.add_named(card, "item")
         stack.add_named(folder_card, "folder")
         list_item.set_child(stack)
@@ -205,7 +209,7 @@ class AlbumGrid(Gtk.ScrolledWindow):
             adjustment.set_value(0)
 
     def _on_setup(self, _factory, list_item: Gtk.ListItem) -> None:
-        list_item.set_child(AlbumCardWidget(self.client, on_activate=self._activate))
+        list_item.set_child(AlbumCardWidget(self.client, on_activate=self._activate, scroller=self))
 
     def _on_bind(self, _factory, list_item: Gtk.ListItem) -> None:
         list_item.get_child().bind(list_item.get_item().album)
@@ -240,7 +244,10 @@ class LocalGrid(Gtk.ScrolledWindow):
 
         self.store = Gio.ListStore.new(LocalRow)
         factory = Gtk.SignalListItemFactory()
-        factory.connect("setup", lambda _f, li: li.set_child(LocalCardWidget(self.client, on_activate=self._activate)))
+        factory.connect(
+            "setup",
+            lambda _f, li: li.set_child(LocalCardWidget(self.client, on_activate=self._activate, scroller=self)),
+        )
         factory.connect("bind", lambda _f, li: li.get_child().bind(li.get_item().video))
         factory.connect("unbind", lambda _f, li: li.get_child().unbind())
 

@@ -61,6 +61,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.15 | Eigene Datenträger als lokale Bibliotheken |
 | 0.1.16 | Einstellungen, SSO, Buchstabenleiste, Zufall, kleinere Downloads |
 | 0.1.17 | Mehrere Datenträger zu einem Eintrag zusammenlegen |
+| 0.1.18 | Sechs Meldungen des Benutzers: Filme flach mit Postern, Tempo, Startseiten-Streifen, Reiterleisten-Schalter, Sammlungs-Abzeichen, Playlist-Zufall |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -188,6 +189,66 @@ System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
 - **`/api/playback/{id}` ist teuer** (ffprobe serverseitig). Nie in Schleifen
   über viele Items aufrufen; eine Suche über 40 Titel hat den Server in einen
   Timeout gezogen. Für Musik wird er gar nicht gebraucht (siehe unten).
+
+## Fallstricke aus 0.1.18 (Tempo und GTK-Lebensdauern)
+
+- **Film-Bibliotheken sind IMMER flach.** Ein Film liegt in seinem eigenen
+  Release-Ordner; die Filme-Bibliothek dieses Servers bringt 2808 solcher
+  Ordner mit, jeder mit einer Datei und ohne eigene TMDB-Zuordnung. Wer dort
+  Ordnerkacheln zeigt, zeigt 2808 Kacheln mit Release-Dateinamen und ohne
+  Poster — genau der Fehler, den der Benutzer als "keine Filmcover, Titel wie
+  der Dateiname" gemeldet hat. Der Browser macht es ebenso (`grid.js`:
+  `flatView = state.flatView || lib.kind === "movies" || isShuffle`). Serien
+  behalten ihre Ordnerkacheln.
+- **`Gtk.GridView` legt rund 385 Kacheln an, egal wie groß das Fenster ist.**
+  Nachgemessen bei 626 px Höhe und 301 px hohen Zeilen (zwölf sichtbare
+  Kacheln) — und zwar auch mit einem nackten GridView ohne unseren Code, also
+  keine Eigenheit dieser App. Wer beim Belegen einer Kachel etwas anstößt
+  (Bild laden!), tut das also 385-mal pro Seitenaufruf. Poster werden deshalb
+  erst geladen, wenn die Kachel wirklich in Sicht ist: 12 statt 385 Anfragen.
+- **⚠ NIE die Elternkette einer Kachel ablaufen** (`picture.get_parent()` in
+  einer Schleife). Oberhalb einer Rasterkachel liegen die internen Widgets des
+  GridView; schon sie aus Python anzufassen erzeugt Hüllobjekte, die GTKs
+  eigenem Aufräumen in die Quere kommen. Folge beim Scrollen: erst
+  `gtk_widget_insert_after: assertion 'GTK_IS_WIDGET (widget)' failed`, dann
+  `Gtk:ERROR ... gtk_list_factory_widget_teardown_factory: assertion failed:
+  (priv->object == NULL)` und ein Speicherauszug. Reproduzierbar in drei von
+  drei Läufen; mit derselben Prüfung ohne Elternlauf still. Deshalb gibt das
+  Raster seine Bildlaufleiste ausdrücklich an die Kachel weiter
+  (`CardWidget(scroller=...)`), und gerechnet wird nur mit
+  `compute_bounds(scroller)`.
+- **Ein Modellwechsel in einem SICHTBAREN Raster, das dabei stark schrumpft,
+  ist nicht still.** 3170 Kacheln auf einen Suchtreffer zu bringen, während
+  das Raster im Fenster hängt, erzeugt acht Meldungen der Art
+  `gtk_widget_measure: assertion 'GTK_IS_WIDGET (widget)' failed` (auch mit
+  komplett neuem Modell statt `splice`, auch ohne jedes Poster-Laden). Hängt
+  das Raster während des Wechsels nicht im Fenster, bleibt es still — deshalb
+  tritt bei JEDEM Laden weiter der Ladekreis an seine Stelle, obwohl das
+  stehende Raster ruhiger aussähe.
+- **Dekodieren gehört in den Hintergrund.** Bis 0.1.17 wurde ein Bild aus dem
+  Dateizwischenspeicher im Hauptablauf dekodiert ("der Thread-Umweg ist teurer"
+  — stimmt pro Bild, aber nicht bei 385 davon). Jetzt: Texturen im Speicher
+  halten (begrenzt), dekodieren im Faden, im Hauptablauf nur noch die fertige
+  Textur setzen.
+- **Die Reihenzeilen von `/api/nav/preferences` und `/api/home/preferences`
+  heißen `libraryId`, nicht `id`.** Beide Endpunkte liefern eine eigene
+  Zeilenform, nicht das übliche Bibliotheks-Objekt. Mit `lib["id"]` stirbt der
+  Signal-Handler an einem KeyError, GTK schreibt das nur auf die Konsole — für
+  den Benutzer wirkt der Schalter wirkungslos ("ein An- und Abwählen bewirkt
+  nichts"). Außerdem MUSS die Seitenleiste diese Einstellung selbst lesen und
+  nach einer Änderung neu aufgebaut werden.
+- **Vollständigkeit einer Sammlung** ist `movieCount >= partCount -
+  hiddenCount - unreleasedCount` (beide Abzüge schickt der Server nur, wenn
+  sie nicht 0 sind). Ohne die Abzüge gilt jede Reihe mit angekündigter
+  Fortsetzung dauerhaft als unvollständig.
+- **Die Startseite hat zwei übergreifende Streifen, keine pro Bibliothek.**
+  "Fortsetzen" und "Als nächstes" führen die Titel ALLER Bibliotheken in je
+  einer Zeile (sortiert nach letztem Abspielen bzw. Hinzufügen, je 24), erst
+  darunter kommt "Zuletzt hinzugefügt" pro Bibliothek. Der Server liefert
+  beides pro Bibliothek getrennt; das Zusammenführen ist Client-Aufgabe
+  (`views.js renderHomeView` macht es genauso). In den übergreifenden
+  Streifen bestimmt jede Kachel ihre Art selbst über `libraryId` — dort liegen
+  Filme, Folgen und Privatvideos nebeneinander.
 
 ## Was diese App bewusst anders macht als die Mac-App
 

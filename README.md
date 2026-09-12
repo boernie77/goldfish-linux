@@ -28,14 +28,14 @@ inzwischen im Wesentlichen denselben Funktionsumfang ab wie die Mac-App
   Startseite erscheinen, ist pro Benutzer einstellbar.
 - **Kachelraster mit TMDB-Postern**, Auflösungs- und Laufzeit-Kennzeichnung,
   Gesehen-Haken und Favoritenherz direkt auf der Kachel.
-- **Startseite** mit den Streifen „Fortsetzen", „Als nächstes" und
-  „Neu hinzugefügt" je Bibliothek.
+- **Startseite** mit „Fortsetzen" und „Als nächstes" je in einer Zeile über
+  alle Bibliotheken hinweg, darunter „Neu hinzugefügt" je Bibliothek.
 - **Staffelansicht für Serien** mit Poster, Beschreibung, Besetzung und
   „x von y Folgen" pro Staffel; fehlende Folgen sind erkennbar.
 - **Sammlungen** (James Bond, Star Wars …) inklusive der Teile, die noch
-  fehlen.
-- **Playlists** anlegen, füllen und abspielen — getrennt für Video und Musik,
-  wie auf dem Server.
+  fehlen, mit „✓ komplett" für vollständige Reihen.
+- **Playlists** anlegen, füllen, abspielen und gemischt abspielen — getrennt
+  für Video und Musik, wie auf dem Server.
 - **Personenseite:** ein Klick auf einen Schauspieler zeigt alles mit ihm,
   quer über alle Bibliotheken.
 - **Ordnernavigation** wie im Browser, inklusive Drilldown-Ordner — dieselben
