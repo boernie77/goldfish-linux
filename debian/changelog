@@ -1,3 +1,18 @@
+goldfish-linux (0.1.3-1) unstable; urgency=medium
+
+  * Fix: Root-Ansicht einer Bibliothek sendete `folder=""` an den Server —
+    das bedeutet dort "kein Filter" (liefert ALLE Items rekursiv, nicht nur
+    die Root-Ebene). Korrekt ist der Sonderwert `"/"` für "nur Root-Ebene".
+  * Fix: Hintergrund-Threads (Bibliotheken laden, Ordner/Items laden) zeigen
+    jetzt bei JEDEM Fehler (nicht nur bekannten API-Fehlern) eine sichtbare
+    Fehlermeldung, statt bei einer unerwarteten Ausnahme stillschweigend
+    hängen zu bleiben ("keine Inhalte" ohne jeden Hinweis warum).
+  * Hinweis: leere Bibliotheksliste nach Login zeigt jetzt einen Toast mit
+    Diagnose-Hinweis (ACL-Zugriff prüfen) statt einer stillen leeren
+    Seitenleiste.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:05:46 +0200
+
 goldfish-linux (0.1.2-1) unstable; urgency=medium
 
   * Fix: "Connection reset by peer" beim Login behoben — Verbindungen

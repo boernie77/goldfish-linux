@@ -86,6 +86,16 @@ class MainWindow(Adw.ApplicationWindow):
         except GoldfishAPIError as exc:
             GLib.idle_add(self._show_toast, f"Bibliotheken konnten nicht geladen werden: {exc}")
             return
+        except Exception as exc:  # noqa: BLE001 — sonst bleibt die Seitenleiste
+            # stumm leer, ohne jede Fehlermeldung, wenn hier etwas Unerwartetes
+            # passiert (z. B. unerwartete Antwortform des Servers).
+            GLib.idle_add(self._show_toast, f"Bibliotheken konnten nicht geladen werden: {exc}")
+            return
+        if not libraries:
+            GLib.idle_add(
+                self._show_toast,
+                "Keine Bibliotheken sichtbar — hat dein Benutzer Zugriff auf mindestens eine Bibliothek?",
+            )
         GLib.idle_add(self._populate_sidebar, libraries)
 
     def _populate_sidebar(self, libraries: list[dict]) -> None:

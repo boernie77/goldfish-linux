@@ -169,10 +169,24 @@ class BrowsePage(Adw.NavigationPage):
         threading.Thread(target=self._load_worker, args=(search,), daemon=True).start()
 
     def _load_worker(self, search: str) -> None:
+        # WICHTIG: `folder=""` bedeutet server-seitig "kein Filter" (liefert
+        # ALLE Items der Bibliothek rekursiv, nicht nur die auf Root-Ebene!)
+        # — der Sonderwert `"/"` steht für "nur Root-Ebene" (kein Slash im
+        # rel_path). Auf der Bibliotheks-Wurzel (self.folder == "") muss also
+        # "/" gesendet werden, sonst zeigt die Root-Ansicht Items aus JEDEM
+        # Unterordner gemischt mit den Root-Items (siehe internal/store/items.go
+        # `switch f.Folder` im Server-Repo). Bei einer aktiven Suche bleibt es
+        # bewusst bei self.folder (auch "" = library-weite Suche).
+        item_folder = self.folder if (search or self.folder) else "/"
         try:
             folders = [] if search else self.ctx.client.folders(self.library["id"], parent=self.folder)
-            items = self.ctx.client.items(self.library["id"], folder=self.folder, search=search, sort="title")
+            items = self.ctx.client.items(self.library["id"], folder=item_folder, search=search, sort="title")
         except GoldfishAPIError as exc:
             GLib.idle_add(self._show_error, str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 — Hintergrund-Thread darf nie
+            # stumm sterben, sonst bleibt die Seite für immer auf dem
+            # Lade-Spinner hängen ("keine Inhalte", ohne jede Fehlermeldung).
+            GLib.idle_add(self._show_error, f"Unerwarteter Fehler: {exc}")
             return
         GLib.idle_add(self._show_results, folders, items)
