@@ -10,12 +10,14 @@ identisch für Stream- und Transcode-Playlist-URLs.
 
 from __future__ import annotations
 
+import socket
 import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urljoin, urlparse, urlencode, urlunparse, parse_qsl
 
 import requests
+import urllib3.util.connection as _urllib3_connection
 
 # Manche selbstgehosteten Server (Heimnetz hinter Tunnel/Reverse-Proxy)
 # brauchen für den ALLERERSTEN Request nach einer Weile Inaktivität spürbar
@@ -25,6 +27,29 @@ import requests
 # erreichbaren Server ewig zu hängen.
 DEFAULT_TIMEOUT = 20
 RETRY_ON_TIMEOUT = 1
+
+
+def _force_ipv4_only() -> None:
+    """Verbindungen nur noch über IPv4 aufbauen.
+
+    Hintergrund (User-Report 2026-09-12, "Connection reset by peer" beim
+    Login): viele selbstgehostete Server laufen unter einem DynDNS-Namen,
+    dessen AAAA-Eintrag (IPv6) das dynamische, sich gelegentlich ändernde
+    Präfix des Heimrouters trägt. Zeigt der Eintrag gerade auf ein veraltetes
+    Präfix, kann die TCP-Verbindung zu einem inzwischen ANDEREN Host
+    zustande kommen (Drei-Wege-Handshake erfolgreich!) — die eigentliche
+    HTTP-Anfrage wird dort aber sofort per RST abgelehnt. `requests`/urllib3
+    implementiert (anders als Browser via "Happy Eyeballs", RFC 8305) keinen
+    automatischen IPv4-Fallback in diesem Fall, weil der Verbindungsaufbau
+    selbst ja nicht fehlschlug. Verifiziert: die betroffene Domain hatte
+    einen AAAA-Eintrag, der von diesem Rechner aus gar nicht erreichbar war.
+    Da Goldfish-Server praktisch immer über eine IPv4-Portweiterleitung
+    erreichbar sind, ist ein hartes IPv4-only hier der zuverlässigste Fix.
+    """
+    _urllib3_connection.allowed_gai_family = lambda: socket.AF_INET
+
+
+_force_ipv4_only()
 
 
 class GoldfishAPIError(Exception):

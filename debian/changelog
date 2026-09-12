@@ -1,3 +1,14 @@
+goldfish-linux (0.1.2-1) unstable; urgency=medium
+
+  * Fix: "Connection reset by peer" beim Login behoben — Verbindungen
+    laufen jetzt zwingend über IPv4. Ursache: bei DynDNS-Servern kann ein
+    veralteter AAAA-Eintrag (IPv6-Präfix des Heimrouters ändert sich) dazu
+    führen, dass der TCP-Handshake zu einem inzwischen anderen Host gelingt,
+    die eigentliche HTTP-Anfrage dort aber per RST abgelehnt wird —
+    verifiziert direkt gegen den betroffenen Server.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 14:58:02 +0200
+
 goldfish-linux (0.1.1-1) unstable; urgency=medium
 
   * Fix: falsches, selbstgezeichnetes App-Icon durch das echte
