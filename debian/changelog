@@ -1,3 +1,18 @@
+goldfish-linux (0.1.24-1) unstable; urgency=medium
+
+  * Behoben (vom Benutzer gemeldet): Vorschaubilder in privaten Bibliotheken
+    (YouTube, eigene Videos) wirkten unscharf. Ursache: die Kachel für 16:9-
+    Inhalte war trotz der dafür extra vorgesehenen breiten Kachelgröße
+    (240 statt 168 px, siehe `CARD_WIDTH_WIDE`) nie darauf umgestellt worden
+    — bei 168 px ist ein 16:9-Bild nur 94 px hoch. Betrifft die normale
+    Kachelübersicht UND Ordner-Kacheln privater Bibliotheken; auf der
+    Startseite (wo Privatvideos mit Filmen/Folgen in einer Reihe liegen)
+    bleibt die einheitliche schmale Breite bewusst erhalten.
+  * Die Vorschau beim Zeigen auf die Zeitleiste im Player ist jetzt größer
+    (240×135 statt 160×90 px) — auf Wunsch, weil sie kaum zu erkennen war.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 23:50:00 +0200
+
 goldfish-linux (0.1.23-1) unstable; urgency=medium
 
   * Zwei weitere fehlende Abhängigkeiten ergänzt (auf Nachfrage nach dem

@@ -301,8 +301,13 @@ class PlayerWindow(Adw.Window):
         self.fullscreen_button.connect("clicked", lambda *_: self.toggle_fullscreen())
         bar.append(self.fullscreen_button)
 
-        # Vorschaubild beim Zeigen auf den Balken.
-        self.preview_picture = Gtk.Picture(width_request=160, height_request=90)
+        # Vorschaubild beim Zeigen auf den Balken. Die Sprite-Kacheln des
+        # Servers sind nativ 160×90 (siehe Server-CLAUDE.md Trickplay-
+        # Filter-Chain) — 1,5-fach hochskaliert auf 240×135, damit die
+        # Vorschau auf dem Bildschirm tatsächlich erkennbar ist (User-Wunsch:
+        # "kann man den Bereich etwas vergrößern"). Bewusst nicht größer, sonst
+        # wird die Unschärfe der Hochskalierung zu deutlich.
+        self.preview_picture = Gtk.Picture(width_request=240, height_request=135)
         self.preview_label = Gtk.Label()
         self.preview_label.add_css_class("gf-player-time")
         preview_box = Gtk.Box(

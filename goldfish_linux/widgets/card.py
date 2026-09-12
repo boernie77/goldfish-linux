@@ -160,6 +160,14 @@ class CardWidget(Gtk.Box):
         # Reihe und sollen dort gleich groß sein — ein 16:9-Standbild in einem
         # 2:3-Rahmen wird dafür mittig beschnitten (ContentFit.COVER).
         geometry = aspect_kind or kind
+        # Private Bibliotheken (YouTube, eigene Videos) bekommen die breite
+        # Kachel (240 statt 168 px) — ein 16:9-Bild bei 168 px ist nur 94 px
+        # hoch und wirkt dadurch unscharf (Vorschaubild wird zusätzlich hoch-
+        # skaliert, siehe CARD_WIDTH_WIDE-Kommentar oben). Auf der Startseite,
+        # wo Privatvideos mit Filmen/Folgen in einer Reihe liegen, überschreibt
+        # der Aufrufer `aspect_kind` auf "movies" o.ä. — `geometry` weicht dann
+        # von "private" ab, die Zeile bleibt also einheitlich breit.
+        self._frame_width = CARD_WIDTH_WIDE if geometry == "private" else CARD_WIDTH
         self.on_activate = on_activate
         self.on_toggle_watched = on_toggle_watched
         self.on_toggle_favorite = on_toggle_favorite
@@ -170,7 +178,7 @@ class CardWidget(Gtk.Box):
         # GTK zum Absturz, siehe Kopf von widgets/poster.py.
         self.scroller = scroller
 
-        self.set_size_request(CARD_WIDTH, -1)
+        self.set_size_request(self._frame_width, -1)
         # halign ist hier der entscheidende Teil: ohne ihn streckt ein
         # Container mit Restplatz die Kachel über ihre Sollbreite. Gemessen:
         # 283 px statt 168 für die erste Kachel eines Streifens auf der
@@ -180,7 +188,7 @@ class CardWidget(Gtk.Box):
         self.set_valign(Gtk.Align.START)
 
         # -- Bildbereich mit Abzeichen --
-        self.overlay, self.picture = _image_frame(CARD_WIDTH, card_height_for(geometry))
+        self.overlay, self.picture = _image_frame(self._frame_width, card_height_for(geometry, self._frame_width))
 
         self.watched_btn = Gtk.Button(
             icon_name="object-select-symbolic",
@@ -256,7 +264,7 @@ class CardWidget(Gtk.Box):
             xalign=0,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,
-            width_request=CARD_WIDTH,
+            width_request=self._frame_width,
         )
         self.title_label.add_css_class("gf-card-title")
         self.append(self.title_label)
@@ -265,7 +273,7 @@ class CardWidget(Gtk.Box):
             xalign=0,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,
-            width_request=CARD_WIDTH,
+            width_request=self._frame_width,
         )
         self.sub_label.add_css_class("gf-card-sub")
         self.append(self.sub_label)
@@ -342,7 +350,7 @@ class CardWidget(Gtk.Box):
             self.picture,
             self.client,
             self.client.poster_path_for_item(item),
-            decode_width=CARD_WIDTH,
+            decode_width=self._frame_width,
             scroller=self.scroller,
         )
 
@@ -420,12 +428,15 @@ class FolderCardWidget(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.client = client
         self.kind = kind
+        # Gleicher Grund wie bei CardWidget: 16:9-Ordnerbilder brauchen die
+        # breite Kachel, sonst sind sie bei 168 px kaum zu erkennen.
+        self._frame_width = CARD_WIDTH_WIDE if kind == "private" else CARD_WIDTH
         self.on_activate = on_activate
         self.folder: dict | None = None
         self.scroller = scroller
-        self.set_size_request(CARD_WIDTH, -1)
+        self.set_size_request(self._frame_width, -1)
 
-        self.overlay, self.picture = _image_frame(CARD_WIDTH, card_height_for(kind))
+        self.overlay, self.picture = _image_frame(self._frame_width, card_height_for(kind, self._frame_width))
 
         self.marker_label = Gtk.Label(halign=Gtk.Align.START, valign=Gtk.Align.START, margin_start=6, margin_top=6)
         self.marker_label.add_css_class("gf-badge")
@@ -440,7 +451,7 @@ class FolderCardWidget(Gtk.Box):
             xalign=0,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,
-            width_request=CARD_WIDTH,
+            width_request=self._frame_width,
         )
         self.title_label.add_css_class("gf-card-title")
         self.append(self.title_label)
@@ -475,7 +486,7 @@ class FolderCardWidget(Gtk.Box):
             path = f"/api/poster/metadata/{folder['metadataId']}"
         elif folder.get("thumbItemId"):
             path = f"/api/thumb/{folder['thumbItemId']}"
-        load_poster_async(self.picture, self.client, path, decode_width=CARD_WIDTH, scroller=self.scroller)
+        load_poster_async(self.picture, self.client, path, decode_width=self._frame_width, scroller=self.scroller)
 
     def unbind(self) -> None:
         self.folder = None
