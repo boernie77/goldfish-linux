@@ -15,6 +15,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from .. import __version__  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
 
 
@@ -72,6 +73,12 @@ class LoginWindow(Adw.ApplicationWindow):
 
         self.spinner = Gtk.Spinner()
         box.append(self.spinner)
+
+        version_label = Gtk.Label(label=f"Goldfish Linux {__version__}")
+        version_label.add_css_class("dim-label")
+        version_label.add_css_class("caption")
+        version_label.set_margin_top(12)
+        box.append(version_label)
 
         self.pass_row.connect("entry-activated", self._on_login_clicked)
 

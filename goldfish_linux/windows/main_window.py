@@ -12,6 +12,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+from .. import __version__  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
 from .browse_page import BrowsePage  # noqa: E402
 from .downloads_page import DownloadsPage  # noqa: E402
@@ -61,6 +62,18 @@ class MainWindow(Adw.ApplicationWindow):
         sidebar_scrolled = Gtk.ScrolledWindow(vexpand=True)
         sidebar_scrolled.set_child(self.sidebar_list)
         sidebar_toolbar.set_content(sidebar_scrolled)
+
+        version_label = Gtk.Label(
+            label=f"Goldfish Linux {__version__}",
+            xalign=0,
+            margin_top=6,
+            margin_bottom=6,
+            margin_start=12,
+            margin_end=12,
+        )
+        version_label.add_css_class("dim-label")
+        version_label.add_css_class("caption")
+        sidebar_toolbar.add_bottom_bar(version_label)
 
         sidebar_page = Adw.NavigationPage(title="Goldfish", child=sidebar_toolbar)
         split_view.set_sidebar(sidebar_page)

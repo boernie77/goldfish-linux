@@ -1,3 +1,11 @@
+goldfish-linux (0.1.5-1) unstable; urgency=medium
+
+  * Feature (User-Wunsch): Versionsnummer wird jetzt angezeigt — unten auf
+    der Login-Seite und unten links in der Seitenleiste der Hauptansicht
+    (analog zum Zahnrad-Menü-Fuß der Web-UI).
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:15:00 +0200
+
 goldfish-linux (0.1.4-1) unstable; urgency=medium
 
   * Fix (der eigentliche Grund für "keine Inhalte angezeigt"): in der
