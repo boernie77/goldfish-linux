@@ -28,6 +28,13 @@ class LocalLibrariesPage(Adw.NavigationPage):
         add = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="Ordner oder Datenträger hinzufügen")
         add.connect("clicked", lambda *_: self._choose_folder())
         header.pack_end(add)
+
+        self.merge_button = Gtk.Button(
+            icon_name="object-group-symbolic",
+            tooltip_text="Mehrere Datenträger zu einem zusammenlegen",
+        )
+        self.merge_button.connect("clicked", lambda *_: self._ask_merge())
+        header.pack_end(self.merge_button)
         toolbar_view.add_top_bar(header)
 
         super().__init__(title="Eigene Datenträger", tag="local-libraries", child=toolbar_view)
@@ -37,7 +44,10 @@ class LocalLibrariesPage(Adw.NavigationPage):
         self._render()
 
     def _render(self) -> None:
-        libraries = self.ctx.local.libraries
+        libraries = self.ctx.local.visible_libraries()
+        # Zusammenlegen lohnt erst ab zwei eingerichteten Datenträgern.
+        if hasattr(self, "merge_button"):
+            self.merge_button.set_visible(len(self.ctx.local.libraries) >= 2)
         if not libraries:
             self.toolbar_view.set_content(
                 Adw.StatusPage(
@@ -64,27 +74,50 @@ class LocalLibrariesPage(Adw.NavigationPage):
         parts = [f"{len(library.videos)} Videos"]
         if total_size:
             parts.append(format_size(total_size))
-        parts.append(library.root)
+        if library.is_merged:
+            parts.append(f"aus {len(library.merged_from)} Datenträgern")
+        else:
+            parts.append(library.root)
         if not available:
             # Bei externen Platten der Normalfall — der Bestand bleibt sichtbar.
             parts.insert(0, "gerade nicht angeschlossen")
 
         row = Adw.ActionRow(title=library.name, subtitle=" · ".join(parts), activatable=available)
-        if not available:
+        if library.is_merged:
+            icon = Gtk.Image(icon_name="object-group-symbolic")
+            icon.set_tooltip_text("\n".join(library.merged_from))
+            row.add_prefix(icon)
+        elif not available:
             row.add_prefix(Gtk.Image(icon_name="dialog-warning-symbolic"))
 
-        rescan = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Neu einlesen")
-        rescan.set_sensitive(available)
-        rescan.connect("clicked", lambda _b, lib=library: self._scan(lib))
-        row.add_suffix(rescan)
+        if library.is_merged:
+            # Eine Sammel-Bibliothek hat keine eigene Wurzel; eingelesen wird
+            # je Datenträger, also führt der Weg über das Auflösen.
+            split = Gtk.Button(
+                icon_name="object-ungroup-symbolic",
+                valign=Gtk.Align.CENTER,
+                tooltip_text="Wieder in einzelne Datenträger trennen",
+            )
+            split.connect("clicked", lambda *_: self._split_merge())
+            row.add_suffix(split)
+        else:
+            rescan = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Neu einlesen")
+            rescan.set_sensitive(available)
+            rescan.connect("clicked", lambda _b, lib=library: self._scan(lib))
+            row.add_suffix(rescan)
 
         dupes = Gtk.Button(icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Doppelte Dateien finden")
         dupes.connect("clicked", lambda _b, lib=library: self._show_duplicates(lib))
         row.add_suffix(dupes)
 
-        remove = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Aus der App entfernen")
-        remove.connect("clicked", lambda _b, lib=library: self._ask_remove(lib))
-        row.add_suffix(remove)
+        if not library.is_merged:
+            remove = Gtk.Button(
+                icon_name="user-trash-symbolic",
+                valign=Gtk.Align.CENTER,
+                tooltip_text="Aus der App entfernen",
+            )
+            remove.connect("clicked", lambda _b, lib=library: self._ask_remove(lib))
+            row.add_suffix(remove)
 
         if available:
             row.connect("activated", lambda _r, lib=library: self.nav_view.push(LocalVideosPage(self.ctx, self.nav_view, lib)))
@@ -150,6 +183,70 @@ class LocalLibrariesPage(Adw.NavigationPage):
         dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
         dialog.connect("response", lambda _d, r: (self.ctx.local.remove(library), self._render()) if r == "remove" else None)
         dialog.present()
+
+    def _ask_merge(self) -> None:
+        """Auswahl, welche Datenträger gemeinsam erscheinen sollen.
+
+        Sinnvoll, wenn eine Sammlung über mehrere Platten verteilt ist: dann
+        durchsucht und durchblättert man sie zusammen statt jede einzeln."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.ctx.window,
+            heading="Datenträger zusammenlegen",
+            body=(
+                "Die ausgewählten erscheinen als ein Eintrag, mit den Videos aus allen. "
+                "Einlesen und Entfernen bleiben je Datenträger möglich — dafür die Gruppe "
+                "wieder trennen."
+            ),
+        )
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        name_entry = Gtk.Entry(text=self.ctx.local.merged_name, placeholder_text="Name der Sammlung")
+        box.append(name_entry)
+
+        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        listbox.add_css_class("boxed-list")
+        checks: dict[str, Gtk.CheckButton] = {}
+        for library in self.ctx.local.libraries:
+            check = Gtk.CheckButton(active=library.root in self.ctx.local.merged_roots, valign=Gtk.Align.CENTER)
+            row = Adw.ActionRow(title=library.name, subtitle=f"{len(library.videos)} Videos · {library.root}")
+            row.add_prefix(check)
+            row.set_activatable_widget(check)
+            checks[library.root] = check
+            listbox.append(row)
+        scroll = Gtk.ScrolledWindow(child=listbox, propagate_natural_height=True, max_content_height=320)
+        box.append(scroll)
+
+        hint = Gtk.Label(
+            label="Unter zwei ausgewählten Datenträgern wird die Gruppe aufgelöst.",
+            wrap=True,
+            xalign=0,
+        )
+        hint.add_css_class("dim-label")
+        box.append(hint)
+
+        dialog.set_extra_child(box)
+        dialog.add_response("cancel", "Abbrechen")
+        dialog.add_response("apply", "Übernehmen")
+        dialog.set_default_response("apply")
+        dialog.set_response_appearance("apply", Adw.ResponseAppearance.SUGGESTED)
+
+        def on_response(_d, response: str) -> None:
+            if response != "apply":
+                return
+            chosen = [root for root, check in checks.items() if check.get_active()]
+            self.ctx.local.set_merged(chosen, name_entry.get_text().strip())
+            self._render()
+            if len(chosen) >= 2:
+                _toast(self, f"{len(chosen)} Datenträger erscheinen jetzt gemeinsam.")
+            else:
+                _toast(self, "Die Gruppe wurde aufgelöst.")
+
+        dialog.connect("response", on_response)
+        dialog.present()
+
+    def _split_merge(self) -> None:
+        self.ctx.local.set_merged([])
+        self._render()
+        _toast(self, "Die Datenträger erscheinen wieder einzeln.")
 
     def _show_duplicates(self, library: LocalLibrary) -> None:
         groups = self.ctx.local.find_duplicates(library)

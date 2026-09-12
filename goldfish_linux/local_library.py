@@ -112,12 +112,25 @@ class LocalLibrary:
     root: str
     videos: list[LocalVideo] = field(default_factory=list)
     scanned_at: float = 0.0
+    # Nur für die zur Laufzeit erzeugte Sammel-Bibliothek gesetzt: die
+    # Wurzeln, aus denen sie besteht. Sie wird nicht gespeichert.
+    merged_from: list[str] = field(default_factory=list)
+
+    @property
+    def is_merged(self) -> bool:
+        return bool(self.merged_from)
 
     @property
     def available(self) -> bool:
         """Ob der Ordner gerade erreichbar ist. Bei externen Platten ist das
         der Normalfall "mal ja, mal nein" — die eingelesenen Einträge bleiben
-        trotzdem erhalten, damit man sieht, was auf der Platte liegt."""
+        trotzdem erhalten, damit man sieht, was auf der Platte liegt.
+
+        Bei einer Sammel-Bibliothek genügt eine erreichbare Wurzel: was von
+        angeschlossenen Platten kommt, lässt sich abspielen, der Rest bleibt
+        sichtbar."""
+        if self.merged_from:
+            return any(Path(root).is_dir() for root in self.merged_from)
         return Path(self.root).is_dir()
 
     def to_json(self) -> dict:
@@ -147,6 +160,11 @@ class LocalLibraryManager:
 
     def __init__(self) -> None:
         self.libraries: list[LocalLibrary] = []
+        # Wurzeln, die zu EINER Sammel-Bibliothek zusammengefasst sind. Sie
+        # verschwinden dadurch nicht, erscheinen in der Übersicht aber nur
+        # noch gemeinsam — so wie es die Mac-App löst.
+        self.merged_roots: list[str] = []
+        self.merged_name: str = "Zusammengelegt"
         self._load()
 
     # -- Speichern und Laden ---------------------------------------------
@@ -160,12 +178,23 @@ class LocalLibraryManager:
         except (OSError, json.JSONDecodeError):
             return
         self.libraries = [LocalLibrary.from_json(entry) for entry in (raw.get("libraries") or [])]
+        known = {lib.root for lib in self.libraries}
+        # Wurzeln, die es nicht mehr gibt, beim Laden aussortieren.
+        self.merged_roots = [r for r in (raw.get("mergedRoots") or []) if r in known]
+        self.merged_name = raw.get("mergedName") or "Zusammengelegt"
 
     def save(self) -> None:
         config.ensure_dirs()
         try:
             config.LOCAL_LIBRARIES_FILE.write_text(
-                json.dumps({"libraries": [lib.to_json() for lib in self.libraries]}, indent=2),
+                json.dumps(
+                    {
+                        "libraries": [lib.to_json() for lib in self.libraries],
+                        "mergedRoots": self.merged_roots,
+                        "mergedName": self.merged_name,
+                    },
+                    indent=2,
+                ),
                 "utf-8",
             )
         except OSError:
@@ -187,11 +216,53 @@ class LocalLibraryManager:
         unangetastet — hier wird nichts gelöscht."""
         if library in self.libraries:
             self.libraries.remove(library)
+            if library.root in self.merged_roots:
+                self.merged_roots.remove(library.root)
             self.save()
 
     def rename(self, library: LocalLibrary, name: str) -> None:
         library.name = name
         self.save()
+
+    def set_merged(self, roots: list[str], name: str = "") -> None:
+        """Legt fest, welche Wurzeln zu einer Sammel-Bibliothek gehören.
+
+        Unter zwei Wurzeln ist das sinnlos — dann wird die Gruppe aufgelöst,
+        damit nicht eine "Sammlung" aus einem einzigen Datenträger entsteht."""
+        known = {lib.root for lib in self.libraries}
+        roots = [r for r in roots if r in known]
+        self.merged_roots = roots if len(roots) >= 2 else []
+        if name:
+            self.merged_name = name
+        self.save()
+
+    def merged_library(self) -> LocalLibrary | None:
+        """Die Sammel-Bibliothek, zur Laufzeit aus ihren Teilen gebaut.
+
+        Doppelte Pfade können nicht auftreten (jede Wurzel ist nur einmal
+        eingerichtet), gleiche Dateien auf zwei Platten dagegen schon — die
+        bleiben absichtlich beide sichtbar. Wer sie loswerden will, findet sie
+        über die Dublettensuche, die hier über alle Teile zugleich läuft."""
+        if len(self.merged_roots) < 2:
+            return None
+        parts = [lib for lib in self.libraries if lib.root in self.merged_roots]
+        videos: list[LocalVideo] = []
+        for part in parts:
+            videos.extend(part.videos)
+        videos.sort(key=lambda v: v.name.lower())
+        return LocalLibrary(
+            name=self.merged_name,
+            root="",
+            videos=videos,
+            merged_from=[p.root for p in parts],
+        )
+
+    def visible_libraries(self) -> list[LocalLibrary]:
+        """Was die Übersicht zeigt: die Sammel-Bibliothek als EIN Eintrag,
+        dazu alle übrigen einzeln."""
+        merged = self.merged_library()
+        singles = [lib for lib in self.libraries if lib.root not in self.merged_roots]
+        return ([merged] if merged else []) + singles
 
     def find_duplicates(self, library: LocalLibrary) -> list[list[LocalVideo]]:
         """Gruppen von Dateien, die sich in Größe UND Laufzeit gleichen.

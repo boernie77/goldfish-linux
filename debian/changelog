@@ -1,3 +1,17 @@
+goldfish-linux (0.1.17-1) unstable; urgency=medium
+
+  * Neu: mehrere eigene Datenträger lassen sich zu einem Eintrag zusammenlegen
+    (Knopf in der Kopfzeile der Übersicht). Sie erscheinen dann als eine
+    Sammlung mit den Videos aus allen und lassen sich gemeinsam durchsuchen.
+    Die Dublettensuche läuft dabei über alle Teile zugleich und findet damit
+    auch Dateien, die auf zwei Platten doppelt liegen.
+  * Die Gruppe lässt sich jederzeit wieder trennen; Einlesen und Entfernen
+    bleiben je Datenträger möglich.
+  * Eine Sammlung gilt als erreichbar, sobald mindestens eine ihrer Platten
+    angeschlossen ist — der Rest bleibt sichtbar.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 21:35:00 +0200
+
 goldfish-linux (0.1.16-1) unstable; urgency=medium
 
   * Neu: Einstellungen in der Seitenleiste — eigenes Passwort ändern,
