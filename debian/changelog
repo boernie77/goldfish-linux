@@ -1,3 +1,23 @@
+goldfish-linux (0.1.14-1) unstable; urgency=medium
+
+  * Neu: Musikbibliotheken öffnen eine Albenübersicht mit Covern und Suche
+    nach Künstler oder Album. Der Ordner-Browser bleibt über einen Knopf in
+    der Kopfzeile erreichbar.
+  * Neu: Albumansicht mit Cover, Künstler, Jahr, Genre, Titelzahl und
+    Gesamtdauer; darunter die Titelliste mit Nummer, Dauer und Favoritenherz.
+    Ein Klick auf einen Titel spielt von dort ab, der Rest des Albums folgt.
+  * Neu: Album abspielen, zufällig abspielen, an die laufende Warteschlange
+    anhängen, als Favorit merken und alle Titel offline mitnehmen.
+  * Neu: Abspielleiste am unteren Fensterrand mit Cover, Titel, Vor und Zurück,
+    Fortschrittsbalken, Lautstärke und Warteschlange. Sie bleibt beim
+    Navigieren stehen und verschwindet erst, wenn die Wiedergabe endet.
+  * Neu: Warteschlange ansehen, einen Titel daraus anspringen, einzelne
+    entfernen und die Reihenfolge mischen.
+  * Musik wird direkt abgespielt, auch FLAC und WAV — das erspart pro Titel
+    eine serverseitige Umwandlung und lässt die Wiedergabe sofort beginnen.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 19:55:00 +0200
+
 goldfish-linux (0.1.13-1) unstable; urgency=medium
 
   * Fix (vom Benutzer gemeldet): auf der Startseite klaffte im Streifen

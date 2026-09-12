@@ -25,7 +25,7 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gio, GObject, Gtk  # noqa: E402
 
 from ..api import GoldfishClient  # noqa: E402
-from .card import CARD_WIDTH, CardWidget, FolderCardWidget, ensure_card_css  # noqa: E402
+from .card import CARD_WIDTH, AlbumCardWidget, CardWidget, FolderCardWidget, ensure_card_css  # noqa: E402
 
 
 class GridRow(GObject.Object):
@@ -146,3 +146,66 @@ class CardGrid(Gtk.ScrolledWindow):
     def _activate_folder(self, folder: dict) -> None:
         if self.on_folder:
             self.on_folder(folder)
+
+
+class AlbumRow(GObject.Object):
+    """Eine Zeile im Album-Modell."""
+
+    __gtype_name__ = "GoldfishAlbumRow"
+
+    def __init__(self, album: dict) -> None:
+        super().__init__()
+        self.album = album
+
+
+class AlbumGrid(Gtk.ScrolledWindow):
+    """Scrollbares Album-Raster mit Recycling.
+
+    Aus demselben Grund wie `CardGrid` kein FlowBox: 2717 Alben würden sonst
+    2717 Widgets samt Coveranfragen erzeugen und den Hauptablauf mehrere
+    Sekunden blockieren (nachgemessen: 4,65 Sekunden)."""
+
+    def __init__(self, client: GoldfishClient, on_album: Callable[[dict], None] | None = None) -> None:
+        super().__init__(vexpand=True, hexpand=True)
+        ensure_card_css()
+        self.client = client
+        self.on_album = on_album
+
+        self.store = Gio.ListStore.new(AlbumRow)
+        factory = Gtk.SignalListItemFactory()
+        factory.connect("setup", self._on_setup)
+        factory.connect("bind", self._on_bind)
+        factory.connect("unbind", self._on_unbind)
+
+        self.grid = Gtk.GridView(
+            model=Gtk.NoSelection.new(self.store),
+            factory=factory,
+            max_columns=12,
+            min_columns=1,
+            vexpand=True,
+            single_click_activate=False,
+        )
+        self.grid.add_css_class("navigation-sidebar")
+        for setter in (self.grid.set_margin_start, self.grid.set_margin_end, self.grid.set_margin_top):
+            setter(12)
+        self.grid.set_margin_bottom(24)
+        self.set_child(self.grid)
+
+    def set_albums(self, albums: list[dict]) -> None:
+        self.store.splice(0, self.store.get_n_items(), [AlbumRow(a) for a in albums])
+        adjustment = self.get_vadjustment()
+        if adjustment is not None:
+            adjustment.set_value(0)
+
+    def _on_setup(self, _factory, list_item: Gtk.ListItem) -> None:
+        list_item.set_child(AlbumCardWidget(self.client, on_activate=self._activate))
+
+    def _on_bind(self, _factory, list_item: Gtk.ListItem) -> None:
+        list_item.get_child().bind(list_item.get_item().album)
+
+    def _on_unbind(self, _factory, list_item: Gtk.ListItem) -> None:
+        list_item.get_child().unbind()
+
+    def _activate(self, album: dict) -> None:
+        if self.on_album:
+            self.on_album(album)

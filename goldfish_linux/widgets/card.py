@@ -528,3 +528,86 @@ def card_flow(spacing: int = 16) -> Gtk.FlowBox:
         valign=Gtk.Align.START,
     )
     return flow
+
+
+class AlbumCardWidget(Gtk.Box):
+    """Wiederverwendbare Album-Kachel für ein Raster mit Recycling.
+
+    Es gibt sie zusätzlich zu `SimpleCard`, weil eine Musikbibliothek sehr
+    viele Alben hat: 2717 in der hiesigen Sammlung. Als einzeln gebaute
+    `SimpleCard` in einer FlowBox kostet das **4,65 Sekunden blockierten
+    Hauptablauf** — nachgemessen. In dieser Zeit stand auch die laufende
+    Musikwiedergabe scheinbar still, weil die Anzeige nicht mehr aktualisiert
+    wurde. Mit Recycling entstehen nur die sichtbaren Kacheln.
+    """
+
+    def __init__(self, client: GoldfishClient, on_activate: Callable[[dict], None] | None = None) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        ensure_card_css()
+        self.client = client
+        self.on_activate = on_activate
+        self.album: dict | None = None
+        self.set_size_request(CARD_WIDTH, -1)
+        self.set_hexpand(False)
+        self.set_halign(Gtk.Align.START)
+        self.set_valign(Gtk.Align.START)
+
+        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
+        self.picture.set_size_request(CARD_WIDTH, card_height_for("music"))
+        self.picture.add_css_class("gf-card-image")
+        self.picture.set_hexpand(False)
+        self.overlay = Gtk.Overlay(child=self.picture)
+        self.overlay.set_overflow(Gtk.Overflow.HIDDEN)
+
+        self.count_label = Gtk.Label(halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6)
+        self.count_label.add_css_class("gf-badge")
+        self.overlay.add_overlay(self.count_label)
+        self.append(self.overlay)
+
+        self.title_label = Gtk.Label(
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=CARD_WIDTH,
+        )
+        self.title_label.add_css_class("gf-card-title")
+        self.append(self.title_label)
+
+        self.sub_label = Gtk.Label(
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=CARD_WIDTH,
+        )
+        self.sub_label.add_css_class("gf-card-sub")
+        self.append(self.sub_label)
+
+        click = Gtk.GestureClick()
+        click.connect("released", self._on_clicked)
+        self.picture.add_controller(click)
+        self.picture.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+
+    def bind(self, album: dict) -> None:
+        self.album = album
+        title = album.get("album") or ""
+        self.title_label.set_text(title)
+        self.set_tooltip_text(title)
+        parts = [str(p) for p in (album.get("artist"), album.get("year") or "", album.get("genre") or "") if p]
+        self.sub_label.set_text(" · ".join(parts))
+        count = album.get("trackCount") or 0
+        self.count_label.set_text(str(count))
+        self.count_label.set_visible(count > 0)
+        load_poster_async(
+            self.picture,
+            self.client,
+            self.client.album_cover_path(int(album["id"])),
+            decode_width=CARD_WIDTH,
+        )
+
+    def unbind(self) -> None:
+        self.album = None
+        load_poster_async(self.picture, self.client, None)
+
+    def _on_clicked(self, *_args) -> None:
+        if self.album and self.on_activate:
+            self.on_activate(self.album)

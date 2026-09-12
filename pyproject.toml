@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "goldfish-linux"
-version = "0.1.13"
+version = "0.1.14"
 description = "Nativer GTK4/libadwaita-Client für den Goldfish-Videoserver"
 readme = "README.md"
 license = { text = "MIT" }

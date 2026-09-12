@@ -15,10 +15,13 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 from .. import __version__  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
 from ..config import ViewPrefs  # noqa: E402
+from ..music_player import MusicPlayer  # noqa: E402
+from ..widgets.mini_player import MiniPlayer  # noqa: E402
 from .browse_page import BrowsePage  # noqa: E402
 from .collections_page import CollectionsPage  # noqa: E402
 from .downloads_page import DownloadsPage  # noqa: E402
 from .home_page import HomePage  # noqa: E402
+from .music_page import MusicLibraryPage  # noqa: E402
 from .playlists_page import PlaylistsPage  # noqa: E402
 
 _KIND_ICON = {"movies": "🎬", "tv": "📺", "music": "🎵", "private": "📁"}
@@ -40,6 +43,9 @@ class AppContext:
         # Bibliotheks-ID kennen (etwa die Detailansicht), brauchen sie für
         # Entscheidungen wie Video- oder Musik-Playlist.
         self.library_kinds: dict[int, str] = {}
+        # Ein Spieler pro Fenster, unabhängig vom Videofenster — die Musik
+        # läuft weiter, während man durch die Bibliotheken blättert.
+        self.music = MusicPlayer(client)
 
     def library_kind(self, library_id) -> str:
         try:
@@ -59,8 +65,15 @@ class MainWindow(Adw.ApplicationWindow):
         self.toast_overlay = Adw.ToastOverlay()
         self.set_content(self.toast_overlay)
 
-        split_view = Adw.NavigationSplitView()
-        self.toast_overlay.set_child(split_view)
+        # Die Abspielleiste sitzt als Geschwister NEBEN der geteilten Ansicht,
+        # nicht darin: nur so übersteht sie jeden Wechsel von Bibliothek und
+        # Ansicht. Läge sie im Navigationsstapel, verschwände sie mit dem
+        # Seiteninhalt.
+        root_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.toast_overlay.set_child(root_box)
+
+        split_view = Adw.NavigationSplitView(vexpand=True)
+        root_box.append(split_view)
 
         sidebar_toolbar = Adw.ToolbarView()
         sidebar_header = Adw.HeaderBar()
@@ -111,6 +124,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.nav_view.push(HomePage(self.ctx, self.nav_view))
         content_page = Adw.NavigationPage(title="Goldfish", child=self.nav_view, tag="content-root")
         split_view.set_content(content_page)
+
+        self.mini_player = MiniPlayer(self.ctx.music)
+        root_box.append(self.mini_player)
 
         self._load_libraries()
 
@@ -193,6 +209,12 @@ class MainWindow(Adw.ApplicationWindow):
             page = PlaylistsPage(self.ctx, self.nav_view)
         elif row.is_downloads:
             page = DownloadsPage(self.ctx, self.nav_view)
+        elif (row.library or {}).get("kind") == "music":
+            # Musik über die Albenübersicht, nicht über die Ordner: die Alben
+            # entstehen serverseitig aus Tags und gemeinsamen Ordnern und
+            # entsprechen nicht der Ordnerstruktur. Der Ordner-Browser bleibt
+            # von dort aus erreichbar.
+            page = MusicLibraryPage(self.ctx, self.nav_view, row.library)
         else:
             page = BrowsePage(self.ctx, self.nav_view, row.library)
         self.nav_view.push(page)
