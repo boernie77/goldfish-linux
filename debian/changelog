@@ -1,3 +1,14 @@
+goldfish-linux (0.1.28-1) unstable; urgency=medium
+
+  * Behoben (vom Benutzer gemeldet): "Zufällig aus allen Playlists" in der
+    Playlist-Übersicht sprang bisher in die getroffene Playlist hinein und
+    beschränkte ⏭/⏮ im Player danach auf genau diese eine Playlist. Spielt
+    jetzt sofort ab, OHNE zu navigieren — man bleibt auf der Übersicht
+    stehen, und ⏭/⏮ ziehen weiterhin aus allen Playlists derselben Art
+    (Video oder Musik, je nachdem was zuerst getroffen wurde).
+
+ -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 01:10:00 +0200
+
 goldfish-linux (0.1.27-1) unstable; urgency=medium
 
   * Bibliotheken in der Seitenleiste zeigen jetzt ein rundes Vorschaubild

@@ -91,37 +91,65 @@ class PlaylistsPage(Adw.NavigationPage):
         )
 
     def _play_random(self) -> None:
-        """Ein zufälliger Titel aus allen Playlists zusammen.
+        """Ein zufälliger Titel aus allen Playlists zusammen — spielt SOFORT,
+        bleibt aber auf der Playlist-Übersicht stehen (User-Korrektur: sprang
+        vorher in die getroffene Playlist hinein und schränkte ⏭/⏮ danach auf
+        genau diese eine Playlist ein — beides nicht gewollt).
 
         Der Server kann nur innerhalb EINER Playlist zufällig ziehen
         (`playlistId=`). Damit trotzdem jeder Titel dieselbe Chance hat, wird
         die Playlist vorher nach ihrer Länge gewichtet gezogen — das ergibt
         zusammen eine Gleichverteilung über alle enthaltenen Titel und kostet
-        nur eine Abfrage."""
-        candidates = [pl for pl in self.entries if (pl.get("itemCount") or 0) > 0]
-        if not candidates:
-            _toast(self, "Die Playlists sind leer.")
-            return
-        weights = [pl.get("itemCount") or 0 for pl in candidates]
-        playlist = random.choices(candidates, weights=weights, k=1)[0]
+        nur eine Abfrage pro Ziehung.
+
+        ⏭/⏮ im Player ziehen danach *innerhalb derselben Art* (Video ODER
+        Musik) weiter — einmal getroffen, bleibt es dabei, damit kein
+        Musiktitel im Videofenster landet."""
 
         def worker() -> None:
             try:
-                item = self.ctx.client.random_item(playlist_id=int(playlist["id"]))
+                result = self._draw(None)
             except GoldfishAPIError as exc:
                 GLib.idle_add(_toast, self, f"Kein Zufallstreffer: {exc}")
                 return
-            if not item:
-                GLib.idle_add(_toast, self, "Kein passender Titel gefunden.")
+            if not result:
+                GLib.idle_add(_toast, self, "Die Playlists sind leer.")
                 return
-            GLib.idle_add(self._open_random, item, playlist)
+            item, playlist = result
+            GLib.idle_add(self._open_random, item, playlist.get("kind") or "video")
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _open_random(self, item: dict, playlist: dict) -> bool:
-        page = PlaylistItemsPage(self.ctx, self.nav_view, playlist)
-        self.nav_view.push(page)
-        page.start_with(item)
+    def _draw(self, kind_filter: str | None) -> tuple[dict, dict] | None:
+        """Zieht eine Playlist gewichtet nach Länge, dann einen Zufallstitel
+        daraus. `kind_filter=None` = über alle Playlists (Erstwahl),
+        andernfalls nur innerhalb dieser Art (Fortsetzung im Player)."""
+        candidates = [
+            pl
+            for pl in self.entries
+            if (pl.get("itemCount") or 0) > 0 and (kind_filter is None or pl.get("kind") == kind_filter)
+        ]
+        if not candidates:
+            return None
+        weights = [pl.get("itemCount") or 0 for pl in candidates]
+        playlist = random.choices(candidates, weights=weights, k=1)[0]
+        item = self.ctx.client.random_item(playlist_id=int(playlist["id"]))
+        if not item:
+            return None
+        return item, playlist
+
+    def _open_random(self, item: dict, kind: str) -> bool:
+        if kind == "music":
+            self.ctx.music.play_queue([item], 0)
+            return False
+
+        def draw_next() -> dict:
+            result = self._draw(kind)
+            return result[0] if result else None
+
+        from .player_window import open_player
+
+        open_player(self.ctx, item, random_fetch=draw_next)
         return False
 
     def _ask_new(self) -> None:
@@ -182,7 +210,6 @@ class PlaylistItemsPage(Adw.NavigationPage):
         self.playlist = playlist
         self.toolbar_view = toolbar_view
         self.items: list[dict] = []
-        self._start_item: dict | None = None
 
         _busy(toolbar_view)
         threading.Thread(target=self._load, daemon=True).start()
@@ -214,17 +241,6 @@ class PlaylistItemsPage(Adw.NavigationPage):
         )
         grid.set_content([], items)
         self.toolbar_view.set_content(grid)
-        if self._start_item is not None:
-            item, self._start_item = self._start_item, None
-            # Die Warteschlange ist jetzt die ganze Playlist, beginnend beim
-            # gezogenen Titel — sonst endete der Zufallstreffer nach einem Stück.
-            ids = [i.get("id") for i in items]
-            start = ids.index(item.get("id")) if item.get("id") in ids else 0
-            queue = items[start:] + items[:start]
-            if self._is_music():
-                self.ctx.music.play_queue(queue, 0)
-            else:
-                self._open_video(queue[0], queue)
         return False
 
     def _open_item(self, item: dict) -> None:
@@ -251,12 +267,6 @@ class PlaylistItemsPage(Adw.NavigationPage):
             self.ctx.music.play_queue(order, 0)
             return
         self._open_video(order[0], order)
-
-    def start_with(self, item: dict) -> None:
-        """Von der Übersicht aus: diese Playlist öffnen und mit genau diesem
-        Titel beginnen. Die Titel sind beim Öffnen noch nicht geladen, deshalb
-        wird der Wunsch gemerkt und in `_apply` ausgeführt."""
-        self._start_item = item
 
     def _open_video(self, item: dict, queue: list[dict]) -> None:
         """Video sofort abspielen, mit der Liste als Warteschlange — ein
