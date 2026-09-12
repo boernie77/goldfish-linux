@@ -69,7 +69,9 @@ class CastStrip(Gtk.Box):
         heading.add_css_class("heading")
         self.append(heading)
 
-        self.row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
+        # Wie bei den Streifen der Startseite: ohne halign verteilt die Box
+        # ihren Restplatz zwischen den Portraits und reißt sie auseinander.
+        self.row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14, halign=Gtk.Align.START)
         scroller = Gtk.ScrolledWindow(
             child=self.row,
             vscrollbar_policy=Gtk.PolicyType.NEVER,

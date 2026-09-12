@@ -115,7 +115,18 @@ class HomePage(Adw.NavigationPage):
         label.add_css_class("heading")
         box.append(label)
 
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14, margin_start=16, margin_end=16)
+        # halign=START ist hier nötig, nicht bloß gefällig: ohne ihn verteilt
+        # die Box ihren Restplatz zwischen den Kacheln, und bei einem kurzen
+        # Streifen (zwei Titel unter "Fortsetzen") klaffte dadurch eine Lücke
+        # von über hundert Pixeln zwischen ihnen, obwohl jede Kachel korrekt
+        # 168 Pixel breit war.
+        row = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=14,
+            margin_start=16,
+            margin_end=16,
+            halign=Gtk.Align.START,
+        )
         kind = library.get("kind") or "movies"
         for item in items:
             card = CardWidget(

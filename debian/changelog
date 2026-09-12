@@ -1,3 +1,17 @@
+goldfish-linux (0.1.13-1) unstable; urgency=medium
+
+  * Fix (vom Benutzer gemeldet): auf der Startseite klaffte im Streifen
+    "Fortsetzen" eine große Lücke zwischen den Kacheln. Ursache war ein
+    umbrechender Titel: ein Label mit zwei Zeilen fordert bei vorgegebener
+    Höhe die volle Textbreite an — gemessen 297 statt 168 Pixel. Die Kachel
+    bekam entsprechend mehr Platz zugeteilt, zeichnete nur ihre Sollbreite und
+    ließ den Rest leer. Titel auf Kacheln sind jetzt einzeilig mit Auslassung;
+    der vollständige Titel steht im Tooltip.
+  * Die Streifen der Startseite und die Besetzungsleiste sammeln ihre Kacheln
+    jetzt links, statt den Restplatz zwischen ihnen zu verteilen.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 19:10:00 +0200
+
 goldfish-linux (0.1.12-1) unstable; urgency=medium
 
   * Neu: Startseite als Einstieg — pro Bibliothek die Streifen Fortsetzen,

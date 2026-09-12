@@ -196,19 +196,22 @@ class CardWidget(Gtk.Box):
         self.append(self.overlay)
 
         # -- Textzeilen --
-        # `width_request` ist hier wichtig, nicht bloß Kosmetik: ohne feste
-        # Breite fordert ein Label seine natürliche Textbreite an, und ein
-        # langer Titel zieht damit die ganze Kachel breiter. Im Raster fällt
-        # das nicht auf (dort sind alle Zellen gleich breit), in einem
-        # waagerechten Streifen auf der Startseite dagegen sofort — eine
-        # Kachel stand dort deutlich breiter neben ihren Nachbarn.
+        # **Titel bewusst einzeilig mit Auslassung.** Ein umbrechendes Label
+        # mit `lines=2` fordert bei vorgegebener Höhe die volle Textbreite an,
+        # damit der Text ungekürzt in zwei Zeilen passt — nachgemessen 297
+        # statt 168 Pixel bei einem langen Filmtitel. Die Kachel bekam dadurch
+        # mehr Platz zugeteilt, zeichnete nur 168 davon und hinterließ eine
+        # sichtbare Lücke zum Nachbarn (vom Benutzer auf der Startseite
+        # bemerkt). Weder `max-width-chars`, `width-request` noch `halign`
+        # ändern daran etwas, und eine überschriebene Breitenmessung greift
+        # bei einer Gtk.Box-Unterklasse in PyGObject nicht (nachgemessen: die
+        # Überschreibung wurde nie aufgerufen). Einzeilig ist die einzige
+        # Einstellung mit stabiler Breitenanforderung; der vollständige Titel
+        # steht im Tooltip.
         self.title_label = Gtk.Label(
             xalign=0,
-            wrap=True,
-            wrap_mode=Pango.WrapMode.WORD_CHAR,
-            lines=2,
             ellipsize=Pango.EllipsizeMode.END,
-            max_width_chars=1,  # erlaubt Umbruch auf Kachelbreite
+            max_width_chars=1,
             width_request=CARD_WIDTH,
         )
         self.title_label.add_css_class("gf-card-title")
@@ -227,6 +230,7 @@ class CardWidget(Gtk.Box):
         click.connect("released", self._on_clicked)
         self.picture.add_controller(click)
 
+
     # -- Belegen ---------------------------------------------------------
 
     def bind(self, item: dict) -> None:
@@ -236,6 +240,9 @@ class CardWidget(Gtk.Box):
         title = metadata.get("title") or raw_title
 
         self.title_label.set_text(title)
+        # Der vollständige Titel bleibt über den Tooltip erreichbar, weil die
+        # Zeile ihn bei Bedarf abschneidet.
+        self.set_tooltip_text(title)
 
         # Zweite Zeile: bei einem echten Metadaten-Titel Jahr und Genres,
         # sonst der Ordnerpfad — nie derselbe Text zweimal (gleiche Regel wie
@@ -360,9 +367,6 @@ class FolderCardWidget(Gtk.Box):
 
         self.title_label = Gtk.Label(
             xalign=0,
-            wrap=True,
-            wrap_mode=Pango.WrapMode.WORD_CHAR,
-            lines=2,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,
             width_request=CARD_WIDTH,
@@ -374,11 +378,14 @@ class FolderCardWidget(Gtk.Box):
         click.connect("released", self._on_clicked)
         self.picture.add_controller(click)
 
+
     def bind(self, folder: dict) -> None:
         self.folder = folder
         name = (folder.get("name") or "").rsplit("/", 1)[-1]
         metadata = folder.get("metadata") or {}
-        self.title_label.set_text(metadata.get("title") or name)
+        label = metadata.get("title") or name
+        self.title_label.set_text(label)
+        self.set_tooltip_text(label)
 
         # Eine nackte "1" unten rechts sah im ersten Test wie eine Laufzeit
         # aus — mit Einheit ist klar, dass es die Anzahl ist.
@@ -438,9 +445,10 @@ class SimpleCard(Gtk.Box):
         on_click: Callable[[], None] | None = None,
         tooltip: str = "",
     ) -> None:
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        ensure_card_css()
         width = CARD_WIDTH_WIDE if aspect == "private" else CARD_WIDTH
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._fixed_width = width
+        ensure_card_css()
         self.set_size_request(width, -1)
         # Nicht mitwachsen: sonst gibt die FlowBox der Kachel die natürliche
         # Breite des geladenen Bildes (320 px) statt der Sollbreite.
@@ -472,15 +480,14 @@ class SimpleCard(Gtk.Box):
         title_label = Gtk.Label(
             label=title,
             xalign=0,
-            wrap=True,
-            wrap_mode=Pango.WrapMode.WORD_CHAR,
-            lines=2,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,
             width_request=width,
         )
         title_label.add_css_class("gf-card-title")
         self.append(title_label)
+        if not tooltip:
+            self.set_tooltip_text(title)
 
         if subtitle:
             sub_label = Gtk.Label(label=subtitle, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=1)
@@ -498,6 +505,7 @@ class SimpleCard(Gtk.Box):
             picture.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
 
         load_poster_async(picture, client, image_path, decode_width=width)
+
 
 
 def card_flow(spacing: int = 16) -> Gtk.FlowBox:
