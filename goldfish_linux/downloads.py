@@ -83,14 +83,22 @@ class DownloadManager:
         on_progress: ProgressCB | None = None,
         on_done: DoneCB | None = None,
         on_error: ErrorCB | None = None,
+        profile: str = "",
     ) -> None:
+        """`profile` deckelt Auflösung und Bitrate (etwa "720p") — nützlich für
+        ein Notebook mit wenig Platz, wo ein 80-GB-Film nichts verloren hat.
+        Leer oder "orig" lädt die Datei unverändert.
+
+        Mit einem Profil wandelt der Server vorher um; das dauert einmalig,
+        wird aber zwischengespeichert. Der Deckel wirkt nur, wenn die Datei ihn
+        tatsächlich überschreitet."""
         item_id = int(item["id"])
         if item_id in self._active:
             return
         self._active.add(item_id)
         thread = threading.Thread(
             target=self._download_worker,
-            args=(item, on_progress, on_done, on_error),
+            args=(item, on_progress, on_done, on_error, profile),
             daemon=True,
         )
         thread.start()
@@ -101,10 +109,13 @@ class DownloadManager:
         on_progress: ProgressCB | None,
         on_done: DoneCB | None,
         on_error: ErrorCB | None,
+        profile: str = "",
     ) -> None:
         item_id = int(item["id"])
         try:
-            resp = self.client.download_response(item_id)
+            # Mit Profil über die Kompatibilitätsprüfung des Servers, damit er
+            # die kleinere Fassung erzeugt; ohne Profil unverändert.
+            resp = self.client.download_response(item_id, compat=bool(profile), profile=profile)
         except GoldfishAPIError as exc:
             self._active.discard(item_id)
             if on_error:

@@ -150,6 +150,14 @@ class ViewPrefs:
         if self._data.pop(self._season_key(library_id, folder), None) is not None:
             self._save()
 
+    def alpha_sidebar(self) -> bool:
+        """Ob die Buchstabenleiste erscheint. Standard: ja."""
+        return bool(self._data.get("alphaSidebar", True))
+
+    def set_alpha_sidebar(self, enabled: bool) -> None:
+        self._data["alphaSidebar"] = enabled
+        self._save()
+
     def clear_sort(self, library_id: int, folder: str) -> None:
         if self._data.pop(self._key(library_id, folder), None) is not None:
             self._save()

@@ -25,6 +25,7 @@ from .home_page import HomePage  # noqa: E402
 from .local_page import LocalLibrariesPage  # noqa: E402
 from .music_page import MusicLibraryPage  # noqa: E402
 from .playlists_page import PlaylistsPage  # noqa: E402
+from .settings_page import SettingsPage  # noqa: E402
 
 _KIND_ICON = {"movies": "🎬", "tv": "📺", "music": "🎵", "private": "📁"}
 
@@ -183,6 +184,12 @@ class MainWindow(Adw.ApplicationWindow):
         separator_row.set_child(Gtk.Separator(margin_top=6, margin_bottom=6))
         self.sidebar_list.append(separator_row)
 
+        settings_row = self._build_sidebar_row("⚙  Einstellungen")
+        settings_row.library = None
+        settings_row.is_downloads = False
+        settings_row.special = "settings"
+        self.sidebar_list.append(settings_row)
+
         local_row = self._build_sidebar_row("💾  Eigene Datenträger")
         local_row.library = None
         local_row.is_downloads = False
@@ -220,6 +227,8 @@ class MainWindow(Adw.ApplicationWindow):
             page = PlaylistsPage(self.ctx, self.nav_view)
         elif special == "local":
             page = LocalLibrariesPage(self.ctx, self.nav_view)
+        elif special == "settings":
+            page = SettingsPage(self.ctx, self.nav_view)
         elif row.is_downloads:
             page = DownloadsPage(self.ctx, self.nav_view)
         elif (row.library or {}).get("kind") == "music":

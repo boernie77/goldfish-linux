@@ -71,6 +71,17 @@ class LoginWindow(Adw.ApplicationWindow):
         self.login_button.connect("clicked", self._on_login_clicked)
         box.append(self.login_button)
 
+        # Single-Sign-on nur anbieten, wenn ein eingebetteter Browser
+        # vorhanden ist (WebKit ist eine Empfehlung, keine Abhängigkeit) —
+        # sonst führte der Knopf ins Leere.
+        from .sso_dialog import webkit_available
+
+        if webkit_available():
+            self.sso_button = Gtk.Button(label="Mit Single-Sign-on anmelden")
+            self.sso_button.add_css_class("pill")
+            self.sso_button.connect("clicked", self._on_sso_clicked)
+            box.append(self.sso_button)
+
         self.spinner = Gtk.Spinner()
         box.append(self.spinner)
 
@@ -120,6 +131,35 @@ class LoginWindow(Adw.ApplicationWindow):
             GLib.idle_add(self._on_login_failed, "Anmeldung fehlgeschlagen.")
             return
         GLib.idle_add(self._on_login_ok, server, username)
+
+    def _on_sso_clicked(self, *_args) -> None:
+        """Öffnet die Anmeldeseite des Anmeldedienstes in einem eigenen Fenster.
+
+        Der Server antwortet auf `/api/auth/oidc/login` mit 503, wenn kein
+        Anmeldedienst eingerichtet ist — das wird hier nicht vorab geprüft,
+        sondern im Fenster sichtbar, samt der Begründung des Servers."""
+        server = self.server_row.get_text().strip().rstrip("/")
+        if not server:
+            self._show_error("Bitte zuerst die Server-Adresse eintragen.")
+            return
+        from .sso_dialog import SSOLoginWindow
+
+        def on_token(token: str) -> None:
+            # Der Server hat den Sitzungs-Cookie gesetzt; ab hier ist es eine
+            # gewöhnliche Anmeldung.
+            self.client.set_server(server, token)
+            try:
+                status = self.client.status()
+            except GoldfishAPIError as exc:
+                self._show_error(str(exc))
+                return
+            if not status.logged_in:
+                self._show_error("Die Anmeldung kam nicht durch.")
+                return
+            self._on_login_ok(server, status.username)
+
+        window = SSOLoginWindow(self, server, on_token)
+        window.present()
 
     def _on_login_failed(self, message: str) -> bool:
         self._set_busy(False)

@@ -22,6 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..widgets.alpha_sidebar import AlphaSidebar, first_letter  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
 from .detail_page import DetailPage  # noqa: E402
@@ -56,6 +57,10 @@ class BrowsePage(Adw.NavigationPage):
         self.drilldown = drilldown
         self.toolbar_view = toolbar_view
         self.grid: CardGrid | None = None
+        self.content_box: Gtk.Box | None = None
+        self.alpha: AlphaSidebar | None = None
+        self.all_folders: list[dict] = []
+        self.all_items: list[dict] = []
         self.shown_items: list[dict] = []
         self.search_entry = search_entry
         self.search_entry.connect("search-changed", self._on_search_changed)
@@ -73,6 +78,10 @@ class BrowsePage(Adw.NavigationPage):
             load_genres=self._load_genres,
         )
         header.pack_end(self.filter_bar)
+
+        random_button = Gtk.Button(icon_name="media-playlist-shuffle-symbolic", tooltip_text="Zufällig abspielen")
+        random_button.connect("clicked", lambda *_: self._play_random())
+        header.pack_start(random_button)
 
         self._show_loading()
         self._load()
@@ -119,6 +128,8 @@ class BrowsePage(Adw.NavigationPage):
             )
             status.set_vexpand(True)
             self.grid = None
+            self.content_box = None
+            self.alpha = None
             self.shown_items = []
             self.toolbar_view.set_content(status)
             return
@@ -136,9 +147,36 @@ class BrowsePage(Adw.NavigationPage):
                 on_toggle_favorite=self._toggle_favorite,
             )
         self.shown_items = items
+        self.all_folders = folders
+        self.all_items = items
+        self._apply_alpha()
+
+        if self.content_box is None:
+            # Raster und Buchstabenleiste nebeneinander. Die Leiste kommt nur,
+            # wenn sie in den Einstellungen aktiv ist.
+            self.content_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            self.content_box.append(self.grid)
+            if self.ctx.view_prefs.alpha_sidebar():
+                self.alpha = AlphaSidebar(on_select=lambda letter: self._apply_alpha())
+                self.content_box.append(self.alpha)
+        if self.toolbar_view.get_content() is not self.content_box:
+            self.toolbar_view.set_content(self.content_box)
+
+    def _apply_alpha(self) -> None:
+        """Filtert auf den gewählten Anfangsbuchstaben.
+
+        Clientseitig, weil der Server dafür keinen Filter kennt — und weil die
+        Liste ohnehin schon geladen ist. Ordner und Videos werden gleich
+        behandelt, sonst verschwände beim Filtern die halbe Ansicht."""
+        letter = self.alpha.active if self.alpha is not None else None
+        if letter is None:
+            self.grid.set_content(self.all_folders, self.all_items)
+            self.shown_items = self.all_items
+            return
+        folders = [f for f in self.all_folders if first_letter(_folder_label(f)) == letter]
+        items = [i for i in self.all_items if first_letter(_item_label(i)) == letter]
+        self.shown_items = items
         self.grid.set_content(folders, items)
-        if self.toolbar_view.get_content() is not self.grid:
-            self.toolbar_view.set_content(self.grid)
 
     # -- Kachel-Abzeichen ------------------------------------------------
 
@@ -226,6 +264,31 @@ class BrowsePage(Adw.NavigationPage):
             )
         self._load(search=self.search_text)
 
+    def _play_random(self) -> None:
+        """Zufälliges Video aus dem aktuellen Bereich.
+
+        Der Bereich folgt derselben Regel wie im Browser: im Ordner nur dessen
+        Inhalt, in der Wurzel die ganze Bibliothek. Die aktiven Filter gelten
+        mit, damit "zufällig" zu dem passt, was man gerade sieht."""
+        f = self.filters
+
+        def worker() -> None:
+            try:
+                item = self.ctx.client.random_item(
+                    library_id=self.library["id"],
+                    folder=self.folder,
+                    search=self.search_text,
+                )
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._toast, f"Kein Zufallstreffer: {exc}")
+                return
+            if not item:
+                GLib.idle_add(self._toast, "Kein passendes Video gefunden.")
+                return
+            GLib.idle_add(self._open_detail, item)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _load_genres(self) -> list[str]:
         """Wird vom Filtermenü beim ersten Öffnen aufgerufen. Läuft bewusst
         synchron: der Aufruf steckt im Öffnen des Menüs, und die Liste kommt in
@@ -238,6 +301,10 @@ class BrowsePage(Adw.NavigationPage):
     # -- Laden --------------------------------------------------------
 
     def _load(self, search: str = "") -> None:
+        # Ein neuer Ladevorgang (Suche, Filter) hebt den Buchstabenfilter auf —
+        # sonst bliebe die neue Liste unerklärlich leer.
+        if self.alpha is not None:
+            self.alpha.reset()
         self._show_loading()
         threading.Thread(target=self._load_worker, args=(search,), daemon=True).start()
 
@@ -315,3 +382,13 @@ class BrowsePage(Adw.NavigationPage):
             GLib.idle_add(self._show_error, f"Unerwarteter Fehler: {exc}")
             return
         GLib.idle_add(self._show_results, folders, items)
+
+
+def _folder_label(folder: dict) -> str:
+    metadata = folder.get("metadata") or {}
+    return metadata.get("title") or (folder.get("name") or "").rsplit("/", 1)[-1]
+
+
+def _item_label(item: dict) -> str:
+    metadata = item.get("metadata") or {}
+    return metadata.get("title") or item.get("title") or ""

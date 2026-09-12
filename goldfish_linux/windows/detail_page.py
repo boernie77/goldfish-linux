@@ -391,6 +391,8 @@ class DetailPage(Adw.NavigationPage):
     def _on_profile_changed(self, drop: Gtk.DropDown, _param) -> None:
         profile = self._profiles[drop.get_selected()]
         self.chosen_profile = "" if profile.id == "orig" else profile.id
+        # Die Wahl gilt auch für den Download — das soll am Knopf stehen.
+        self._refresh_download_ui()
 
     # -- Wiedergabe ------------------------------------------------------
 
@@ -570,7 +572,15 @@ class DetailPage(Adw.NavigationPage):
             self.download_box.append(row)
             spinner.start()  # erst nach dem Einhängen, sonst fehlt die Frame-Clock
         else:
-            download_button = Gtk.Button(label="⬇ Herunterladen")
+            label = "⬇ Herunterladen"
+            if self.chosen_profile:
+                label = f"⬇ Herunterladen ({self.chosen_profile})"
+            download_button = Gtk.Button(label=label)
+            download_button.set_tooltip_text(
+                "Lädt in der oben gewählten Qualität — nützlich, wenn der Platz knapp ist."
+                if self.chosen_profile
+                else "Lädt die Originaldatei. Für eine kleinere Fassung oben eine Qualität wählen."
+            )
             download_button.connect("clicked", self._on_download_clicked)
             self.download_box.append(download_button)
 
@@ -582,11 +592,16 @@ class DetailPage(Adw.NavigationPage):
             child = nxt
         self.progress_bar = Gtk.ProgressBar(show_text=True)
         self.download_box.append(self.progress_bar)
+        if self.chosen_profile:
+            # Mit gewählter Qualität wandelt der Server vorher um; das dauert
+            # einmalig und ist am Fortschritt noch nicht zu sehen.
+            self.progress_bar.set_text("Wird vorbereitet …")
         self.ctx.downloads.start_download(
             self.item,
             on_progress=self._on_download_progress,
             on_done=self._on_download_done,
             on_error=self._on_download_error,
+            profile=self.chosen_profile,
         )
 
     def _on_download_progress(self, item_id: int, fraction: float) -> bool:

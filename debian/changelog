@@ -1,3 +1,21 @@
+goldfish-linux (0.1.16-1) unstable; urgency=medium
+
+  * Neu: Einstellungen in der Seitenleiste — eigenes Passwort ändern,
+    Gesehen-Sync mit einem anderen Benutzer (anfragen, bestätigen, trennen),
+    Startseite und Reiterleiste zusammenstellen, Buchstabenleiste ein- und
+    ausschalten, abmelden.
+  * Neu: Anmeldung über Single-Sign-on (Authentik). Erscheint nur, wenn ein
+    eingebetteter Browser vorhanden ist — WebKit ist eine Empfehlung, keine
+    Voraussetzung. Anmeldung mit Benutzername und Passwort bleibt unberührt.
+  * Neu: Buchstabenleiste am rechten Rand filtert lange Listen auf einen
+    Anfangsbuchstaben; ein zweiter Klick hebt den Filter auf.
+  * Neu: Knopf für Zufallswiedergabe in jeder Bibliothek. Der Bereich folgt
+    dem, was man gerade sieht — im Ordner nur dessen Inhalt.
+  * Neu: Downloads in kleinerer Qualität. Die Auswahl in der Detailansicht
+    gilt auch für den Download; der Knopf zeigt die gewählte Stufe.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 21:05:00 +0200
+
 goldfish-linux (0.1.15-1) unstable; urgency=medium
 
   * Neu: eigene Datenträger. Ordner und angeschlossene Platten lassen sich als
