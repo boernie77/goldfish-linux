@@ -184,7 +184,94 @@ class DetailPage(Adw.NavigationPage):
         self._update_favorite_label()
         self.favorite_toggle.connect("toggled", self._on_favorite_toggled)
         row.append(self.favorite_toggle)
+
+        playlist_button = Gtk.Button(label="📋 Zu Playlist")
+        playlist_button.connect("clicked", lambda *_: self._open_playlist_dialog())
+        row.append(playlist_button)
         return row
+
+    # -- Zu Playlist hinzufügen ------------------------------------------
+
+    def _open_playlist_dialog(self) -> None:
+        """Zeigt die passenden Playlists mit Häkchen für die, in denen der
+        Titel schon liegt. Video und Musik sind getrennt — die Art richtet sich
+        nach der Bibliothek, damit ein Musiktitel nicht in einer Videoliste
+        landet (so hält es der Server ebenfalls)."""
+
+        def worker() -> None:
+            kind = "music" if self.ctx.library_kind(self.item.get("libraryId")) == "music" else "video"
+            try:
+                playlists = self.ctx.client.playlists(kind)
+                current = {int(p["id"]) for p in self.ctx.client.playlists_for_item(self.item_id)}
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._toast, f"Playlists nicht abrufbar: {exc}")
+                return
+            GLib.idle_add(self._show_playlist_dialog, playlists, current, kind)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_playlist_dialog(self, playlists: list[dict], current: set[int], kind: str) -> bool:
+        dialog = Adw.MessageDialog(transient_for=self.ctx.window, heading="Zu Playlist hinzufügen")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+
+        if playlists:
+            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+            listbox.add_css_class("boxed-list")
+            for pl in playlists:
+                inside = int(pl["id"]) in current
+                row = Adw.ActionRow(
+                    title=pl.get("name") or "",
+                    subtitle="schon enthalten" if inside else f"{pl.get('itemCount') or 0} Titel",
+                    activatable=True,
+                )
+                row.add_suffix(Gtk.Image(icon_name="object-select-symbolic" if inside else "list-add-symbolic"))
+                row.connect("activated", lambda _r, p=pl: self._add_to_playlist(p, dialog))
+                listbox.append(row)
+            scroll = Gtk.ScrolledWindow(child=listbox, propagate_natural_height=True, max_content_height=320)
+            box.append(scroll)
+        else:
+            box.append(Gtk.Label(label="Noch keine passende Playlist vorhanden.", wrap=True))
+
+        box.append(Gtk.Separator(margin_top=6))
+        entry = Gtk.Entry(placeholder_text="Neue Playlist anlegen und hinzufügen")
+        entry.connect("activate", lambda e: self._create_and_add(e.get_text().strip(), kind, dialog))
+        box.append(entry)
+
+        dialog.set_extra_child(box)
+        dialog.add_response("close", "Fertig")
+        dialog.present()
+        return False
+
+    def _add_to_playlist(self, playlist: dict, dialog: Adw.MessageDialog) -> None:
+        def worker() -> None:
+            try:
+                added = self.ctx.client.add_to_playlist(int(playlist["id"]), self.item_id)
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._toast, str(exc))
+                return
+            name = playlist.get("name") or ""
+            # Der Server unterscheidet "hinzugefügt" von "war schon drin" —
+            # das gehört auch so gemeldet, sonst klickt man zweimal.
+            GLib.idle_add(self._toast, f"Zu „{name}“ hinzugefügt" if added else f"Ist bereits in „{name}“")
+
+        threading.Thread(target=worker, daemon=True).start()
+        dialog.close()
+
+    def _create_and_add(self, name: str, kind: str, dialog: Adw.MessageDialog) -> None:
+        if not name:
+            return
+
+        def worker() -> None:
+            try:
+                created = self.ctx.client.create_playlist(name, kind)
+                self.ctx.client.add_to_playlist(int(created["id"]), self.item_id)
+            except (GoldfishAPIError, KeyError, TypeError) as exc:
+                GLib.idle_add(self._toast, f"Anlegen fehlgeschlagen: {exc}")
+                return
+            GLib.idle_add(self._toast, f"„{name}“ angelegt und Titel hinzugefügt")
+
+        threading.Thread(target=worker, daemon=True).start()
+        dialog.close()
 
     # -- Spuren, Qualität, Versionen, Trailer ----------------------------
 

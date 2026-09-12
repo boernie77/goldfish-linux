@@ -28,6 +28,9 @@ from ..formatting import format_duration, format_resolution  # noqa: E402
 from .poster import load_poster_async  # noqa: E402
 
 CARD_WIDTH = 168
+# Breitformatige Kacheln (Standbilder von Folgen, Privatvideos) dürfen mehr
+# Fläche haben — bei 168 px wären sie nur 94 px hoch und kaum zu erkennen.
+CARD_WIDTH_WIDE = 240
 
 # Seitenverhältnis je Bibliotheksart — dieselbe Aufteilung wie im Browser.
 _ASPECT = {
@@ -38,9 +41,9 @@ _ASPECT = {
 }
 
 
-def card_height_for(kind: str) -> int:
+def card_height_for(kind: str, width: int = CARD_WIDTH) -> int:
     """Bildhöhe einer Kachel dieser Bibliotheksart."""
-    return int(CARD_WIDTH * _ASPECT.get(kind, 3 / 2))
+    return int(width * _ASPECT.get(kind, 3 / 2))
 
 
 _CSS = b"""
@@ -116,13 +119,24 @@ class CardWidget(Gtk.Box):
         self.item: dict | None = None
 
         self.set_size_request(CARD_WIDTH, -1)
+        # halign ist hier der entscheidende Teil: ohne ihn streckt ein
+        # Container mit Restplatz die Kachel über ihre Sollbreite. Gemessen:
+        # 283 px statt 168 für die erste Kachel eines Streifens auf der
+        # Startseite, während die Bildtextur korrekt 168 px breit war.
+        self.set_hexpand(False)
+        self.set_halign(Gtk.Align.START)
+        self.set_valign(Gtk.Align.START)
 
         # -- Bildbereich mit Abzeichen --
         self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
         self.picture.set_size_request(CARD_WIDTH, card_height_for(kind))
+        self.picture.set_hexpand(False)
         self.picture.add_css_class("gf-card-image")
 
         self.overlay = Gtk.Overlay(child=self.picture)
+        self.overlay.set_hexpand(False)
+        self.overlay.set_halign(Gtk.Align.START)
+        self.overlay.set_overflow(Gtk.Overflow.HIDDEN)
 
         self.watched_btn = Gtk.Button(
             icon_name="object-select-symbolic",
@@ -182,6 +196,12 @@ class CardWidget(Gtk.Box):
         self.append(self.overlay)
 
         # -- Textzeilen --
+        # `width_request` ist hier wichtig, nicht bloß Kosmetik: ohne feste
+        # Breite fordert ein Label seine natürliche Textbreite an, und ein
+        # langer Titel zieht damit die ganze Kachel breiter. Im Raster fällt
+        # das nicht auf (dort sind alle Zellen gleich breit), in einem
+        # waagerechten Streifen auf der Startseite dagegen sofort — eine
+        # Kachel stand dort deutlich breiter neben ihren Nachbarn.
         self.title_label = Gtk.Label(
             xalign=0,
             wrap=True,
@@ -189,6 +209,7 @@ class CardWidget(Gtk.Box):
             lines=2,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,  # erlaubt Umbruch auf Kachelbreite
+            width_request=CARD_WIDTH,
         )
         self.title_label.add_css_class("gf-card-title")
         self.append(self.title_label)
@@ -197,6 +218,7 @@ class CardWidget(Gtk.Box):
             xalign=0,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,
+            width_request=CARD_WIDTH,
         )
         self.sub_label.add_css_class("gf-card-sub")
         self.append(self.sub_label)
@@ -253,7 +275,7 @@ class CardWidget(Gtk.Box):
         self._apply_watched(bool(item.get("watched")))
         self._apply_favorite(bool(item.get("favorite")))
 
-        load_poster_async(self.picture, self.client, self.client.poster_path_for_item(item))
+        load_poster_async(self.picture, self.client, self.client.poster_path_for_item(item), decode_width=CARD_WIDTH)
 
     def unbind(self) -> None:
         """Vom GridView beim Recycling gerufen: laufendes Poster-Laden
@@ -343,6 +365,7 @@ class FolderCardWidget(Gtk.Box):
             lines=2,
             ellipsize=Pango.EllipsizeMode.END,
             max_width_chars=1,
+            width_request=CARD_WIDTH,
         )
         self.title_label.add_css_class("gf-card-title")
         self.append(self.title_label)
@@ -378,7 +401,7 @@ class FolderCardWidget(Gtk.Box):
             path = f"/api/poster/metadata/{folder['metadataId']}"
         elif folder.get("thumbItemId"):
             path = f"/api/thumb/{folder['thumbItemId']}"
-        load_poster_async(self.picture, self.client, path)
+        load_poster_async(self.picture, self.client, path, decode_width=CARD_WIDTH)
 
     def unbind(self) -> None:
         self.folder = None
@@ -387,3 +410,113 @@ class FolderCardWidget(Gtk.Box):
     def _on_clicked(self, *_args) -> None:
         if self.folder and self.on_activate:
             self.on_activate(self.folder)
+
+
+class SimpleCard(Gtk.Box):
+    """Kachel für alles, was kein Item und kein Ordner ist: Staffeln,
+    Sammlungen, Playlists, Episoden aus der Staffelübersicht und Filme, die
+    zu einer Sammlung gehören, aber nicht vorhanden sind.
+
+    Anders als `CardWidget` wird sie nicht wiederverwendet, sondern für ihren
+    Inhalt gebaut — diese Listen sind kurz (Staffeln einer Serie, Teile einer
+    Sammlung), da lohnt die Umschaltmechanik nicht.
+
+    `dimmed` blendet zurück, was nicht vorhanden ist; `badge` steht unten
+    rechts, `corner` oben links.
+    """
+
+    def __init__(
+        self,
+        client: GoldfishClient,
+        image_path: str | None,
+        title: str,
+        subtitle: str = "",
+        badge: str = "",
+        corner: str = "",
+        aspect: str = "movies",
+        dimmed: bool = False,
+        on_click: Callable[[], None] | None = None,
+        tooltip: str = "",
+    ) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        ensure_card_css()
+        width = CARD_WIDTH_WIDE if aspect == "private" else CARD_WIDTH
+        self.set_size_request(width, -1)
+        # Nicht mitwachsen: sonst gibt die FlowBox der Kachel die natürliche
+        # Breite des geladenen Bildes (320 px) statt der Sollbreite.
+        self.set_hexpand(False)
+        self.set_halign(Gtk.Align.START)
+        self.set_valign(Gtk.Align.START)
+        self.on_click = on_click
+
+        picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
+        picture.set_size_request(width, card_height_for(aspect, width))
+        picture.set_hexpand(False)
+        picture.add_css_class("gf-card-image")
+        overlay = Gtk.Overlay(child=picture)
+        overlay.set_hexpand(False)
+        # Zuschneiden statt überlaufen lassen, damit ein breiteres Bild die
+        # Kachelbreite nicht sprengt.
+        overlay.set_overflow(Gtk.Overflow.HIDDEN)
+
+        if corner:
+            label = Gtk.Label(label=corner, halign=Gtk.Align.START, valign=Gtk.Align.START, margin_start=6, margin_top=6)
+            label.add_css_class("gf-badge")
+            overlay.add_overlay(label)
+        if badge:
+            label = Gtk.Label(label=badge, halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6)
+            label.add_css_class("gf-badge")
+            overlay.add_overlay(label)
+        self.append(overlay)
+
+        title_label = Gtk.Label(
+            label=title,
+            xalign=0,
+            wrap=True,
+            wrap_mode=Pango.WrapMode.WORD_CHAR,
+            lines=2,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=width,
+        )
+        title_label.add_css_class("gf-card-title")
+        self.append(title_label)
+
+        if subtitle:
+            sub_label = Gtk.Label(label=subtitle, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=1)
+            sub_label.add_css_class("gf-card-sub")
+            self.append(sub_label)
+
+        if dimmed:
+            self.set_opacity(0.45)
+        if tooltip:
+            self.set_tooltip_text(tooltip)
+        if on_click is not None:
+            click = Gtk.GestureClick()
+            click.connect("released", lambda *_: self.on_click and self.on_click())
+            picture.add_controller(click)
+            picture.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+
+        load_poster_async(picture, client, image_path, decode_width=width)
+
+
+def card_flow(spacing: int = 16) -> Gtk.FlowBox:
+    """Fließendes Raster für kurze Listen aus `SimpleCard`.
+
+    Hier ist FlowBox richtig, anders als bei den Bibliotheken: eine Serie hat
+    eine Handvoll Staffeln, eine Sammlung ein paar Teile. Die Umschaltmechanik
+    eines GridView bräuchte man erst bei hunderten Kacheln."""
+    flow = Gtk.FlowBox(
+        selection_mode=Gtk.SelectionMode.NONE,
+        homogeneous=False,
+        column_spacing=spacing,
+        row_spacing=spacing,
+        max_children_per_line=12,
+        min_children_per_line=1,
+        margin_start=16,
+        margin_end=16,
+        margin_top=12,
+        margin_bottom=24,
+        valign=Gtk.Align.START,
+    )
+    return flow

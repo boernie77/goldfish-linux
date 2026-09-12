@@ -58,13 +58,24 @@ def _next_generation(picture: Gtk.Picture) -> int:
     return gen
 
 
-def load_poster_async(picture: Gtk.Picture, client: GoldfishClient, server_path: str | None) -> None:
+def load_poster_async(
+    picture: Gtk.Picture,
+    client: GoldfishClient,
+    server_path: str | None,
+    decode_width: int = _DECODE_WIDTH,
+) -> None:
     """Lädt das Poster für `server_path` in `picture`.
 
     Der Aufrufer setzt vorher selbst einen Platzhalter — hier wird nur
     ersetzt, sobald echte Daten da sind. Bei Wiederverwendung des Widgets
     einfach erneut aufrufen, auch mit `None`, um ein noch unterwegs
-    befindliches Ergebnis zu verwerfen."""
+    befindliches Ergebnis zu verwerfen.
+
+    `decode_width` sollte der Anzeigebreite entsprechen: `Gtk.Picture` meldet
+    die Pixelbreite des geladenen Bildes als seine natürliche Breite, und ein
+    fließendes Raster richtet die Kachelgröße danach aus. Ein zu groß
+    dekodiertes Bild macht die Kachel also breiter als gewollt — genau so
+    passten in der Folgenübersicht nur zwei Kacheln pro Zeile statt drei."""
     gen = _next_generation(picture)
     if not server_path:
         return
@@ -74,9 +85,9 @@ def load_poster_async(picture: Gtk.Picture, client: GoldfishClient, server_path:
         # Aus dem Cache synchron: bei einem Bild von der lokalen Platte ist
         # der Thread-Umweg teurer als das Dekodieren selbst, und die Kachel
         # steht ohne Nachflackern sofort fertig da.
-        _apply_from_file(picture, cache_file, gen)
+        _apply_from_file(picture, cache_file, gen, decode_width)
         return
-    _POOL.submit(_fetch_and_apply, picture, client, server_path, cache_file, gen)
+    _POOL.submit(_fetch_and_apply, picture, client, server_path, cache_file, gen, decode_width)
 
 
 def _fetch_and_apply(
@@ -85,22 +96,28 @@ def _fetch_and_apply(
     server_path: str,
     cache_file,
     gen: int,
+    decode_width: int = _DECODE_WIDTH,
 ) -> None:
     # Vor dem Netzwerkzugriff prüfen: wer lange in der Warteschlange stand,
     # zeigt womöglich längst ein anderes Item und kann sich die Anfrage sparen.
     if getattr(picture, "_goldfish_poster_gen", 0) != gen:
         return
-    data = client.fetch_bytes(server_path)
+    # Vollständige Adressen gehen an ihr Ziel (TMDB liefert Standbilder und
+    # Poster direkt aus), Pfade an den eigenen Server.
+    if server_path.startswith(("http://", "https://")):
+        data = client.fetch_external_bytes(server_path)
+    else:
+        data = client.fetch_bytes(server_path)
     if not data:
         return
     try:
         cache_file.write_bytes(data)
     except OSError:
         pass  # Cache beschleunigt nur — z. B. Platte voll ist kein Fehler
-    GLib.idle_add(_apply_from_bytes, picture, data, gen)
+    GLib.idle_add(_apply_from_bytes, picture, data, gen, decode_width)
 
 
-def _texture_from_bytes(data: bytes) -> Gdk.Texture | None:
+def _texture_from_bytes(data: bytes, decode_width: int = _DECODE_WIDTH) -> Gdk.Texture | None:
     """Dekodiert und skaliert auf `_DECODE_WIDTH` herunter.
 
     Über `new_from_stream_at_scale` und nicht über `PixbufLoader.set_size`:
@@ -112,7 +129,7 @@ def _texture_from_bytes(data: bytes) -> Gdk.Texture | None:
     Originals ist hier ja gerade unbekannt."""
     stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(data))
     try:
-        pixbuf = GdkPixbuf.Pixbuf.new_from_stream_at_scale(stream, _DECODE_WIDTH, -1, True, None)
+        pixbuf = GdkPixbuf.Pixbuf.new_from_stream_at_scale(stream, decode_width, -1, True, None)
     except GLib.Error:
         return None
     finally:
@@ -122,22 +139,22 @@ def _texture_from_bytes(data: bytes) -> Gdk.Texture | None:
     return Gdk.Texture.new_for_pixbuf(pixbuf)
 
 
-def _apply_from_bytes(picture: Gtk.Picture, data: bytes, gen: int) -> bool:
+def _apply_from_bytes(picture: Gtk.Picture, data: bytes, gen: int, decode_width: int = _DECODE_WIDTH) -> bool:
     if getattr(picture, "_goldfish_poster_gen", 0) != gen:
         return False  # Widget zeigt inzwischen ein anderes Item
-    texture = _texture_from_bytes(data)
+    texture = _texture_from_bytes(data, decode_width)
     if texture is not None:
         picture.set_paintable(texture)
     return False  # GLib.idle_add: einmalig ausführen
 
 
-def _apply_from_file(picture: Gtk.Picture, path, gen: int) -> None:
+def _apply_from_file(picture: Gtk.Picture, path, gen: int, decode_width: int = _DECODE_WIDTH) -> None:
     if getattr(picture, "_goldfish_poster_gen", 0) != gen:
         return
     try:
         data = path.read_bytes()
     except OSError:
         return
-    texture = _texture_from_bytes(data)
+    texture = _texture_from_bytes(data, decode_width)
     if texture is not None:
         picture.set_paintable(texture)

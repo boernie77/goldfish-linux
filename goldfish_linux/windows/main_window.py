@@ -14,8 +14,12 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from .. import __version__  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
+from ..config import ViewPrefs  # noqa: E402
 from .browse_page import BrowsePage  # noqa: E402
+from .collections_page import CollectionsPage  # noqa: E402
 from .downloads_page import DownloadsPage  # noqa: E402
+from .home_page import HomePage  # noqa: E402
+from .playlists_page import PlaylistsPage  # noqa: E402
 
 _KIND_ICON = {"movies": "🎬", "tv": "📺", "music": "🎵", "private": "📁"}
 
@@ -29,6 +33,19 @@ class AppContext:
         self.window = window
         self.client = client
         self.downloads = downloads
+        # Eine gemeinsame Instanz: die Seiten schreiben dieselbe Datei, und
+        # zwei eigene Instanzen würden sich gegenseitig überschreiben.
+        self.view_prefs = ViewPrefs()
+        # Art je Bibliothek, einmal beim Laden gefüllt — Seiten, die nur eine
+        # Bibliotheks-ID kennen (etwa die Detailansicht), brauchen sie für
+        # Entscheidungen wie Video- oder Musik-Playlist.
+        self.library_kinds: dict[int, str] = {}
+
+    def library_kind(self, library_id) -> str:
+        try:
+            return self.library_kinds.get(int(library_id), "")
+        except (TypeError, ValueError):
+            return ""
 
 
 class MainWindow(Adw.ApplicationWindow):
@@ -89,12 +106,9 @@ class MainWindow(Adw.ApplicationWindow):
         split_view.set_sidebar(sidebar_page)
 
         self.nav_view = Adw.NavigationView()
-        placeholder = Adw.StatusPage(
-            icon_name="io.github.boernie77.GoldfishLinux",
-            title="Goldfish",
-            description="Wähle links eine Bibliothek aus.",
-        )
-        self.nav_view.push(Adw.NavigationPage(title="Goldfish", child=placeholder, tag="placeholder"))
+        # Die Startseite ist der Einstieg, wie in allen anderen Clients — ein
+        # leeres "Wähle links etwas aus" verschenkt den ersten Blick.
+        self.nav_view.push(HomePage(self.ctx, self.nav_view))
         content_page = Adw.NavigationPage(title="Goldfish", child=self.nav_view, tag="content-root")
         split_view.set_content(content_page)
 
@@ -122,10 +136,26 @@ class MainWindow(Adw.ApplicationWindow):
         GLib.idle_add(self._populate_sidebar, libraries)
 
     def _populate_sidebar(self, libraries: list[dict]) -> None:
+        self.ctx.library_kinds = {int(lib["id"]): (lib.get("kind") or "") for lib in libraries if lib.get("id")}
+        # Zuerst die übergreifenden Ansichten, dann die Bibliotheken — dieselbe
+        # Ordnung wie im Browser, wo Startseite, Sammlungen und Playlists eigene
+        # Knöpfe in der Kopfzeile haben.
+        for label, key in (("🏠  Startseite", "home"), ("📚  Sammlungen", "collections"), ("📋  Playlists", "playlists")):
+            row = self._build_sidebar_row(label)
+            row.library = None
+            row.is_downloads = False
+            row.special = key
+            self.sidebar_list.append(row)
+
+        divider = Gtk.ListBoxRow(selectable=False, activatable=False)
+        divider.set_child(Gtk.Separator(margin_top=6, margin_bottom=6))
+        self.sidebar_list.append(divider)
+
         for library in libraries:
             row = self._build_sidebar_row(f"{_KIND_ICON.get(library.get('kind'), '📁')}  {library['name']}")
             row.library = library
             row.is_downloads = False
+            row.special = ""
             self.sidebar_list.append(row)
 
         separator_row = Gtk.ListBoxRow(selectable=False, activatable=False)
@@ -135,6 +165,7 @@ class MainWindow(Adw.ApplicationWindow):
         downloads_row = self._build_sidebar_row("⬇  Downloads")
         downloads_row.library = None
         downloads_row.is_downloads = True
+        downloads_row.special = ""
         self.sidebar_list.append(downloads_row)
 
     @staticmethod
@@ -153,7 +184,14 @@ class MainWindow(Adw.ApplicationWindow):
         while self.nav_view.get_navigation_stack().get_n_items() > 1:
             self.nav_view.pop()
 
-        if row.is_downloads:
+        special = getattr(row, "special", "")
+        if special == "home":
+            page = HomePage(self.ctx, self.nav_view)
+        elif special == "collections":
+            page = CollectionsPage(self.ctx, self.nav_view)
+        elif special == "playlists":
+            page = PlaylistsPage(self.ctx, self.nav_view)
+        elif row.is_downloads:
             page = DownloadsPage(self.ctx, self.nav_view)
         else:
             page = BrowsePage(self.ctx, self.nav_view, row.library)

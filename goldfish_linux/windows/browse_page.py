@@ -22,7 +22,6 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
-from ..config import ViewPrefs  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
 from .detail_page import DetailPage  # noqa: E402
@@ -62,7 +61,7 @@ class BrowsePage(Adw.NavigationPage):
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_text = ""
 
-        self.view_prefs = ViewPrefs()
+        self.view_prefs = ctx.view_prefs
         self.filters = FilterState()
         remembered = self.view_prefs.get_sort(library["id"], folder)
         if remembered is not None:
@@ -175,14 +174,34 @@ class BrowsePage(Adw.NavigationPage):
     # -- Aktionen -----------------------------------------------------
 
     def _open_folder(self, folder: dict) -> None:
-        page = BrowsePage(
-            self.ctx,
-            self.nav_view,
-            self.library,
-            folder=folder["name"],
-            drilldown=bool(folder.get("drilldown")),
+        """Serienordner öffnen die Staffelansicht, alles andere die
+        Ordneransicht.
+
+        Nur auf der obersten Ebene einer Serien-Bibliothek: dort ist ein Ordner
+        eine Serie. Tiefer liegende Ordner sind Staffel- oder Release-Ordner und
+        haben keine eigene Staffelstruktur. Hat sich die Staffelansicht für
+        diesen Ordner schon einmal als Sackgasse erwiesen (kein
+        TMDB-Staffelgerüst), bleibt es bei der Ordneransicht."""
+        name = folder["name"]
+        if (
+            (self.library.get("kind") == "tv")
+            and not self.folder
+            and self.ctx.view_prefs.season_view(self.library["id"], name)
+        ):
+            from .seasons_page import SeasonsPage
+
+            self.nav_view.push(SeasonsPage(self.ctx, self.nav_view, self.library, name))
+            return
+
+        self.nav_view.push(
+            BrowsePage(
+                self.ctx,
+                self.nav_view,
+                self.library,
+                folder=name,
+                drilldown=bool(folder.get("drilldown")),
+            )
         )
-        self.nav_view.push(page)
 
     def _open_detail(self, item: dict) -> None:
         # Die gerade gezeigte Liste als Warteschlange mitgeben, damit am Ende

@@ -125,6 +125,30 @@ class ViewPrefs:
         self._data[self._key(library_id, folder)] = {"sort": sort, "ascending": ascending}
         self._save()
 
+    @staticmethod
+    def _season_key(library_id: int, folder: str) -> str:
+        return f"seasonView:{library_id}:{folder}"
+
+    def season_view(self, library_id: int, folder: str) -> bool:
+        """Ob dieser Serienordner die Staffelansicht zeigt.
+
+        Standard ist an, wie im Browser. Ein ausdrückliches Aus entsteht, wenn
+        der Server für den Ordner keine Staffelstruktur liefert — dann wäre
+        die Ansicht eine Sackgasse."""
+        return bool(self._data.get(self._season_key(library_id, folder), True))
+
+    def set_season_view(self, library_id: int, folder: str, enabled: bool) -> None:
+        self._data[self._season_key(library_id, folder)] = enabled
+        self._save()
+
+    def clear_season_view(self, library_id: int, folder: str) -> None:
+        """Merker verwerfen — nötig, sobald der Ordner zugeordnet wurde und
+        Staffeln vorhanden sein könnten. Der Browser hatte hier lange einen
+        Fehler: ein einmal gesetztes Aus blieb für immer stehen, und die
+        Serie zeigte selbst nach einer korrekten Zuordnung nie Staffeln."""
+        if self._data.pop(self._season_key(library_id, folder), None) is not None:
+            self._save()
+
     def clear_sort(self, library_id: int, folder: str) -> None:
         if self._data.pop(self._key(library_id, folder), None) is not None:
             self._save()

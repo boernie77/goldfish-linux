@@ -1,3 +1,29 @@
+goldfish-linux (0.1.12-1) unstable; urgency=medium
+
+  * Neu: Startseite als Einstieg — pro Bibliothek die Streifen Fortsetzen,
+    Als nächstes und Zuletzt hinzugefügt, waagerecht scrollbar. Ein Klick auf
+    den Bibliotheksnamen öffnet sie ganz.
+  * Neu: Staffelansicht für Serien. Staffeln als Kacheln mit "vorhanden/gesamt",
+    darin die Folgen mit Standbild und Laufzeit; fehlende Folgen erscheinen
+    zurückgeblendet mit dem Hinweis "Fehlt". Passt die Ordnerstruktur nicht zu
+    TMDB-Staffeln, übernimmt weiterhin die Ordneransicht.
+  * Neu: Sammlungen — Filmreihen mit "vorhanden/gesamt", darin alle Teile
+    chronologisch. Fehlende sind zurückgeblendet, noch nicht erschienene als
+    "Bald" gekennzeichnet.
+  * Neu: Playlists ansehen, anlegen, umbenennen und löschen; Video und Musik
+    bleiben getrennt. In der Detailansicht führt ein neuer Knopf zum
+    Hinzufügen, mit Häkchen für Listen, in denen der Titel schon liegt.
+  * Neu: Startseite, Sammlungen und Playlists sind über die Seitenleiste
+    erreichbar.
+  * Fix: eine Kachel mit langem Titel wurde breiter als ihre Nachbarn —
+    gemessen 283 statt 168 Pixel im Streifen der Startseite.
+  * Fix: war der Server beim Starten kurz nicht erreichbar, wurde die
+    gespeicherte Anmeldung verworfen und man musste sich neu anmelden. Sie
+    wird jetzt nur noch verworfen, wenn der Server die Sitzung ausdrücklich
+    ablehnt.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 18:40:00 +0200
+
 goldfish-linux (0.1.11-1) unstable; urgency=medium
 
   * Neu: eigene Steuerleiste im Wiedergabefenster — Abspielen und Pause,

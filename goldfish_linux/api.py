@@ -779,6 +779,32 @@ class GoldfishClient:
             raise GoldfishAPIError(f"Download fehlgeschlagen: HTTP {resp.status_code}", status=resp.status_code)
         return resp
 
+    def fetch_external_bytes(self, url: str, timeout: float = 10) -> bytes | None:
+        """Ein Bild von einer fremden Adresse holen — für die Standbilder und
+        Poster, die TMDB direkt ausliefert (`image.tmdb.org`). Der Browser
+        macht das genauso; einen Weg über den eigenen Server gibt es für
+        beliebige TMDB-Pfade nicht.
+
+        Bewusst OHNE die eigene Sitzung: `requests.get` statt `self.session`,
+        damit der Anmelde-Cookie nicht an Dritte gehen kann. Er ist zwar an
+        die eigene Domain gebunden und würde ohnehin nicht mitgesendet, aber
+        eine eigene Anfrage macht das unmissverständlich."""
+        try:
+            resp = requests.get(url, timeout=timeout)
+        except requests.RequestException:
+            return None
+        if resp.status_code != 200:
+            return None
+        return resp.content
+
+    def tmdb_image_url(self, path: str | None, size: str = "w342") -> str | None:
+        """Vollständige TMDB-Bildadresse aus einem Pfad wie `/abc123.jpg`.
+        Größen wie im Browser: w342 für Kacheln, w500 für große Poster,
+        w185 für Portraits."""
+        if not path:
+            return None
+        return f"https://image.tmdb.org/t/p/{size}{path}"
+
     def fetch_bytes(self, path: str, timeout: float = 10) -> bytes | None:
         """Für Poster/Thumbnails: kleine Bilder synchron laden (wird vom
         Aufrufer aus einem Hintergrund-Thread heraus benutzt).

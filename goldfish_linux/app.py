@@ -62,15 +62,29 @@ class GoldfishApplication(Adw.Application):
             self._show_login()
 
     def _try_restore_session(self) -> None:
+        """Prüft die gespeicherte Anmeldung beim Start.
+
+        **Wichtig — die gespeicherte Anmeldung wird NUR verworfen, wenn der
+        Server ausdrücklich sagt, dass sie nicht mehr gilt.** Ein
+        Netzwerkfehler, ein Zeitüberschreiten oder ein "502 Bad Gateway" vom
+        Reverse-Proxy sagen darüber nichts aus — der Server war schlicht kurz
+        nicht erreichbar. Vorher wurde in diesen Fällen der Token gelöscht und
+        man musste sich neu anmelden, obwohl die Sitzung gültig war; bei einem
+        kurz überlasteten Server ist das real passiert. Jetzt bleibt sie
+        erhalten, und es erscheint nur der Anmeldedialog — der nächste Start
+        kann sie wieder nutzen."""
         try:
             status = self.client.status(timeout=SESSION_RESTORE_TIMEOUT)
         except GoldfishAPIError:
-            status = None
-        if status and status.logged_in:
-            GLib.idle_add(self._finish_restore, status.username)
-        else:
-            self.settings.clear_session()
+            # Nicht erreichbar: Anmeldung behalten, nur diesmal nicht nutzen.
             GLib.idle_add(self._finish_restore, None)
+            return
+        if status.logged_in:
+            GLib.idle_add(self._finish_restore, status.username)
+            return
+        # Der Server hat geantwortet und die Sitzung abgelehnt — erst jetzt weg.
+        self.settings.clear_session()
+        GLib.idle_add(self._finish_restore, None)
 
     def _finish_restore(self, username: str | None) -> bool:
         """Läuft im GTK-Mainloop: erst Fenster zeigen, DANN den hold() aus
