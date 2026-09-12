@@ -46,7 +46,7 @@ gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError, GoldfishClient, TrickplayCue  # noqa: E402
-from ..formatting import format_duration  # noqa: E402
+from ..formatting import format_duration, format_resolution  # noqa: E402
 from ..subtitles import SubtitleTrack, parse_vtt  # noqa: E402
 
 # Wie oft Position, Untertitel und Fortschritt aktualisiert werden. Viermal pro
@@ -284,6 +284,14 @@ class PlayerWindow(Adw.Window):
         self.duration_label.add_css_class("gf-player-time")
         bar.append(self.duration_label)
 
+        # Welche Auflösung gerade wirklich läuft. Die Quelle ist das Medium
+        # selbst (`get_intrinsic_width/height` der Paintable-Schnittstelle) —
+        # bei einer serverseitigen Umwandlung steht dort die heruntergerechnete
+        # Größe, nicht die der Datei. Genau das will man wissen.
+        self.res_label = Gtk.Label(visible=False)
+        self.res_label.add_css_class("gf-player-time")
+        bar.append(self.res_label)
+
         self.volume = Gtk.VolumeButton()
         self.volume.set_value(1.0)
         self.volume.connect("value-changed", self._on_volume)
@@ -424,7 +432,18 @@ class PlayerWindow(Adw.Window):
         return False
 
     def _release_media(self) -> None:
-        """Altes Medium anhalten und von seinen Signalen trennen."""
+        """Altes Medium **abbauen**, nicht bloß anhalten.
+
+        `pause()` allein hält die Wiedergabe an, lässt die GStreamer-Kette
+        aber vollständig stehen: jedes abgelöste Medium behielt seine Decoder
+        samt Fäden und Puffern. Nachgemessen bei fünf Videos hintereinander:
+        mit `pause()` wuchsen die Fäden von 33 auf 89 (vierzehn je Video) und
+        der Speicher von 221 auf 327 MB — beim Benutzer nach acht Wechseln
+        135 Fäden und 1,2 GB. Mit `clear()` bleibt beides stehen (47 Fäden,
+        278 MB).
+
+        Das Bild muss dabei zuerst abgehängt werden: solange das Gtk.Picture
+        das Medium als Paintable hält, wird es nicht abgebaut."""
         media = self.media
         if media is None:
             return
@@ -434,7 +453,10 @@ class PlayerWindow(Adw.Window):
             except TypeError:
                 pass  # bereits getrennt
         self._media_handlers = []
-        media.pause()
+        media.set_playing(False)
+        if self.picture.get_paintable() is media:
+            self.picture.set_paintable(None)
+        media.clear()
         self.media = None
 
     def _on_media_prepared(self, media: Gtk.MediaFile, _p) -> None:
@@ -453,7 +475,26 @@ class PlayerWindow(Adw.Window):
 
     # -- Laufende Aktualisierung -----------------------------------------
 
+    def _update_resolution(self) -> None:
+        media = self.media
+        if media is None:
+            return
+        width, height = media.get_intrinsic_width(), media.get_intrinsic_height()
+        if (width, height) == getattr(self, "_last_res", None):
+            return
+        self._last_res = (width, height)
+        label = format_resolution(width, height) if width and height else ""
+        self.res_label.set_text(label)
+        self.res_label.set_visible(bool(label))
+        if label:
+            mode = "Umwandlung" if self._is_transcode else "Direkte Wiedergabe"
+            if self._is_transcode and self.profile and self.profile != "orig":
+                mode = f"Umwandlung ({self.profile})"
+            self.res_label.set_tooltip_text(f"{mode} · {width}×{height}")
+
     def _tick(self) -> bool:
+        # Auch ohne Medium: die Anzeige soll verschwinden, wenn nichts läuft.
+        self._update_resolution()
         media = self.media
         if media is None:
             return True
@@ -804,3 +845,37 @@ class PlayerWindow(Adw.Window):
         toolbar_view.set_content(status)
         self.set_content(toolbar_view)
         return False
+
+
+def close_player(ctx) -> None:
+    """Ein offenes Wiedergabefenster schließen, falls es eines gibt."""
+    existing = getattr(ctx, "player_window", None)
+    ctx.player_window = None
+    if existing is not None:
+        existing.close()
+
+
+def open_player(ctx, item: dict, **kwargs) -> "PlayerWindow":
+    """Öffnet das Wiedergabefenster — und zwar immer nur EINES.
+
+    **Zwei Fenster übereinander waren eine Falle:** ein modaler Dialog des
+    Hauptfensters ("Weiterschauen?") landete unsichtbar HINTER dem noch
+    offenen, munter weiterspielenden alten Playerfenster. Klicks gingen an
+    den Dialog, den man nicht sah; für den Benutzer hing die ganze App ("ich
+    kann weder das Video stoppen noch Goldfish schließen"). Dazu hält jedes
+    Fenster seine eigene GStreamer-Kette — acht davon waren 1,2 GB.
+
+    Deshalb: vorher schließen, danach genau eines präsentieren."""
+    close_player(ctx)
+    window = PlayerWindow(ctx.application, ctx.client, item, **kwargs)
+    window.set_transient_for(ctx.window)
+    window.connect("close-request", lambda *_: _forget_player(ctx, window))
+    ctx.player_window = window
+    window.present()
+    return window
+
+
+def _forget_player(ctx, window) -> bool:
+    if getattr(ctx, "player_window", None) is window:
+        ctx.player_window = None
+    return False  # schließen nicht verhindern

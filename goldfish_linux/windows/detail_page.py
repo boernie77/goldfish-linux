@@ -33,7 +33,16 @@ from ..formatting import (  # noqa: E402
 from ..widgets.card import ensure_card_css  # noqa: E402
 from ..widgets.cast import CastStrip  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
-from .player_window import PlayerWindow  # noqa: E402
+from .player_window import close_player, open_player  # noqa: E402
+
+
+def _icon_label(icon: str, text: str) -> Gtk.Box:
+    """Symbol und Text in einem Knopf — für die Hauptaktion, die beschriftet
+    bleibt."""
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
+    box.append(Gtk.Image.new_from_icon_name(icon))
+    box.append(Gtk.Label(label=text))
+    return box
 
 
 class DetailPage(Adw.NavigationPage):
@@ -81,10 +90,13 @@ class DetailPage(Adw.NavigationPage):
         box.append(self._build_head())
         self.stream_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.append(self.stream_box)
+        # Der Download-Bereich sitzt IN der Aktionszeile, nicht darunter: er
+        # gehört zu denselben Handgriffen wie Gesehen, Favorit und Playlist
+        # (so gewünscht). Er bleibt ein eigener Behälter, weil sein Inhalt
+        # wechselt — Knopf, Fortschrittsbalken oder "offline abspielen" —
+        # und muss deshalb VOR der Aktionszeile bestehen.
+        self.download_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
         box.append(self._build_buttons())
-
-        self.download_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, halign=Gtk.Align.START)
-        box.append(self.download_box)
         self._refresh_download_ui()
 
         if metadata.get("id"):
@@ -169,25 +181,41 @@ class DetailPage(Adw.NavigationPage):
         # Musikbibliothek.
         self.is_music = self.ctx.library_kind(self.item.get("libraryId")) == "music"
 
-        play = Gtk.Button(label="▶ Abspielen")
+        # **Nur die Hauptaktion trägt Text.** Alles andere sind Symbolknöpfe
+        # mit Kurzhilfe — so wie in den übrigen Apps und im Browser, wo diese
+        # Aktionen ebenfalls als Symbole in einer Reihe stehen. Vorher las sich
+        # die Zeile wie ein Satz ("Als gesehen markieren ♡ Favorit 📋 Zu
+        # Playlist ⬇ Herunterladen") und war entsprechend breit.
+        play = Gtk.Button(icon_name="media-playback-start-symbolic", label="Abspielen")
+        play.set_child(_icon_label("media-playback-start-symbolic", "Abspielen"))
         play.add_css_class("suggested-action")
         play.add_css_class("pill")
         play.connect("clicked", lambda *_: self._play_music() if self.is_music else self._play_with_resume_check())
         row.append(play)
 
         if self.is_music:
-            enqueue = Gtk.Button(label="➕ Warteschlange")
-            enqueue.add_css_class("pill")
+            enqueue = Gtk.Button(icon_name="list-add-symbolic", valign=Gtk.Align.CENTER)
+            enqueue.add_css_class("circular")
             enqueue.set_tooltip_text("An die laufende Warteschlange anhängen")
             enqueue.connect("clicked", lambda *_: self._enqueue_music())
             row.append(enqueue)
 
-        self.trailer_button = Gtk.Button(label="🎬 Trailer", visible=False)
-        self.trailer_button.add_css_class("pill")
+        self.trailer_button = Gtk.Button(
+            icon_name="camera-video-symbolic",
+            visible=False,
+            valign=Gtk.Align.CENTER,
+            tooltip_text="Trailer ansehen",
+        )
+        self.trailer_button.add_css_class("circular")
         self.trailer_button.connect("clicked", self._on_trailer_clicked)
         row.append(self.trailer_button)
 
-        self.watched_toggle = Gtk.ToggleButton(active=bool(self.item.get("watched")))
+        self.watched_toggle = Gtk.ToggleButton(
+            icon_name="object-select-symbolic",
+            active=bool(self.item.get("watched")),
+            valign=Gtk.Align.CENTER,
+        )
+        self.watched_toggle.add_css_class("circular")
         self._update_watched_label()
         self.watched_toggle.connect("toggled", self._on_watched_toggled)
         # "Gesehen" ist ein Videobegriff; für Musik führt der Server ihn
@@ -195,14 +223,27 @@ class DetailPage(Adw.NavigationPage):
         if not self.is_music:
             row.append(self.watched_toggle)
 
-        self.favorite_toggle = Gtk.ToggleButton(active=bool(self.item.get("favorite")))
+        self.favorite_toggle = Gtk.ToggleButton(
+            icon_name="emblem-favorite-symbolic",
+            active=bool(self.item.get("favorite")),
+            valign=Gtk.Align.CENTER,
+        )
+        self.favorite_toggle.add_css_class("circular")
         self._update_favorite_label()
         self.favorite_toggle.connect("toggled", self._on_favorite_toggled)
         row.append(self.favorite_toggle)
 
-        playlist_button = Gtk.Button(label="📋 Zu Playlist")
+        playlist_button = Gtk.Button(
+            icon_name="view-list-symbolic",
+            valign=Gtk.Align.CENTER,
+            tooltip_text="Zu einer Playlist hinzufügen",
+        )
+        playlist_button.add_css_class("circular")
         playlist_button.connect("clicked", lambda *_: self._open_playlist_dialog())
         row.append(playlist_button)
+
+        # Herunterladen gehört in dieselbe Reihe wie die übrigen Handgriffe.
+        row.append(self.download_box)
         return row
 
     # -- Musik ------------------------------------------------------------
@@ -240,7 +281,7 @@ class DetailPage(Adw.NavigationPage):
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_playlist_dialog(self, playlists: list[dict], current: set[int], kind: str) -> bool:
-        dialog = Adw.MessageDialog(transient_for=self.ctx.window, heading="Zu Playlist hinzufügen")
+        dialog = Adw.MessageDialog(transient_for=self.ctx.dialog_parent(), heading="Zu Playlist hinzufügen")
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
 
         if playlists:
@@ -430,9 +471,8 @@ class DetailPage(Adw.NavigationPage):
         # vorkommt — nach einem Wechsel der Version ist das sonst der falsche
         # Platz, und es würde bei einem fremden Titel weiterlaufen.
         index = next((i for i, it in enumerate(self.queue) if int(it["id"]) == self.item_id), -1)
-        window = PlayerWindow(
-            self.ctx.application,
-            self.ctx.client,
+        open_player(
+            self.ctx,
             self.item,
             local_path=local_path,
             profile=self.chosen_profile,
@@ -442,8 +482,6 @@ class DetailPage(Adw.NavigationPage):
             queue=self.queue if index >= 0 else None,
             queue_index=max(0, index),
         )
-        window.set_transient_for(self.ctx.window)
-        window.present()
 
     def _play_with_resume_check(self) -> None:
         """Fragt nach, wenn der Titel schon einmal angesehen wurde.
@@ -462,6 +500,12 @@ class DetailPage(Adw.NavigationPage):
         threading.Thread(target=worker, daemon=True).start()
 
     def _after_resume_lookup(self, position: float) -> bool:
+        # **Ein noch offenes Wiedergabefenster ZUERST schließen.** Sonst legt
+        # sich die Frage dahinter und wartet dort unsichtbar auf eine Antwort,
+        # während das alte Video weiterläuft — für den Benutzer hängt die App
+        # dann vollständig (genau so gemeldet). Gleich hier, nicht erst beim
+        # Öffnen des neuen Fensters: die Frage kommt vorher.
+        close_player(self.ctx)
         duration = self.item.get("durationSec") or 0
         # Unter einer Minute lohnt die Frage nicht, und kurz vor dem Ende
         # wäre "fortsetzen" sinnlos — dann von vorn, wie im Browser.
@@ -470,7 +514,7 @@ class DetailPage(Adw.NavigationPage):
             return False
 
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Weiterschauen?",
             body=f"Du warst bei {format_duration(position)} von {format_duration(duration)}.",
         )
@@ -489,8 +533,10 @@ class DetailPage(Adw.NavigationPage):
         metadata = self.item.get("metadata") or {}
         if not metadata.get("id"):
             return
+        # Symbolknopf: der Zustand steht in der Kurzhilfe, eine Beschriftung
+        # würde das Symbol verdrängen.
         button.set_sensitive(False)
-        button.set_label("🎬 wird geholt …")
+        button.set_tooltip_text("Trailer wird geholt …")
 
         def worker() -> None:
             # Der Server lädt den Trailer per yt-dlp und fügt Bild und Ton zu
@@ -511,22 +557,19 @@ class DetailPage(Adw.NavigationPage):
 
     def _trailer_ready(self, button: Gtk.Button, path: str) -> bool:
         button.set_sensitive(True)
-        button.set_label("🎬 Trailer")
+        button.set_tooltip_text("Trailer ansehen")
         title = (self.item.get("metadata") or {}).get("title") or self.item.get("title") or ""
-        window = PlayerWindow(
-            self.ctx.application,
-            self.ctx.client,
+        open_player(
+            self.ctx,
             self.item,
             direct_url=self.ctx.client.with_session_param(path),
             window_title=f"Trailer: {title}",
         )
-        window.set_transient_for(self.ctx.window)
-        window.present()
         return False
 
     def _trailer_failed(self, button: Gtk.Button, message: str) -> bool:
         button.set_sensitive(True)
-        button.set_label("🎬 Trailer")
+        button.set_tooltip_text("Trailer ansehen")
         self._toast(f"Trailer nicht abspielbar: {message}")
         return False
 
@@ -541,10 +584,16 @@ class DetailPage(Adw.NavigationPage):
     # -- Gesehen und Favorit ---------------------------------------------
 
     def _update_watched_label(self) -> None:
-        self.watched_toggle.set_label("✓ Gesehen" if self.watched_toggle.get_active() else "Als gesehen markieren")
+        # Der Zustand steht jetzt in der Kurzhilfe, nicht in der Beschriftung —
+        # der Knopf selbst zeigt ein Symbol und ist eingedrückt, wenn gesehen.
+        self.watched_toggle.set_tooltip_text(
+            "Als ungesehen markieren" if self.watched_toggle.get_active() else "Als gesehen markieren"
+        )
 
     def _update_favorite_label(self) -> None:
-        self.favorite_toggle.set_label("♥ Favorit" if self.favorite_toggle.get_active() else "♡ Favorit")
+        self.favorite_toggle.set_tooltip_text(
+            "Favorit entfernen" if self.favorite_toggle.get_active() else "Als Favorit merken"
+        )
 
     def _on_watched_toggled(self, button: Gtk.ToggleButton) -> None:
         watched = button.get_active()
@@ -584,10 +633,20 @@ class DetailPage(Adw.NavigationPage):
 
         if self.ctx.downloads.is_downloaded(self.item_id):
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            offline_button = Gtk.Button(label="▶ Offline abspielen")
+            offline_button = Gtk.Button(
+                icon_name="media-playback-start-symbolic",
+                valign=Gtk.Align.CENTER,
+                tooltip_text="Die heruntergeladene Datei abspielen (ohne Netz)",
+            )
+            offline_button.add_css_class("circular")
             offline_button.connect("clicked", self._on_play_offline)
             row.append(offline_button)
-            delete_button = Gtk.Button(label="🗑 Download löschen")
+            delete_button = Gtk.Button(
+                icon_name="user-trash-symbolic",
+                tooltip_text="Heruntergeladene Datei löschen",
+                valign=Gtk.Align.CENTER,
+            )
+            delete_button.add_css_class("circular")
             delete_button.add_css_class("destructive-action")
             delete_button.connect("clicked", self._on_delete_download)
             row.append(delete_button)
@@ -601,14 +660,13 @@ class DetailPage(Adw.NavigationPage):
             self.download_box.append(row)
             spinner.start()  # erst nach dem Einhängen, sonst fehlt die Frame-Clock
         else:
-            label = "⬇ Herunterladen"
-            if self.chosen_profile:
-                label = f"⬇ Herunterladen ({self.chosen_profile})"
-            download_button = Gtk.Button(label=label)
+            # Reiner Symbolknopf; die gewählte Qualität steht in der Kurzhilfe.
+            download_button = Gtk.Button(icon_name="folder-download-symbolic", valign=Gtk.Align.CENTER)
+            download_button.add_css_class("circular")
             download_button.set_tooltip_text(
-                "Lädt in der oben gewählten Qualität — nützlich, wenn der Platz knapp ist."
+                f"Herunterladen in {self.chosen_profile} — nützlich, wenn der Platz knapp ist."
                 if self.chosen_profile
-                else "Lädt die Originaldatei. Für eine kleinere Fassung oben eine Qualität wählen."
+                else "Herunterladen (Originaldatei). Für eine kleinere Fassung oben eine Qualität wählen."
             )
             download_button.connect("clicked", self._on_download_clicked)
             self.download_box.append(download_button)

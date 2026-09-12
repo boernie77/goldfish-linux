@@ -22,7 +22,7 @@ from ..formatting import (  # noqa: E402
 from ..local_library import LocalLibrary  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..widgets.grid import LocalGrid  # noqa: E402
-from .player_window import PlayerWindow  # noqa: E402
+from .player_window import open_player  # noqa: E402
 
 
 class LocalLibrariesPage(Adw.NavigationPage):
@@ -140,7 +140,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
         """Namen ändern — der Name steht in der Übersicht UND in der
         Seitenleiste. Bei einer Sammlung ist es der Name der Gruppe."""
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Umbenennen",
             body="Unter diesem Namen erscheint der Eintrag in der Seitenleiste.",
         )
@@ -198,7 +198,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
 
     def _scan(self, library: LocalLibrary) -> None:
         progress = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading=f"„{library.name}“ wird eingelesen",
             body="Dauer und Auflösung werden je Datei ermittelt.",
         )
@@ -223,7 +223,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
 
     def _ask_remove(self, library: LocalLibrary) -> None:
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Datenträger entfernen?",
             body=(
                 f"„{library.name}“ verschwindet aus der App. "
@@ -247,7 +247,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
         Sinnvoll, wenn eine Sammlung über mehrere Platten verteilt ist: dann
         durchsucht und durchblättert man sie zusammen statt jede einzeln."""
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Datenträger zusammenlegen",
             body=(
                 "Die ausgewählten erscheinen als ein Eintrag, mit den Videos aus allen. "
@@ -321,7 +321,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
     def _show_duplicates(self, library: LocalLibrary) -> None:
         groups = self.ctx.local.find_duplicates(library)
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Doppelte Dateien",
             body=(
                 f"{len(groups)} Gruppen mit gleicher Größe und Laufzeit gefunden."
@@ -473,16 +473,13 @@ class LocalVideosPage(Adw.NavigationPage):
         path = video.get("path")
         if not path:
             return
-        window = PlayerWindow(
-            self.ctx.application,
-            self.ctx.client,
+        open_player(
+            self.ctx,
             video,
             local_path=path,
             window_title=video.get("title") or "",
             random_fetch=draw,
         )
-        window.set_transient_for(self.ctx.window)
-        window.present()
 
 
 def _toast(page: Adw.NavigationPage, message: str) -> bool:

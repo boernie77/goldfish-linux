@@ -9,7 +9,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..formatting import format_duration, format_size  # noqa: E402
-from .player_window import PlayerWindow  # noqa: E402
+from .player_window import open_player  # noqa: E402
 
 
 class DownloadsPage(Adw.NavigationPage):
@@ -67,9 +67,7 @@ class DownloadsPage(Adw.NavigationPage):
 
     def _play(self, rec: dict) -> None:
         item = {"id": rec["id"], "title": rec.get("title", "")}
-        window = PlayerWindow(self.ctx.application, self.ctx.client, item, local_path=rec["path"])
-        window.set_transient_for(self.ctx.window)
-        window.present()
+        open_player(self.ctx, item, local_path=rec["path"])
 
     def _delete(self, rec: dict) -> None:
         self.ctx.downloads.delete_download(rec["id"])

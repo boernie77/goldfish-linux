@@ -1,3 +1,30 @@
+goldfish-linux (0.1.21-1) unstable; urgency=medium
+
+  * Behoben (vom Benutzer gemeldet): die App wirkte eingefroren — "ich kann
+    weder das Video stoppen noch Goldfish schließen". Sie hing nicht, sie
+    wartete: die Frage "Weiterschauen?" lag unsichtbar HINTER dem noch offenen
+    Wiedergabefenster und wartete dort auf eine Antwort. Es gibt jetzt immer
+    nur EIN Wiedergabefenster, und ein noch offenes wird geschlossen, bevor
+    die Frage kommt. Dialoge erscheinen außerdem über dem gerade aktiven
+    Fenster statt immer über dem Hauptfenster.
+  * Behoben: jedes abgelöste Video ließ seine komplette Verarbeitungskette
+    stehen — bei jedem Wechsel vierzehn Fäden und rund 25 MB mehr. Beim
+    Benutzer standen dadurch 135 Fäden und 1,2 GB Speicher; acht Videos
+    "liefen" gleichzeitig. Medien werden jetzt richtig abgebaut.
+  * Neu: der Player zeigt, welche Auflösung gerade läuft — samt Hinweis in der
+    Kurzhilfe, ob direkt abgespielt oder umgewandelt wird, und mit den genauen
+    Bildmaßen.
+  * Die Aktionsknöpfe tragen jetzt Symbole statt langer Beschriftungen:
+    gesehen, Favorit, zu Playlist, Trailer, herunterladen, offline abspielen,
+    dazu die Album-Aktionen. Nur die Hauptaktion bleibt beschriftet. Was der
+    Knopf tut, steht in der Kurzhilfe; "Herunterladen" sitzt in derselben
+    Reihe wie die übrigen.
+  * Privatvideos in einem Ordner (YouTube-Kanäle) sind jetzt nach
+    Veröffentlichung aufsteigend sortiert — älteste zuerst, wie im Browser. In
+    der Bibliothekswurzel bleibt es bei A–Z, damit die Kanal-Kacheln stehen.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 22:05:00 +0200
+
 goldfish-linux (0.1.20-1) unstable; urgency=medium
 
   * Musik: die Suche findet jetzt auch einzelne Titel. Bisher durchsuchte sie

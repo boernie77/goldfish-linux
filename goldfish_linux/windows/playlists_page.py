@@ -126,7 +126,7 @@ class PlaylistsPage(Adw.NavigationPage):
 
     def _ask_new(self) -> None:
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Neue Playlist",
             body="Wie soll sie heißen?",
         )
@@ -261,14 +261,12 @@ class PlaylistItemsPage(Adw.NavigationPage):
     def _open_video(self, item: dict, queue: list[dict]) -> None:
         """Video sofort abspielen, mit der Liste als Warteschlange — ein
         Zufallsknopf soll spielen, nicht nur eine Seite aufschlagen."""
-        from .player_window import PlayerWindow
+        from .player_window import open_player
 
-        window = PlayerWindow(self.ctx.application, self.ctx.client, item, queue=queue, queue_index=0)
-        window.set_transient_for(self.ctx.window)
-        window.present()
+        open_player(self.ctx, item, queue=queue, queue_index=0)
 
     def _ask_rename(self) -> None:
-        dialog = Adw.MessageDialog(transient_for=self.ctx.window, heading="Playlist umbenennen")
+        dialog = Adw.MessageDialog(transient_for=self.ctx.dialog_parent(), heading="Playlist umbenennen")
         entry = Gtk.Entry(text=self.playlist.get("name") or "", activates_default=True)
         dialog.set_extra_child(entry)
         dialog.add_response("cancel", "Abbrechen")
@@ -289,7 +287,7 @@ class PlaylistItemsPage(Adw.NavigationPage):
 
     def _ask_delete(self) -> None:
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Playlist löschen?",
             body=f"„{self.playlist.get('name')}“ wird entfernt. Die Videos selbst bleiben erhalten.",
         )

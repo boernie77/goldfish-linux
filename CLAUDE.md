@@ -64,6 +64,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.18 | Sechs Meldungen des Benutzers: Filme flach mit Postern, Tempo, Startseiten-Streifen, Reiterleisten-Schalter, Sammlungs-Abzeichen, Playlist-Zufall |
 | 0.1.19 | Kachelbreiten, einheitliche Kachelform, Anzahl-Zeile, Player-Sprungknöpfe, echte Zufallswiedergabe, Musik-Warteschlange, eigene Datenträger in der Seitenleiste, eigene Vorschaubilder |
 | 0.1.20 | Musik-Titelsuche, Sortierung/Filter für eigene Datenträger, Vorschaubilder im Vorgriff |
+| 0.1.21 | Scheinbares Einfrieren (Dialog hinter dem Player), Medien-Abbau, Auflösungsanzeige, Symbolknöpfe |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -161,6 +162,26 @@ System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
 - **`Gtk.Picture` meldet die Pixelbreite des geladenen Bildes als natürliche
   Breite.** Ein zu groß dekodiertes Bild macht die Kachel breiter als gewollt
   — `load_poster_async` bekommt deshalb die Zielbreite mitgegeben.
+- **⚠ Ein abgelöstes `Gtk.MediaFile` muss ABGEBAUT werden, nicht nur
+  angehalten.** `pause()` hält die Wiedergabe an und lässt die GStreamer-Kette
+  vollständig stehen: nachgemessen wuchsen bei fünf Videos hintereinander die
+  Fäden von 33 auf 89 (vierzehn je Video) und der Speicher von 221 auf 327 MB.
+  Beim Benutzer standen nach acht Wechseln im Zufallsmodus 135 Fäden, 1,2 GB
+  und acht gleichzeitig "laufende" Wiedergaben. Richtig ist
+  `set_playing(False)`, das Bild abhängen (solange ein `Gtk.Picture` das
+  Medium als Paintable hält, wird es nicht abgebaut) und `clear()` —
+  danach bleiben Fäden und Speicher stehen.
+- **⚠ Es darf nur EIN Wiedergabefenster geben** (`open_player`/`close_player`
+  in `windows/player_window.py`). Zwei Fenster übereinander waren eine Falle:
+  ein modaler Dialog des Hauptfensters ("Weiterschauen?") landete unsichtbar
+  HINTER dem noch offenen Playerfenster und wartete dort auf eine Antwort —
+  für den Benutzer hing die ganze App, während das alte Video weiterlief.
+  Diagnose ohne Werkzeuge: `wmctrl -lp` zeigte drei Fenster desselben
+  Prozesses ("Goldfish", "Weiterschauen?", "<Filmtitel>"), und
+  `/proc/<pid>/task/<pid>/wchan` sagte, dass der Hauptablauf normal in
+  `poll_schedule_timeout` wartet — also kein Deadlock, sondern ein
+  unsichtbarer Dialog. Dialoge hängen zusätzlich am gerade AKTIVEN Fenster
+  (`AppContext.dialog_parent()`).
 - **Abgelöste `Gtk.MediaFile` unbedingt abklemmen.** Beim Springen im
   Umwandlungsmodus entsteht ein neues Medium; das alte meldet danach den
   Fehler seiner beendeten Umwandlung, und ohne Trennung legt sich

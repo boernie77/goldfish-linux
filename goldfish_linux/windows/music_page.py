@@ -286,22 +286,34 @@ class AlbumPage(Adw.NavigationPage):
         text.append(facts)
 
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        play = Gtk.Button(label="▶ Album abspielen")
+        play = Gtk.Button()
+        play.set_child(_icon_label("media-playback-start-symbolic", "Album abspielen"))
         play.add_css_class("suggested-action")
         play.add_css_class("pill")
         play.connect("clicked", lambda *_: self.ctx.music.play_queue(self.tracks, 0))
         actions.append(play)
 
-        shuffle = Gtk.Button(label="🔀 Zufällig")
+        shuffle = Gtk.Button(
+            icon_name="media-playlist-shuffle-symbolic",
+            valign=Gtk.Align.CENTER,
+            tooltip_text="Album in zufälliger Reihenfolge",
+        )
+        shuffle.add_css_class("circular")
         shuffle.connect("clicked", lambda *_: self._play_shuffled())
         actions.append(shuffle)
 
-        queue = Gtk.Button(label="➕ Anhängen")
+        queue = Gtk.Button(icon_name="list-add-symbolic", valign=Gtk.Align.CENTER)
+        queue.add_css_class("circular")
         queue.set_tooltip_text("An die laufende Warteschlange anhängen")
         queue.connect("clicked", lambda *_: self.ctx.music.append(self.tracks))
         actions.append(queue)
 
-        self.offline_button = Gtk.Button(label="⬇ Offline")
+        self.offline_button = Gtk.Button(
+            icon_name="folder-download-symbolic",
+            valign=Gtk.Align.CENTER,
+            tooltip_text="Alle Titel offline mitnehmen",
+        )
+        self.offline_button.add_css_class("circular")
         self.offline_button.set_tooltip_text("Alle Titel dieses Albums herunterladen")
         self.offline_button.connect("clicked", lambda *_: self._download_album())
         actions.append(self.offline_button)
@@ -389,10 +401,12 @@ class AlbumPage(Adw.NavigationPage):
     def _queue_next(self, pending: list[dict], index: int, total: int) -> None:
         if index >= len(pending):
             self.offline_button.set_sensitive(True)
-            self.offline_button.set_label("⬇ Offline")
+            self.offline_button.set_tooltip_text("Alle Titel offline mitnehmen")
             _toast(self, f"{total} Titel liegen jetzt offline vor.")
             return
-        self.offline_button.set_label(f"⬇ {index + 1}/{total}")
+        # Fortschritt in die Kurzhilfe, nicht in die Beschriftung: der Knopf
+        # trägt jetzt ein Symbol.
+        self.offline_button.set_tooltip_text(f"Lädt Titel {index + 1} von {total} …")
         track = pending[index]
         self.ctx.downloads.start_download(
             track,
@@ -443,6 +457,13 @@ def _busy(toolbar_view: Adw.ToolbarView) -> None:
 def _error(toolbar_view: Adw.ToolbarView, message: str, title: str = "Fehler", icon: str = "dialog-error-symbolic") -> bool:
     toolbar_view.set_content(Adw.StatusPage(icon_name=icon, title=title, description=message))
     return False
+
+
+def _icon_label(icon: str, text: str) -> Gtk.Box:
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
+    box.append(Gtk.Image.new_from_icon_name(icon))
+    box.append(Gtk.Label(label=text))
+    return box
 
 
 def _heading(text: str) -> Gtk.Label:

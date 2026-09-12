@@ -54,7 +54,7 @@ class SettingsPage(Adw.NavigationPage):
 
     def _ask_password(self) -> None:
         dialog = Adw.MessageDialog(
-            transient_for=self.ctx.window,
+            transient_for=self.ctx.dialog_parent(),
             heading="Passwort ändern",
             body="Das neue Passwort muss mindestens sechs Zeichen haben.",
         )

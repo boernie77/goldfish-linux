@@ -85,6 +85,15 @@ class BrowsePage(Adw.NavigationPage):
         remembered = self.view_prefs.get_sort(library["id"], folder)
         if remembered is not None:
             self.filters.sort, self.filters.ascending = remembered
+        elif (library.get("kind") or "") == "private" and folder:
+            # **Privatvideos in einem Ordner: älteste zuerst.** Bei einem
+            # YouTube-Kanal ist die Reihenfolge der Veröffentlichung die
+            # natürliche (so hält es der Browser für `kind=private` ebenfalls,
+            # siehe `restoreSortForContext`). In der Bibliothekswurzel bleibt
+            # es bei Titel A–Z, sonst verschwänden dort die Kanal-Kacheln —
+            # "Veröffentlicht" gehört zu den Sortierungen, die die
+            # Ordnerstruktur übergehen.
+            self.filters.sort, self.filters.ascending = "released", True
         self.filter_bar = FilterBar(
             library.get("kind") or "movies",
             self.filters,
@@ -400,16 +409,9 @@ class BrowsePage(Adw.NavigationPage):
         if (self.library.get("kind") or "") == "music":
             self.ctx.music.play_queue([item], 0)
             return False
-        from .player_window import PlayerWindow
+        from .player_window import open_player
 
-        window = PlayerWindow(
-            self.ctx.application,
-            self.ctx.client,
-            item,
-            random_fetch=draw,
-        )
-        window.set_transient_for(self.ctx.window)
-        window.present()
+        open_player(self.ctx, item, random_fetch=draw)
         return False
 
     def _load_genres(self) -> list[str]:

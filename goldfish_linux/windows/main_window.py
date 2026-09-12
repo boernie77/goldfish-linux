@@ -52,6 +52,19 @@ class AppContext:
         # Lokale Bibliotheken kennen den Server nicht — sie liegen neben den
         # Server-Bibliotheken und funktionieren auch ohne Verbindung.
         self.local = LocalLibraryManager()
+        # Es gibt immer nur EIN Wiedergabefenster; hier steht das aktuelle
+        # (siehe `windows.player_window.open_player`).
+        self.player_window = None
+
+    def dialog_parent(self):
+        """Das Fenster, über dem ein Dialog erscheinen soll: das gerade aktive,
+        sonst das Hauptfenster.
+
+        Wichtig, weil es mehrere Fenster gibt: ein Dialog, der am Hauptfenster
+        hängt, kann hinter dem Wiedergabefenster verschwinden und dort
+        unsichtbar auf eine Antwort warten — die App wirkt dann eingefroren."""
+        active = self.application.get_active_window() if self.application else None
+        return active or self.window
 
     def library_kind(self, library_id) -> str:
         try:

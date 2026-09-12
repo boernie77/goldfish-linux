@@ -183,7 +183,12 @@ class MusicPlayer:
             except TypeError:
                 pass
         self._handlers = []
-        self.media.pause()
+        # `pause()` allein baut die GStreamer-Kette NICHT ab — jedes abgelöste
+        # Medium behielt Decoder, Fäden und Puffer (nachgemessen: vierzehn
+        # Fäden und rund 25 MB je Titel). Bei einem Album mit zwanzig Titeln
+        # wäre das die halbe Maschine.
+        self.media.set_playing(False)
+        self.media.clear()
         self.media = None
 
     def _start_current(self) -> None:
