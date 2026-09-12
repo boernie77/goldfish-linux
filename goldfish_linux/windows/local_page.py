@@ -13,8 +13,14 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from ..formatting import format_duration, format_size  # noqa: E402
+from ..formatting import (  # noqa: E402
+    format_count,
+    format_duration,
+    format_size,
+    resolution_bucket,
+)
 from ..local_library import LocalLibrary  # noqa: E402
+from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..widgets.grid import LocalGrid  # noqa: E402
 from .player_window import PlayerWindow  # noqa: E402
 
@@ -373,12 +379,31 @@ class LocalVideosPage(Adw.NavigationPage):
         self.toolbar_view = toolbar_view
         self.search = search
         self.grid: LocalGrid | None = None
+        self.count_label: Gtk.Label | None = None
+        # Sortieren und Filtern wie in den Server-Bibliotheken — nur gerechnet
+        # wird hier im Client, weil es keinen Server zu fragen gibt. Die Art
+        # "local" blendet in der Leiste aus, was es hier nicht gibt (Gesehen,
+        # Favoriten, Genre) und lässt Titel, Laufzeit, Größe, Auflösung und
+        # Änderungsdatum stehen.
+        self.filters = FilterState(sort="title")
+        self.filter_bar = FilterBar("local", self.filters, on_change=self._render)
+        header.pack_end(self.filter_bar)
         search.connect("search-changed", lambda *_: self._render())
         self._render()
+        # Fehlende Vorschaubilder im Hintergrund nachziehen, unabhängig davon,
+        # ob man an ihnen vorbeiscrollt.
+        if library.available:
+            ctx.local.prefetch_thumbnails_async(library)
 
     def _render(self) -> None:
         needle = self.search.get_text().strip().lower()
         videos = [v.as_item() for v in self.library.videos if not needle or needle in v.name.lower()]
+        total = len(self.library.videos)
+        if self.filters.buckets:
+            videos = [
+                v for v in videos if resolution_bucket(v.get("width") or 0, v.get("height") or 0) in self.filters.buckets
+            ]
+        videos = self._sorted(videos)
         if not videos:
             self.grid = None
             self.toolbar_view.set_content(
@@ -397,8 +422,34 @@ class LocalVideosPage(Adw.NavigationPage):
         if self.grid is None:
             self.grid = LocalGrid(self.ctx.client, on_video=self._play)
         self.grid.set_videos(videos)
-        if self.toolbar_view.get_content() is not self.grid:
-            self.toolbar_view.set_content(self.grid)
+        self.shown = videos
+        if self.count_label is None:
+            self.count_label = Gtk.Label(xalign=0, margin_start=16, margin_top=8, margin_end=16)
+            self.count_label.add_css_class("dim-label")
+            self.count_label.add_css_class("caption")
+            self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            self.content_box.append(self.count_label)
+            self.content_box.append(self.grid)
+        shown = len(videos)
+        if shown == total:
+            self.count_label.set_text(f"{format_count(total)} Videos")
+        else:
+            self.count_label.set_text(f"{format_count(shown)} von {format_count(total)} Videos")
+        if self.toolbar_view.get_content() is not self.content_box:
+            self.toolbar_view.set_content(self.content_box)
+
+    def _sorted(self, videos: list[dict]) -> list[dict]:
+        """Sortiert im Client. Die Schlüssel entsprechen denen des Servers,
+        damit dieselbe Leiste beide Fälle bedienen kann."""
+        keys = {
+            "title": lambda v: (v.get("title") or "").lower(),
+            "duration": lambda v: v.get("durationSec") or 0,
+            "size": lambda v: v.get("sizeBytes") or 0,
+            "resolution": lambda v: max(v.get("height") or 0, int((v.get("width") or 0) * 9 / 16)),
+            "modified": lambda v: v.get("modified") or 0,
+        }
+        key = keys.get(self.filters.sort, keys["title"])
+        return sorted(videos, key=key, reverse=not self.filters.effective_ascending())
 
     def _play_random(self) -> None:
         """Zufälliges Video von diesem Datenträger — und im Player geht es mit
@@ -407,8 +458,7 @@ class LocalVideosPage(Adw.NavigationPage):
         nicht gezogen."""
         import random
 
-        needle = self.search.get_text().strip().lower()
-        pool = [v.as_item() for v in self.library.videos if not needle or needle in v.name.lower()]
+        pool = list(getattr(self, "shown", []))
         if not pool:
             _toast(self, "Keine Videos zum Ziehen.")
             return

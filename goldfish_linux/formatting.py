@@ -66,6 +66,14 @@ _BUCKETS = (
 )
 
 
+def resolution_bucket(width: int, height: int) -> str:
+    """Der Filter-Schlüssel zur Auflösung ("1080p", "4k", …) — dieselbe
+    Einteilung wie der Server sie in `bucket=` erwartet. Wird für eigene
+    Datenträger gebraucht, wo der Filter im Client greifen muss."""
+    label = format_resolution(width, height)
+    return label.lower() if label else ""
+
+
 def format_resolution(width: int, height: int) -> str:
     if not height:
         return ""

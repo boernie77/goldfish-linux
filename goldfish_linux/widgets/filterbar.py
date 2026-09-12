@@ -26,17 +26,21 @@ from gi.repository import Gdk, Gtk  # noqa: E402
 # Standardrichtung entsprechen dem Server (internal/store/items.go, switch
 # f.Sort) und der Mac-App (ItemSort), damit beide Clients gleich sortieren.
 SORTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("title", "Titel", ("movies", "tv", "private", "music")),
+    ("title", "Titel", ("movies", "tv", "private", "music", "local")),
     ("filename", "Dateiname", ("movies", "tv", "private", "music")),
     ("released", "Veröffentlicht", ("movies", "tv", "private", "music")),
     ("added", "Hinzugefügt", ("movies", "tv", "private", "music")),
     ("played", "Zuletzt abgespielt", ("movies", "tv", "private", "music")),
-    ("duration", "Laufzeit", ("movies", "tv", "private", "music")),
-    ("size", "Dateigröße", ("movies", "tv", "private", "music")),
+    ("duration", "Laufzeit", ("movies", "tv", "private", "music", "local")),
+    ("size", "Dateigröße", ("movies", "tv", "private", "music", "local")),
     ("rating", "Bewertung", ("movies", "tv")),
-    ("resolution", "Auflösung", ("movies", "tv", "private")),
+    ("resolution", "Auflösung", ("movies", "tv", "private", "local")),
     ("artist", "Künstler", ("music",)),
     ("album", "Album", ("music",)),
+    # Eigene Datenträger: das Änderungsdatum der Datei ist das einzige Datum,
+    # das es dort gibt — einen Server, der "hinzugefügt" mitzählt, gibt es
+    # hier ja nicht.
+    ("modified", "Geändert", ("local",)),
 )
 
 # Nur diese beiden Felder werden aufsteigend voreingestellt (grid.js
@@ -204,8 +208,9 @@ class FilterBar(Gtk.Box):
         outer.set_size_request(260, -1)
 
         # Gesehen und Favoriten sind Video-Begriffe; für Musik führt der Server
-        # keinen Gesehen-Status.
-        if self.kind != "music":
+        # keinen Gesehen-Status — und bei eigenen Datenträgern gibt es weder
+        # Gesehen-Status noch Favoriten noch Genres, dort bleibt die Auflösung.
+        if self.kind not in ("music", "local"):
             self.watched_drop = Gtk.DropDown.new_from_strings([label for _, label in WATCHED_CHOICES])
             self.watched_drop.set_selected(next(i for i, (key, _) in enumerate(WATCHED_CHOICES) if key == self.state.watched))
             self.watched_drop.connect("notify::selected", self._on_watched_changed)
@@ -213,7 +218,8 @@ class FilterBar(Gtk.Box):
 
         self.fav_switch = Gtk.Switch(active=self.state.favorites_only, halign=Gtk.Align.END)
         self.fav_switch.connect("notify::active", self._on_favorites_changed)
-        outer.append(_labelled("Nur Favoriten", self.fav_switch))
+        if self.kind != "local":
+            outer.append(_labelled("Nur Favoriten", self.fav_switch))
 
         if self.kind != "music":
             outer.append(Gtk.Separator())
@@ -229,7 +235,7 @@ class FilterBar(Gtk.Box):
 
         # Privatvideos haben kein Genre — der Server liefert dort immer eine
         # leere Liste, also gar keinen Abschnitt zeigen.
-        if self.kind != "private" and self.load_genres is not None:
+        if self.kind not in ("private", "local") and self.load_genres is not None:
             outer.append(Gtk.Separator())
             outer.append(_section_label("Genre"))
             self.genre_search = Gtk.SearchEntry(placeholder_text="Genre suchen…")

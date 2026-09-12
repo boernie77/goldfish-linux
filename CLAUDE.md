@@ -63,6 +63,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.17 | Mehrere Datenträger zu einem Eintrag zusammenlegen |
 | 0.1.18 | Sechs Meldungen des Benutzers: Filme flach mit Postern, Tempo, Startseiten-Streifen, Reiterleisten-Schalter, Sammlungs-Abzeichen, Playlist-Zufall |
 | 0.1.19 | Kachelbreiten, einheitliche Kachelform, Anzahl-Zeile, Player-Sprungknöpfe, echte Zufallswiedergabe, Musik-Warteschlange, eigene Datenträger in der Seitenleiste, eigene Vorschaubilder |
+| 0.1.20 | Musik-Titelsuche, Sortierung/Filter für eigene Datenträger, Vorschaubilder im Vorgriff |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -287,6 +288,16 @@ Jeweils nachgeprüft, nicht vermutet:
   und ffmpeg sind auf dem Zielsystem nicht zwingend installiert (hier:
   fehlen beide), GStreamer dagegen schon. Gemessen 0,12 Sekunden pro Datei,
   122 Videos in anderthalb Sekunden.
+- **Vorschaubilder lokaler Dateien entstehen im Vorgriff** (seit 0.1.20,
+  `prefetch_thumbnails_async`): ein Faden geht die ganze Bibliothek durch,
+  angestoßen beim Start, beim Öffnen und nach dem Einlesen. **Reihenfolge der
+  Prüfungen ist dabei entscheidend:** erst der eigene Zwischenspeicher (ein
+  `stat`, 0,01 ms), dann die Auskunft des Dateimanagers über Gio — die kann
+  auf einem langsamen USB-Stick zehner Millisekunden kosten, in der falschen
+  Reihenfolge kam der Vorgriff über 550 schon fertige Dateien in 27 Sekunden
+  nicht hinaus. Aus demselben Grund fragt `LocalCardWidget.bind` gar nichts
+  mehr nach, sondern gibt nur `gstthumb://<pfad>` weiter; entschieden wird im
+  Ladefaden.
 - **Vorschaubilder lokaler Dateien** kommen zuerst aus dem Zwischenspeicher
   des Dateimanagers (`thumbnail::path` über Gio). Fehlt eines, erzeugt die App
   seit 0.1.19 selbst eins — **mit GStreamer, nicht mit ffmpeg**: Pipeline in

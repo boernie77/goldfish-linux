@@ -43,7 +43,12 @@ class MusicLibraryPage(Adw.NavigationPage):
         self.toolbar_view = toolbar_view
         self.albums: list[dict] = []
         self.search = search
-        search.connect("search-changed", lambda *_: self._render())
+        # Titelsuche läuft über den Server (er durchsucht Titel, Künstler und
+        # Album) und ist deshalb entprellt — sonst eine Abfrage pro Tastendruck.
+        self.tracks: list[dict] = []
+        self._search_seq = 0
+        self._search_timeout = 0
+        search.connect("search-changed", lambda *_: self._on_search_changed())
         # Ein Raster mit Recycling, kein fließendes: eine Musikbibliothek hat
         # hier 2717 Alben, und als einzeln gebaute Kacheln kostet das 4,65
         # Sekunden blockierten Hauptablauf (nachgemessen) — in dieser Zeit
@@ -70,6 +75,44 @@ class MusicLibraryPage(Adw.NavigationPage):
         self._render()
         return False
 
+    def _on_search_changed(self) -> None:
+        if self._search_timeout:
+            GLib.source_remove(self._search_timeout)
+        self._search_timeout = GLib.timeout_add(300, self._run_search)
+
+    def _run_search(self) -> bool:
+        self._search_timeout = 0
+        needle = self.search.get_text().strip()
+        self._search_seq += 1
+        seq = self._search_seq
+        if not needle:
+            self.tracks = []
+            self._render()
+            return False
+
+        def worker() -> None:
+            try:
+                # Der Server durchsucht für Musik auch Künstler und Album
+                # (ListItems-Suchklausel) — hier ist nichts nachzufiltern.
+                tracks = self.ctx.client.items(self.library["id"], search=needle, sort="title")
+            except GoldfishAPIError:
+                tracks = []
+            if seq != self._search_seq:
+                return  # eine neuere Suche ist unterwegs
+            GLib.idle_add(self._apply_tracks, tracks, seq)
+
+        threading.Thread(target=worker, daemon=True).start()
+        # Die Alben passen sofort (die Liste liegt vor), die Titel kommen nach.
+        self._render()
+        return False
+
+    def _apply_tracks(self, tracks: list[dict], seq: int) -> bool:
+        if seq != self._search_seq:
+            return False
+        self.tracks = tracks
+        self._render()
+        return False
+
     def _render(self) -> None:
         needle = self.search.get_text().strip().lower()
         shown = [
@@ -77,12 +120,18 @@ class MusicLibraryPage(Adw.NavigationPage):
             for a in self.albums
             if not needle or needle in (a.get("album") or "").lower() or needle in (a.get("artist") or "").lower()
         ]
+        if needle:
+            # Bei einer Suche zählen BEIDE Ebenen: passende Alben und passende
+            # Titel. Vorher wurde nur in der schon geladenen Albenliste
+            # gesucht — nach einem Titel zu suchen fand deshalb nie etwas.
+            self._render_search(shown, self.tracks)
+            return
         if not shown:
             self.grid = None
             _error(
                 self.toolbar_view,
-                "Kein Album passt zur Suche." if needle else "Diese Bibliothek enthält keine Alben.",
-                title="Keine Treffer" if needle else "Leer",
+                "Diese Bibliothek enthält keine Alben.",
+                title="Leer",
                 icon="system-search-symbolic",
             )
             return
@@ -92,6 +141,74 @@ class MusicLibraryPage(Adw.NavigationPage):
         self.grid.set_albums(shown)
         if self.toolbar_view.get_content() is not self.grid:
             self.toolbar_view.set_content(self.grid)
+
+    def _render_search(self, albums: list[dict], tracks: list[dict]) -> None:
+        """Trefferliste: Alben und Titel untereinander in EINER Liste.
+
+        Bewusst eine Liste und kein Raster mit eingebetteter Liste — zwei
+        scrollende Bereiche ineinander sind in GTK unangenehm zu bedienen, und
+        eine Trefferliste ist ohnehin kurz."""
+        self.grid = None
+        if not albums and not tracks:
+            _error(
+                self.toolbar_view,
+                "Kein Album und kein Titel passt zur Suche.",
+                title="Keine Treffer",
+                icon="system-search-symbolic",
+            )
+            return
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12, margin_bottom=24)
+        if albums:
+            box.append(_heading(f"Alben · {len(albums)}"))
+            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
+            listbox.add_css_class("boxed-list")
+            for album in albums:
+                row = Adw.ActionRow(
+                    title=album.get("album") or "",
+                    subtitle=" · ".join(
+                        str(p) for p in (album.get("artist"), album.get("year") or "") if p
+                    ),
+                    activatable=True,
+                )
+                count = album.get("trackCount") or 0
+                if count:
+                    label = Gtk.Label(label=f"{count} Titel", valign=Gtk.Align.CENTER)
+                    label.add_css_class("dim-label")
+                    row.add_suffix(label)
+                row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+                row.connect("activated", lambda _r, a=album: self._open_album(a))
+                listbox.append(row)
+            box.append(listbox)
+        if tracks:
+            box.append(_heading(f"Titel · {len(tracks)}"))
+            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
+            listbox.add_css_class("boxed-list")
+            for index, track in enumerate(tracks):
+                subtitle = " · ".join(str(p) for p in (track.get("artist"), track.get("album")) if p)
+                row = Adw.ActionRow(title=track.get("title") or "", subtitle=subtitle, activatable=True)
+                duration = Gtk.Label(
+                    label=format_duration(track.get("durationSec") or 0), valign=Gtk.Align.CENTER
+                )
+                duration.add_css_class("gf-mini-time")
+                row.add_suffix(duration)
+                enqueue = Gtk.Button(
+                    icon_name="list-add-symbolic",
+                    has_frame=False,
+                    valign=Gtk.Align.CENTER,
+                    tooltip_text="An die Warteschlange anhängen",
+                )
+                enqueue.connect("clicked", lambda _b, t=track: self._enqueue_found(t))
+                row.add_suffix(enqueue)
+                # Ab dem angeklickten Titel spielen, die Trefferliste ist die
+                # Warteschlange.
+                row.connect("activated", lambda _r, i=index: self.ctx.music.play_queue(tracks, i))
+                listbox.append(row)
+            box.append(listbox)
+        self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, child=box))
+
+    def _enqueue_found(self, track: dict) -> None:
+        self.ctx.music.append([track])
+        _toast(self, "An die Warteschlange angehängt.")
 
     def _open_album(self, album: dict) -> None:
         self.nav_view.push(AlbumPage(self.ctx, self.nav_view, album))
@@ -326,6 +443,12 @@ def _busy(toolbar_view: Adw.ToolbarView) -> None:
 def _error(toolbar_view: Adw.ToolbarView, message: str, title: str = "Fehler", icon: str = "dialog-error-symbolic") -> bool:
     toolbar_view.set_content(Adw.StatusPage(icon_name=icon, title=title, description=message))
     return False
+
+
+def _heading(text: str) -> Gtk.Label:
+    label = Gtk.Label(label=text, xalign=0, margin_start=16)
+    label.add_css_class("heading")
+    return label
 
 
 def _toast(page: Adw.NavigationPage, message: str) -> bool:

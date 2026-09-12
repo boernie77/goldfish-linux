@@ -218,6 +218,11 @@ class MainWindow(Adw.ApplicationWindow):
         # Reiterleiste"); gemerkt wird das lokal, weil der Server diese
         # Bibliotheken nicht kennt.
         for local in self.ctx.local.visible_libraries():
+            # Fehlende Vorschaubilder im Hintergrund erzeugen, auch ohne dass
+            # man die Bibliothek öffnet — sonst entstünde ein Bild erst beim
+            # Vorbeiscrollen. Bereits vorhandene werden übersprungen.
+            if local.available:
+                self.ctx.local.prefetch_thumbnails_async(local)
             if not self.ctx.view_prefs.local_in_sidebar(local.nav_key):
                 continue
             row = self._build_sidebar_row(f"💾  {local.name}")

@@ -52,7 +52,6 @@ C bleibt.
 
 from __future__ import annotations
 
-import hashlib
 import pathlib
 import threading
 import weakref
@@ -119,8 +118,9 @@ class _Request:
 
 
 def _cache_path(server_path: str):
-    digest = hashlib.sha1(server_path.encode("utf-8")).hexdigest()
-    return config.POSTER_CACHE_DIR / f"{digest}.img"
+    # Gemeinsam mit `local_library.prefetch_thumbnails`, das im Vorgriff in
+    # denselben Ablageort schreibt.
+    return config.poster_cache_file(server_path)
 
 
 def _next_generation(picture: Gtk.Picture) -> int:
@@ -323,9 +323,9 @@ def _fetch_and_apply(
             # Vorschaubild einer lokalen Datei selbst erzeugen (GStreamer).
             # Erst hier, im Ladefaden, und danach wie jedes andere Bild im
             # Dateizwischenspeicher — erzeugt wird es also nur einmal.
-            from ..local_library import thumbnail_bytes
+            from ..local_library import thumbnail_for
 
-            data = thumbnail_bytes(server_path[len("gstthumb://") :])
+            data = thumbnail_for(server_path[len("gstthumb://") :])
             if not data:
                 return
         elif server_path.startswith("file://"):

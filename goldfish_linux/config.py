@@ -8,6 +8,7 @@ Folgt der XDG Base Directory Specification:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,18 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 VIEW_PREFS_FILE = CONFIG_DIR / "view_prefs.json"
 LOCAL_LIBRARIES_FILE = CONFIG_DIR / "local_libraries.json"
 DOWNLOADS_REGISTRY_FILE = DATA_DIR / "downloads.json"
+
+
+def poster_cache_file(key: str):
+    """Ablageort eines Bildes im Zwischenspeicher, benannt nach dem Hash
+    seiner Quelle.
+
+    Gemeinsam genutzt von `widgets/poster.py` (das die Bilder anzeigt) und
+    `local_library.py` (das Vorschaubilder eigener Dateien im Vorgriff
+    erzeugt) — beide müssen denselben Namen berechnen, sonst legt das eine ab,
+    was das andere nie findet."""
+    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
+    return POSTER_CACHE_DIR / f"{digest}.img"
 
 
 def ensure_dirs() -> None:

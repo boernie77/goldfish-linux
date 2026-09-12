@@ -1,3 +1,29 @@
+goldfish-linux (0.1.20-1) unstable; urgency=medium
+
+  * Musik: die Suche findet jetzt auch einzelne Titel. Bisher durchsuchte sie
+    nur die Albenliste, nach einem Liedtitel fand sie deshalb nie etwas. Die
+    Trefferliste zeigt passende Alben und passende Titel getrennt; ein Klick
+    spielt ab dem Titel, das Plus hängt ihn an die Warteschlange an. Gesucht
+    wird über den Server, der Titel, Künstler UND Album durchsieht.
+  * Eigene Datenträger: Sortierung und Filter wie in den Server-Bibliotheken —
+    nach Titel, Laufzeit, Dateigröße, Auflösung oder Änderungsdatum, dazu der
+    Auflösungsfilter. Gesehen, Favoriten und Genre bleiben dort weg, die gibt
+    es ohne Server nicht. Über dem Raster steht die Anzahl ("829 von 1.185
+    Videos").
+  * Vorschaubilder eigener Dateien entstehen jetzt im Hintergrund für die
+    ganze Bibliothek, nicht mehr nur für die Kacheln, an denen man
+    vorbeiscrollt — angestoßen beim Start, beim Öffnen der Bibliothek und nach
+    jedem Einlesen (gemessen: 1.181 von 1.185 Bildern nach kurzer Zeit).
+  * Die "._"-Beihefte von macOS verschwinden jetzt auch aus bereits
+    eingelesenen Beständen, ohne dass man neu einlesen muss — sie standen
+    vorne in der Namenssortierung und liefen beim Erzeugen der Vorschaubilder
+    jedes Mal ins Zeitlimit.
+  * Beim Anzeigen eigener Datenträger fragt die App nicht mehr im Hauptablauf
+    beim Dateimanager nach Vorschaubildern; auf einem langsamen Datenträger
+    führte das zu Aussetzern beim Blättern.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 21:20:00 +0200
+
 goldfish-linux (0.1.19-1) unstable; urgency=medium
 
   * Behoben (vom Benutzer gemeldet): "In allen Bibliotheken zieht sich der

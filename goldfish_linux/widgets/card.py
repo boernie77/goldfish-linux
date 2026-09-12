@@ -739,8 +739,6 @@ class LocalCardWidget(Gtk.Box):
 
     def bind(self, video: dict) -> None:
         from ..formatting import format_duration, format_resolution, format_size
-        from ..local_library import system_thumbnail
-
         self.video = video
         title = video.get("title") or ""
         self.title_label.set_text(title)
@@ -754,19 +752,17 @@ class LocalCardWidget(Gtk.Box):
         self.duration_label.set_text(duration)
         self.duration_label.set_visible(bool(duration))
 
-        # Erst das Vorschaubild des Dateimanagers (kostet nichts, ist schon
-        # da), sonst selbst eines erzeugen — das übernimmt der Ladefaden über
-        # `gstthumb://` und legt es im Zwischenspeicher ab.
+        # **Nur den Pfad weitergeben, nichts nachschlagen.** Ob es ein Bild
+        # des Dateimanagers gibt oder ob eines erzeugt werden muss, entscheidet
+        # der Ladefaden (`gstthumb://`) — die Auskunft des Dateimanagers geht
+        # über Gio und kann auf einem langsamen Datenträger dauern; im
+        # Hauptablauf wären das bei den rund 385 Kacheln, die GTK anlegt,
+        # spürbare Aussetzer.
         path = video.get("path") or ""
-        thumb = system_thumbnail(path)
-        if thumb:
-            source = f"file://{thumb}"
-        else:
-            source = f"gstthumb://{path}" if path else None
         load_poster_async(
             self.picture,
             self.client,
-            source,
+            f"gstthumb://{path}" if path else None,
             decode_width=CARD_WIDTH_WIDE,
             scroller=self.scroller,
         )

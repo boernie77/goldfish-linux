@@ -44,7 +44,10 @@ VIDEO_EXTENSIONS = frozenset(
 # angebundene Datei soll den Durchlauf nicht anhalten.
 _DISCOVER_TIMEOUT_S = 10
 # Für ein Vorschaubild braucht es keine zehn Sekunden — gemessen 0,03 bis 0,11.
-_THUMB_TIMEOUT_S = 5
+# Bewusst knapp: eine unbrauchbare Datei soll den Vorgriff nicht ausbremsen
+# (mit fünf Sekunden kam er über vier Dateien in zwanzig Sekunden nicht hinaus,
+# weil hunderte macOS-Beihefte je einmal ins Zeitlimit liefen).
+_THUMB_TIMEOUT_S = 2
 
 _gst_ready = False
 
@@ -104,6 +107,7 @@ class LocalVideo:
             "durationSec": self.duration_sec,
             "sizeBytes": self.size_bytes,
             "hasThumb": False,
+            "modified": self.modified,
             "local": True,
         }
 
@@ -151,13 +155,29 @@ class LocalLibrary:
             "videos": [v.to_json() for v in self.videos],
         }
 
+    @staticmethod
+    def _usable(video: LocalVideo) -> bool:
+        """Aussortieren, was keine echte Videodatei ist.
+
+        Die `._`-Beihefte von macOS (AppleDouble, 4 KB, ohne Bild und Ton)
+        wurden bis 0.1.18 mit eingelesen und stehen damit noch in den
+        gespeicherten Beständen. Sie hier beim Laden zu verwerfen räumt sie
+        ohne erneutes Einlesen weg — sonst stünden sie weiter oben in der
+        Namenssortierung und würden beim Erzeugen der Vorschaubilder jedes Mal
+        ins Zeitlimit laufen."""
+        return not Path(video.path).name.startswith("._")
+
     @classmethod
     def from_json(cls, raw: dict) -> LocalLibrary:
         return cls(
             name=raw.get("name", ""),
             root=raw.get("root", ""),
             scanned_at=float(raw.get("scannedAt") or 0),
-            videos=[LocalVideo.from_json(v) for v in (raw.get("videos") or [])],
+            videos=[
+                video
+                for video in (LocalVideo.from_json(v) for v in (raw.get("videos") or []))
+                if cls._usable(video)
+            ],
         )
 
 
@@ -274,6 +294,47 @@ class LocalLibraryManager:
         singles = [lib for lib in self.libraries if lib.root not in self.merged_roots]
         return ([merged] if merged else []) + singles
 
+    def prefetch_thumbnails_async(self, library: LocalLibrary) -> None:
+        """Erzeugt fehlende Vorschaubilder im Hintergrund — für ALLE Dateien
+        der Bibliothek, nicht nur für die gerade sichtbaren.
+
+        Ohne das entstünde ein Bild erst, wenn man an der Kachel vorbeiscrollt
+        (so war es in 0.1.19, und genau danach wurde gefragt). Läuft in EINEM
+        Faden mit kleiner Pause zwischen den Dateien: die Bilder sind Beiwerk,
+        sie dürfen die Wiedergabe und das Blättern nicht ausbremsen. Bereits
+        vorhandene Bilder werden übersprungen, der Lauf ist also beim zweiten
+        Mal sofort fertig."""
+        threading.Thread(target=self._prefetch_worker, args=(library,), daemon=True).start()
+
+    def _prefetch_worker(self, library: LocalLibrary) -> None:
+        import time
+
+        config.ensure_dirs()
+        for video in list(library.videos):
+            if not video.path:
+                continue
+            # **Reihenfolge der Prüfungen ist wichtig fürs Tempo:** der eigene
+            # Zwischenspeicher kostet ein `stat` (0,01 ms), die Auskunft des
+            # Dateimanagers geht über Gio und kann auf einem langsamen
+            # USB-Stick zehner Millisekunden dauern. Erst das Billige.
+            target = config.poster_cache_file(f"gstthumb://{video.path}")
+            if target.exists():
+                continue
+            if (video.duration_sec or 0) <= 0:
+                # Ohne erkannte Laufzeit ist die Datei für GStreamer nicht
+                # lesbar — dann gibt es auch kein Bild daraus.
+                continue
+            data = thumbnail_for(video.path)
+            if not data:
+                continue
+            try:
+                target.write_bytes(data)
+            except OSError:
+                return  # Platte voll oder nicht schreibbar: aufhören
+            # Kurz Luft lassen; der Faden soll im Hintergrund arbeiten, nicht
+            # die Maschine belegen.
+            time.sleep(0.02)
+
     def find_duplicates(self, library: LocalLibrary) -> list[list[LocalVideo]]:
         """Gruppen von Dateien, die sich in Größe UND Laufzeit gleichen.
 
@@ -345,6 +406,9 @@ class LocalLibraryManager:
         self.save()
         if on_done:
             GLib.idle_add(on_done, len(result))
+        # Direkt im Anschluss die Vorschaubilder — nach einem Einlesen ist die
+        # Wahrscheinlichkeit hoch, dass man sich die Bibliothek gleich ansieht.
+        self._prefetch_worker(library)
 
     @staticmethod
     def _inspect(discoverer: GstPbutils.Discoverer, file_path: Path, stat) -> LocalVideo:
@@ -428,6 +492,21 @@ def thumbnail_bytes(path: str, width: int = 320, at_fraction: float = 0.15) -> b
         return None
     finally:
         pipeline.set_state(Gst.State.NULL)
+
+
+def thumbnail_for(path: str) -> bytes | None:
+    """Die Bytes eines Vorschaubildes für eine lokale Datei.
+
+    Erst das Bild des Dateimanagers (kostet nichts, ist schon da), sonst
+    selbst eines erzeugen. Läuft NIE im Hauptablauf — beide Wege können
+    Millisekunden bis Sekunden dauern."""
+    existing = system_thumbnail(path)
+    if existing:
+        try:
+            return Path(existing).read_bytes()
+        except OSError:
+            pass
+    return thumbnail_bytes(path)
 
 
 def system_thumbnail(path: str) -> str | None:
