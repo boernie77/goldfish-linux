@@ -107,16 +107,16 @@ class MainWindow(Adw.ApplicationWindow):
         try:
             libraries = self.client.libraries()
         except GoldfishAPIError as exc:
-            GLib.idle_add(self._show_toast, f"Bibliotheken konnten nicht geladen werden: {exc}")
+            GLib.idle_add(self.show_toast, f"Bibliotheken konnten nicht geladen werden: {exc}")
             return
         except Exception as exc:  # noqa: BLE001 — sonst bleibt die Seitenleiste
             # stumm leer, ohne jede Fehlermeldung, wenn hier etwas Unerwartetes
             # passiert (z. B. unerwartete Antwortform des Servers).
-            GLib.idle_add(self._show_toast, f"Bibliotheken konnten nicht geladen werden: {exc}")
+            GLib.idle_add(self.show_toast, f"Bibliotheken konnten nicht geladen werden: {exc}")
             return
         if not libraries:
             GLib.idle_add(
-                self._show_toast,
+                self.show_toast,
                 "Keine Bibliotheken sichtbar — hat dein Benutzer Zugriff auf mindestens eine Bibliothek?",
             )
         GLib.idle_add(self._populate_sidebar, libraries)
@@ -159,6 +159,8 @@ class MainWindow(Adw.ApplicationWindow):
             page = BrowsePage(self.ctx, self.nav_view, row.library)
         self.nav_view.push(page)
 
-    def _show_toast(self, message: str) -> bool:
+    def show_toast(self, message: str) -> bool:
+        """Öffentlich, weil auch die Unterseiten (BrowsePage & Co.) darüber
+        melden — sie erreichen das Fenster per `get_root()`."""
         self.toast_overlay.add_toast(Adw.Toast(title=message))
         return False

@@ -1,3 +1,29 @@
+goldfish-linux (0.1.8-1) unstable; urgency=medium
+
+  * Neu: Bibliotheken erscheinen als Kachelraster mit TMDB-Postern statt als
+    Textliste. Filme und Serien tragen ein 2:3-Poster, Privatvideos ein
+    16:9-Vorschaubild, Musik ein quadratisches Cover — dieselbe Aufteilung wie
+    im Browser. Auf den Kacheln liegen Bewertung, Auflösung, Laufzeit, die
+    Anzahl mehrfach vorhandener Versionen sowie Schalter für Gesehen und
+    Favorit, die direkt umschalten.
+  * Neu: Serienordner zeigen Titel und Nummer der Folge (S03E06), Privatvideos
+    den Kanalnamen, Ordnerkacheln die Anzahl der enthaltenen Titel.
+  * Fix: in einem Unterordner erschienen Ordnerkacheln UND alle Dateien
+    darunter gleichzeitig — eine Serie zeigte 31 Release-Ordner mit je "1
+    Titel" neben ihren 75 Folgen. Die Navigation folgt jetzt derselben Regel
+    wie der Browser: Ordnerkacheln nur in der Bibliothekswurzel oder in einem
+    Ordner mit aktiviertem Drilldown, sonst die Dateien flach.
+  * Fix: Poster wurden mit einer unerlaubten Zielhöhe skaliert
+    (gdk_pixbuf_loader_set_size verlangt beide Maße >= 0) und warfen pro Bild
+    drei GdkPixbuf-Warnungen.
+  * Poster laden jetzt über einen begrenzten Pool von sechs Threads statt einem
+    pro Kachel — beim Durchscrollen einer großen Bibliothek (2808 Kacheln)
+    entstanden sonst beliebig viele gleichzeitige Anfragen an den Server.
+  * Die Auflösungsstufen entsprechen jetzt exakt denen des Servers; 1080p
+    begann bisher schon bei 900 statt 1000 Bildzeilen.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 16:20:00 +0200
+
 goldfish-linux (0.1.7-1) unstable; urgency=medium
 
   * Fix: die App startete mit gespeicherter Anmeldung gar nicht mehr — kein

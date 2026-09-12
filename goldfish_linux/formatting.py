@@ -26,18 +26,26 @@ def format_duration(seconds: float) -> str:
     return f"{m}:{s:02d}"
 
 
+# Die Stufen des Servers (internal/store/items.go, ResBuckets-Filter). Gleiche
+# Grenzen wie dort, damit ein per Filter gewähltes "720p" auch auf der Kachel
+# als 720p steht. Die Formel max(height, width*9/16) fängt Breitwandformate:
+# ein 1920x800-Film ist 1080p, nicht 720p.
+_BUCKETS = (
+    (2000, "4K"),
+    (1400, "2K"),
+    (1000, "1080p"),
+    (700, "720p"),
+    (540, "576p"),
+    (500, "540p"),
+    (440, "480p"),
+)
+
+
 def format_resolution(width: int, height: int) -> str:
     if not height:
         return ""
     effective = max(height, int(width * 9 / 16)) if width else height
-    if effective >= 2000:
-        return "4K"
-    if effective >= 1400:
-        return "2K"
-    if effective >= 900:
-        return "1080p"
-    if effective >= 600:
-        return "720p"
-    if effective >= 500:
-        return "576p"
-    return f"{effective}p"
+    for limit, label in _BUCKETS:
+        if effective >= limit:
+            return label
+    return "360p"
