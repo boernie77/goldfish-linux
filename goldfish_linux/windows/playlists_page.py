@@ -224,9 +224,7 @@ class PlaylistItemsPage(Adw.NavigationPage):
             if self._is_music():
                 self.ctx.music.play_queue(queue, 0)
             else:
-                from .detail_page import DetailPage
-
-                self.nav_view.push(DetailPage(self.ctx, self.nav_view, queue[0], queue=queue))
+                self._open_video(queue[0], queue)
         return False
 
     def _open_item(self, item: dict) -> None:
@@ -252,15 +250,22 @@ class PlaylistItemsPage(Adw.NavigationPage):
         if self._is_music():
             self.ctx.music.play_queue(order, 0)
             return
-        from .detail_page import DetailPage
-
-        self.nav_view.push(DetailPage(self.ctx, self.nav_view, order[0], queue=order))
+        self._open_video(order[0], order)
 
     def start_with(self, item: dict) -> None:
         """Von der Übersicht aus: diese Playlist öffnen und mit genau diesem
         Titel beginnen. Die Titel sind beim Öffnen noch nicht geladen, deshalb
         wird der Wunsch gemerkt und in `_apply` ausgeführt."""
         self._start_item = item
+
+    def _open_video(self, item: dict, queue: list[dict]) -> None:
+        """Video sofort abspielen, mit der Liste als Warteschlange — ein
+        Zufallsknopf soll spielen, nicht nur eine Seite aufschlagen."""
+        from .player_window import PlayerWindow
+
+        window = PlayerWindow(self.ctx.application, self.ctx.client, item, queue=queue, queue_index=0)
+        window.set_transient_for(self.ctx.window)
+        window.present()
 
     def _ask_rename(self) -> None:
         dialog = Adw.MessageDialog(transient_for=self.ctx.window, heading="Playlist umbenennen")

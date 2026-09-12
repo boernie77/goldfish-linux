@@ -81,7 +81,12 @@ class CardGrid(Gtk.ScrolledWindow):
         self.grid = Gtk.GridView(
             model=selection,
             factory=factory,
-            max_columns=12,
+            # Großzügig: der GridView teilt seine Breite auf GENAU so viele
+            # Spalten, wie er anlegt — bei zwölf Spalten in einem 2600 Pixel
+            # breiten Fenster wären das 216 Pixel je Spalte und damit 48 Pixel
+            # Luft je Kachel. Mit einer hohen Grenze bestimmt die Kachelbreite
+            # die Spaltenzahl, und die Abstände bleiben klein.
+            max_columns=36,
             min_columns=1,
             vexpand=True,
             single_click_activate=False,
@@ -118,6 +123,13 @@ class CardGrid(Gtk.ScrolledWindow):
         # `scroller=self`: die Kachel soll ihr Poster erst laden, wenn sie in
         # Sicht ist. Die Leiste wird ausdrücklich mitgegeben — eine Kachel darf
         # sie nicht selbst suchen (Kopf von widgets/poster.py).
+        # Privatvideos bekommen dieselbe Kachelform wie Filme und Serien
+        # (User-Wunsch: "auch in der Bibliothek Youtube sollen die Kacheln die
+        # gleiche Größe haben"). Der Browser zeigt dort 16:9-Kacheln — in einer
+        # App, in der man zwischen den Bibliotheken hin und her springt, wirkt
+        # die wechselnde Kachelgröße aber wie ein Fehler. Musik bleibt
+        # quadratisch, ein Cover ist nun einmal quadratisch.
+        aspect = "movies" if self.kind == "private" else self.kind
         card = CardWidget(
             self.client,
             self.kind,
@@ -125,8 +137,11 @@ class CardGrid(Gtk.ScrolledWindow):
             on_toggle_watched=self.on_toggle_watched,
             on_toggle_favorite=self.on_toggle_favorite,
             scroller=self,
+            aspect_kind=aspect,
         )
-        folder_card = FolderCardWidget(self.client, self.kind, on_activate=self._activate_folder, scroller=self)
+        folder_card = FolderCardWidget(
+            self.client, aspect, on_activate=self._activate_folder, scroller=self
+        )
         stack.add_named(card, "item")
         stack.add_named(folder_card, "folder")
         list_item.set_child(stack)
@@ -191,7 +206,12 @@ class AlbumGrid(Gtk.ScrolledWindow):
         self.grid = Gtk.GridView(
             model=Gtk.NoSelection.new(self.store),
             factory=factory,
-            max_columns=12,
+            # Großzügig: der GridView teilt seine Breite auf GENAU so viele
+            # Spalten, wie er anlegt — bei zwölf Spalten in einem 2600 Pixel
+            # breiten Fenster wären das 216 Pixel je Spalte und damit 48 Pixel
+            # Luft je Kachel. Mit einer hohen Grenze bestimmt die Kachelbreite
+            # die Spaltenzahl, und die Abstände bleiben klein.
+            max_columns=36,
             min_columns=1,
             vexpand=True,
             single_click_activate=False,
@@ -254,7 +274,7 @@ class LocalGrid(Gtk.ScrolledWindow):
         self.grid = Gtk.GridView(
             model=Gtk.NoSelection.new(self.store),
             factory=factory,
-            max_columns=10,
+            max_columns=36,
             min_columns=1,
             vexpand=True,
             single_click_activate=False,

@@ -24,7 +24,7 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, Gtk, Pango  # noqa: E402
 
 from ..api import GoldfishClient  # noqa: E402
-from ..formatting import format_duration, format_resolution  # noqa: E402
+from ..formatting import format_date, format_duration, format_resolution  # noqa: E402
 from .poster import load_poster_async  # noqa: E402
 
 CARD_WIDTH = 168
@@ -109,6 +109,36 @@ def ensure_card_css() -> None:
     _css_loaded = True
 
 
+def _image_frame(width: int, height: int) -> tuple[Gtk.Overlay, Gtk.Picture]:
+    """Ein Bildbereich mit FESTER Sollgröße — und ein Bild darin, das sie nicht
+    sprengen kann.
+
+    **Der Grund ist ein Fallstrick von `Gtk.Picture`:** bei vorgegebener Höhe
+    meldet es eine Naturbreite nach dem Seitenverhältnis seines Bildes, nicht
+    nach seiner Sollbreite. Ein 16:9-Standbild in einer 301 Pixel hohen Kachel
+    fordert 536 Pixel Breite an (nachgemessen). Ist im Fenster Platz übrig,
+    verteilt die umgebende Box diesen Wunsch — und die Kacheln stehen weit
+    auseinander, obwohl jede nur 168 Pixel zeichnet. Genau das war als
+    "Abstände ziehen sich auf, wenn ich das Fenster größer mache" gemeldet.
+
+    Die Lösung: die Sollgröße gibt eine leere Box als HAUPTKIND des Overlays
+    vor, das Bild liegt als Overlay-Kind darüber und wird von der Messung
+    ausgenommen (`set_measure_overlay(..., False)`). Damit ist die Naturbreite
+    bei jeder Höhe 168 — geprüft für -1, 252 und 301."""
+    frame = Gtk.Box()
+    frame.set_size_request(width, height)
+    overlay = Gtk.Overlay(child=frame)
+    overlay.set_hexpand(False)
+    overlay.set_halign(Gtk.Align.START)
+    overlay.set_overflow(Gtk.Overflow.HIDDEN)
+    picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
+    picture.set_hexpand(False)
+    picture.add_css_class("gf-card-image")
+    overlay.add_overlay(picture)
+    overlay.set_measure_overlay(picture, False)
+    return overlay, picture
+
+
 class CardWidget(Gtk.Box):
     """Wiederverwendbare Kachel. `bind()` setzt sie auf ein neues Item um."""
 
@@ -120,10 +150,16 @@ class CardWidget(Gtk.Box):
         on_toggle_watched: Callable[[dict, bool], None] | None = None,
         on_toggle_favorite: Callable[[dict, bool], None] | None = None,
         scroller: Gtk.ScrolledWindow | None = None,
+        aspect_kind: str | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.client = client
         self.kind = kind
+        # `aspect_kind` trennt die Form der Kachel von der Bibliotheksart:
+        # auf der Startseite liegen Filme, Folgen und Privatvideos in einer
+        # Reihe und sollen dort gleich groß sein — ein 16:9-Standbild in einem
+        # 2:3-Rahmen wird dafür mittig beschnitten (ContentFit.COVER).
+        geometry = aspect_kind or kind
         self.on_activate = on_activate
         self.on_toggle_watched = on_toggle_watched
         self.on_toggle_favorite = on_toggle_favorite
@@ -144,15 +180,7 @@ class CardWidget(Gtk.Box):
         self.set_valign(Gtk.Align.START)
 
         # -- Bildbereich mit Abzeichen --
-        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
-        self.picture.set_size_request(CARD_WIDTH, card_height_for(kind))
-        self.picture.set_hexpand(False)
-        self.picture.add_css_class("gf-card-image")
-
-        self.overlay = Gtk.Overlay(child=self.picture)
-        self.overlay.set_hexpand(False)
-        self.overlay.set_halign(Gtk.Align.START)
-        self.overlay.set_overflow(Gtk.Overflow.HIDDEN)
+        self.overlay, self.picture = _image_frame(CARD_WIDTH, card_height_for(geometry))
 
         self.watched_btn = Gtk.Button(
             icon_name="object-select-symbolic",
@@ -276,12 +304,24 @@ class CardWidget(Gtk.Box):
             sub_parts.append(str(metadata["year"]))
         if item.get("artist"):
             sub_parts.append(item["artist"])
+        # **Privatvideos: das Erscheinungsdatum gehört dazu** (so wie in der
+        # Mac-App). Bei einem YouTube-Kanal ist es die einzige zeitliche
+        # Einordnung, die eine Kachel hergibt — und die Voreinstellung sortiert
+        # diese Bibliotheken genau danach.
+        if self.kind == "private":
+            released = format_date(item.get("releasedAt"))
+            if released:
+                sub_parts.append(released)
+        rel = item.get("relPath") or ""
+        folder = rel.rsplit("/", 1)[0] if "/" in rel else ""
+        if folder and (self.kind == "private" or not sub_parts):
+            # Ohne Metadaten-Titel steht in der ersten Zeile der Dateiname —
+            # dann zeigt die zweite den Ordner statt ihn zu wiederholen. Bei
+            # Privatvideos steht er zusätzlich zum Datum, weil er dort den
+            # Kanal benennt.
+            sub_parts.append(folder)
         if not sub_parts:
-            # Kein Metadaten-Titel: dann steht in der ersten Zeile der
-            # Dateiname — hier den Ordnerpfad zeigen statt ihn zu wiederholen.
-            rel = item.get("relPath") or ""
-            folder = rel.rsplit("/", 1)[0] if "/" in rel else ""
-            sub_parts.append(folder or (item.get("container") or "").upper())
+            sub_parts.append((item.get("container") or "").upper())
         self.sub_label.set_text(" · ".join(p for p in sub_parts if p))
 
         rating = metadata.get("rating") or 0
@@ -363,7 +403,12 @@ class CardWidget(Gtk.Box):
 class FolderCardWidget(Gtk.Box):
     """Kachel für einen Ordner: Vorschaubild eines enthaltenen Videos oder das
     Serienposter, Name und Anzahl. Trägt bei zusammengeführten Serienordnern
-    ein 🔗 und bei vom Auto-Scan ausgenommenen Ordnern ein 🚫."""
+    ein 🔗.
+
+    **Kein Hinweis auf vom Auto-Scan ausgenommene Ordner** (das 🚫 des
+    Browsers): der Auto-Scan ist reine Serververwaltung, und die bleibt in
+    allen Goldfish-Clients dem Browser überlassen — auf einer Kachel hier
+    wäre das Zeichen nur ein unerklärliches Rätsel."""
 
     def __init__(
         self,
@@ -380,10 +425,7 @@ class FolderCardWidget(Gtk.Box):
         self.scroller = scroller
         self.set_size_request(CARD_WIDTH, -1)
 
-        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
-        self.picture.set_size_request(CARD_WIDTH, card_height_for(kind))
-        self.picture.add_css_class("gf-card-image")
-        self.overlay = Gtk.Overlay(child=self.picture)
+        self.overlay, self.picture = _image_frame(CARD_WIDTH, card_height_for(kind))
 
         self.marker_label = Gtk.Label(halign=Gtk.Align.START, valign=Gtk.Align.START, margin_start=6, margin_top=6)
         self.marker_label.add_css_class("gf-badge")
@@ -422,13 +464,9 @@ class FolderCardWidget(Gtk.Box):
         self.count_label.set_text(f"{count} Titel" if count != 1 else "1 Titel")
         self.count_label.set_visible(count > 0)
 
-        markers = []
-        if folder.get("mergedFolders"):
-            markers.append("🔗")
-        if folder.get("excluded"):
-            markers.append("🚫")
-        self.marker_label.set_text(" ".join(markers))
-        self.marker_label.set_visible(bool(markers))
+        merged = bool(folder.get("mergedFolders"))
+        self.marker_label.set_text("🔗" if merged else "")
+        self.marker_label.set_visible(merged)
 
         # Ordner-Poster: Serienposter wenn zugeordnet, sonst Vorschaubild
         # eines enthaltenen Videos.
@@ -489,15 +527,7 @@ class SimpleCard(Gtk.Box):
         self.set_valign(Gtk.Align.START)
         self.on_click = on_click
 
-        picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
-        picture.set_size_request(width, card_height_for(aspect, width))
-        picture.set_hexpand(False)
-        picture.add_css_class("gf-card-image")
-        overlay = Gtk.Overlay(child=picture)
-        overlay.set_hexpand(False)
-        # Zuschneiden statt überlaufen lassen, damit ein breiteres Bild die
-        # Kachelbreite nicht sprengt.
-        overlay.set_overflow(Gtk.Overflow.HIDDEN)
+        overlay, picture = _image_frame(width, card_height_for(aspect, width))
 
         if corner:
             label = Gtk.Label(label=corner, halign=Gtk.Align.START, valign=Gtk.Align.START, margin_start=6, margin_top=6)
@@ -590,12 +620,7 @@ class AlbumCardWidget(Gtk.Box):
         self.set_halign(Gtk.Align.START)
         self.set_valign(Gtk.Align.START)
 
-        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
-        self.picture.set_size_request(CARD_WIDTH, card_height_for("music"))
-        self.picture.add_css_class("gf-card-image")
-        self.picture.set_hexpand(False)
-        self.overlay = Gtk.Overlay(child=self.picture)
-        self.overlay.set_overflow(Gtk.Overflow.HIDDEN)
+        self.overlay, self.picture = _image_frame(CARD_WIDTH, card_height_for("music"))
 
         self.count_label = Gtk.Label(halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6)
         self.count_label.add_css_class("gf-badge")
@@ -678,12 +703,7 @@ class LocalCardWidget(Gtk.Box):
         self.set_halign(Gtk.Align.START)
         self.set_valign(Gtk.Align.START)
 
-        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
-        self.picture.set_size_request(CARD_WIDTH_WIDE, card_height_for("private", CARD_WIDTH_WIDE))
-        self.picture.set_hexpand(False)
-        self.picture.add_css_class("gf-card-image")
-        self.overlay = Gtk.Overlay(child=self.picture)
-        self.overlay.set_overflow(Gtk.Overflow.HIDDEN)
+        self.overlay, self.picture = _image_frame(CARD_WIDTH_WIDE, card_height_for("private", CARD_WIDTH_WIDE))
 
         self.res_label = Gtk.Label(halign=Gtk.Align.START, valign=Gtk.Align.END, margin_start=6, margin_bottom=6)
         self.res_label.add_css_class("gf-badge")
@@ -734,11 +754,19 @@ class LocalCardWidget(Gtk.Box):
         self.duration_label.set_text(duration)
         self.duration_label.set_visible(bool(duration))
 
-        thumb = system_thumbnail(video.get("path") or "")
+        # Erst das Vorschaubild des Dateimanagers (kostet nichts, ist schon
+        # da), sonst selbst eines erzeugen — das übernimmt der Ladefaden über
+        # `gstthumb://` und legt es im Zwischenspeicher ab.
+        path = video.get("path") or ""
+        thumb = system_thumbnail(path)
+        if thumb:
+            source = f"file://{thumb}"
+        else:
+            source = f"gstthumb://{path}" if path else None
         load_poster_async(
             self.picture,
             self.client,
-            f"file://{thumb}" if thumb else None,
+            source,
             decode_width=CARD_WIDTH_WIDE,
             scroller=self.scroller,
         )

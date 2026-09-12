@@ -222,6 +222,18 @@ class AlbumPage(Adw.NavigationPage):
             duration.add_css_class("gf-mini-time")
             row.add_suffix(duration)
 
+            # Einzelnen Titel anhängen. Vorher gab es das nur für ein ganzes
+            # Album ("➕ Anhängen" oben) — für einen einzelnen Titel fehlte
+            # jeder Weg in die Warteschlange.
+            enqueue = Gtk.Button(
+                icon_name="list-add-symbolic",
+                has_frame=False,
+                valign=Gtk.Align.CENTER,
+                tooltip_text="An die Warteschlange anhängen",
+            )
+            enqueue.connect("clicked", lambda _b, t=track: self._enqueue_track(t))
+            row.add_suffix(enqueue)
+
             fav = Gtk.ToggleButton(
                 icon_name="emblem-favorite-symbolic",
                 has_frame=False,
@@ -236,6 +248,12 @@ class AlbumPage(Adw.NavigationPage):
             row.connect("activated", lambda _r, i=index: self.ctx.music.play_queue(self.tracks, i))
             listbox.append(row)
         return listbox
+
+    def _enqueue_track(self, track: dict) -> None:
+        """Titel hinten anhängen. Läuft gerade nichts, beginnt er sofort —
+        so verhält sich `MusicPlayer.append` auch für ganze Alben."""
+        self.ctx.music.append([track])
+        _toast(self, f"„{track.get('title') or 'Titel'}" + "\u201c an die Warteschlange angehängt.")
 
     def _download_album(self) -> None:
         """Lädt die Titel NACHEINANDER herunter.

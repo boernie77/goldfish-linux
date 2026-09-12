@@ -54,6 +54,12 @@ from ..subtitles import SubtitleTrack, parse_vtt  # noqa: E402
 # erscheinen, ohne Last zu erzeugen.
 _TICK_MS = 250
 
+# Sprungweiten der Knöpfe, wie in der Mac-App: zurück kürzer als vorwärts —
+# man springt zurück, um etwas Verpasstes nochmal zu hören, und vorwärts, um
+# über eine längere Stelle hinwegzukommen.
+_SKIP_BACK = 15
+_SKIP_FORWARD = 30
+
 # Abstand, in dem die Position an den Server gemeldet wird, damit
 # Weiterschauen auch nach einem Absturz noch stimmt.
 _RESUME_EVERY_S = 10
@@ -113,6 +119,7 @@ class PlayerWindow(Adw.Window):
         queue_index: int = 0,
         direct_url: str | None = None,
         window_title: str | None = None,
+        random_fetch=None,
     ):
         _ensure_css()
         title = self._title_for(item, window_title)
@@ -129,6 +136,13 @@ class PlayerWindow(Adw.Window):
         self.queue = queue or []
         self.queue_index = queue_index
         self.direct_url = direct_url
+        # Zufallsmodus: `random_fetch` holt (im Hintergrund aufgerufen) das
+        # nächste Zufallsvideo. Die schon gesehenen bleiben als Verlauf
+        # stehen, damit ⏮ zurückblättern kann — genau wie im Browser
+        # (`state.shuffleHistory`/`shuffleIdx`) und in der Mac-App.
+        self.random_fetch = random_fetch
+        self.random_history: list[dict] = [item] if random_fetch else []
+        self.random_index = 0
 
         self._stop_reported = False
         self._seeking = False
@@ -216,9 +230,31 @@ class PlayerWindow(Adw.Window):
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         bar.add_css_class("gf-player-bar")
 
+        # Vor/Zurück: im Zufallsmodus das nächste bzw. vorherige Zufallsvideo,
+        # in einer Warteschlange der nächste bzw. vorige Titel. Ohne beides
+        # gibt es nichts zu blättern, dann bleiben die Knöpfe weg.
+        self.prev_button = Gtk.Button(icon_name="media-skip-backward-symbolic", has_frame=False)
+        self.prev_button.connect("clicked", lambda *_: self._go_previous())
+        bar.append(self.prev_button)
+
+        self.back_button = Gtk.Button(icon_name="media-seek-backward-symbolic", has_frame=False)
+        self.back_button.set_tooltip_text("15 Sekunden zurück")
+        self.back_button.connect("clicked", lambda *_: self.skip(-_SKIP_BACK))
+        bar.append(self.back_button)
+
         self.play_button = Gtk.Button(icon_name="media-playback-pause-symbolic", has_frame=False)
         self.play_button.connect("clicked", lambda *_: self.toggle_play())
         bar.append(self.play_button)
+
+        self.forward_button = Gtk.Button(icon_name="media-seek-forward-symbolic", has_frame=False)
+        self.forward_button.set_tooltip_text("30 Sekunden vor")
+        self.forward_button.connect("clicked", lambda *_: self.skip(_SKIP_FORWARD))
+        bar.append(self.forward_button)
+
+        self.next_button = Gtk.Button(icon_name="media-skip-forward-symbolic", has_frame=False)
+        self.next_button.connect("clicked", lambda *_: self._go_next())
+        bar.append(self.next_button)
+        self._update_step_buttons()
 
         self.position_label = Gtk.Label(label="0:00")
         self.position_label.add_css_class("gf-player-time")
@@ -601,14 +637,92 @@ class PlayerWindow(Adw.Window):
             self.close()
 
     def _play_next(self) -> bool:
-        """Nächsten Titel der Warteschlange im selben Fenster starten. Die
-        Vorwahl von Qualität und Tonspur gilt weiter; Untertitel und
-        Vorschaubilder gehören zum einzelnen Titel und werden neu geladen."""
+        """Weiter zum nächsten: im Zufallsmodus ein neues Zufallsvideo, sonst
+        der nächste Titel der Warteschlange. Gibt False zurück, wenn es nichts
+        mehr gibt — dann schließt sich das Fenster am Ende des Films."""
+        if self.random_fetch is not None:
+            self._go_next()
+            return True
         if self.queue_index + 1 >= len(self.queue):
             return False
         self.queue_index += 1
-        self.item = self.queue[self.queue_index]
+        self._switch_to(self.queue[self.queue_index])
+        return True
+
+    # -- Blättern ---------------------------------------------------------
+
+    def _update_step_buttons(self) -> None:
+        """Vor/Zurück nur zeigen, wenn es etwas zu blättern gibt."""
+        random_mode = self.random_fetch is not None
+        has_queue = len(self.queue) > 1
+        self.prev_button.set_visible(random_mode or has_queue)
+        self.next_button.set_visible(random_mode or has_queue)
+        if random_mode:
+            self.prev_button.set_tooltip_text("Vorheriges Zufallsvideo")
+            self.next_button.set_tooltip_text("Nächstes Zufallsvideo")
+            self.prev_button.set_sensitive(self.random_index > 0)
+        else:
+            self.prev_button.set_tooltip_text("Voriger Titel")
+            self.next_button.set_tooltip_text("Nächster Titel")
+            self.prev_button.set_sensitive(self.queue_index > 0)
+            self.next_button.set_sensitive(self.queue_index + 1 < len(self.queue))
+
+    def _go_previous(self) -> None:
+        if self.random_fetch is not None:
+            if self.random_index > 0:
+                self.random_index -= 1
+                self._switch_to(self.random_history[self.random_index])
+            return
+        if self.queue_index > 0:
+            self.queue_index -= 1
+            self._switch_to(self.queue[self.queue_index])
+
+    def _go_next(self) -> None:
+        if self.random_fetch is None:
+            if self.queue_index + 1 < len(self.queue):
+                self.queue_index += 1
+                self._switch_to(self.queue[self.queue_index])
+            return
+        # Schon einmal zurückgeblättert? Dann erst durch den Verlauf nach
+        # vorn, bevor ein neues Video gezogen wird.
+        if self.random_index + 1 < len(self.random_history):
+            self.random_index += 1
+            self._switch_to(self.random_history[self.random_index])
+            return
+        self.busy.set_visible(True)
+        self.busy.start()
+
+        def worker() -> None:
+            try:
+                item = self.random_fetch()
+            except Exception as exc:  # noqa: BLE001 — im Fenster melden, nicht sterben
+                GLib.idle_add(self._show_load_error, f"Kein Zufallstreffer: {exc}")
+                return
+            if not item:
+                GLib.idle_add(self._show_load_error, "Kein weiteres Video gefunden.")
+                return
+            GLib.idle_add(self._append_random, item)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _append_random(self, item: dict) -> bool:
+        self.random_history.append(item)
+        self.random_index = len(self.random_history) - 1
+        self._switch_to(item)
+        return False
+
+    def _switch_to(self, item: dict) -> None:
+        """Im selben Fenster auf ein anderes Video umstellen. Die Vorwahl von
+        Qualität und Tonspur gilt weiter; Untertitel und Vorschaubilder
+        gehören zum einzelnen Titel und werden neu geladen."""
+        self._report_stop("closed")
+        self._release_media()
+        self.item = item
         self.item_id = int(self.item["id"])
+        # Lokale Videos kommen von der Platte, Server-Videos aus dem Netz —
+        # beim Umschalten muss das mitwandern, sonst spielt weiter dieselbe
+        # Datei (bzw. es wird vergeblich der Server gefragt).
+        self.local_path = item.get("path") if item.get("local") else None
         self._stop_reported = False
         self._watched_marked = False
         self._last_resume_sent = 0.0
@@ -621,13 +735,18 @@ class PlayerWindow(Adw.Window):
         self._duration = float(self.item.get("durationSec") or 0)
         self._fresh_token = str(int(time.time() * 1000))
 
+        self.start_position = 0.0
         title = self._title_for(self.item, None)
         self.set_title(title)
         self.header.set_title_widget(Adw.WindowTitle(title=title))
         self.busy.set_visible(True)
         self.busy.start()
-        threading.Thread(target=self._resolve_stream, daemon=True).start()
-        return True
+        self._update_step_buttons()
+        # Über `_start_playback`, nicht direkt über `_resolve_stream`: ein
+        # lokales Video liegt auf der Platte und hat beim Server nichts zu
+        # suchen (seine Kennung ist dort gar nicht bekannt). Sonst bleibt beim
+        # Weiterblättern in einer eigenen Bibliothek das Bild schwarz.
+        self._start_playback()
 
     def _set_track(self, track: SubtitleTrack) -> bool:
         self._track = track

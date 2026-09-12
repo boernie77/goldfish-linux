@@ -163,12 +163,24 @@ class DetailPage(Adw.NavigationPage):
 
     def _build_buttons(self) -> Gtk.Widget:
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.START)
+        # Ein Musiktitel gehört in die Abspielleiste, nicht ins Videofenster —
+        # dieselbe Regel wie überall sonst in dieser App (und im Browser).
+        # Diese Seite bekommt man für Musik über den Ordner-Browser einer
+        # Musikbibliothek.
+        self.is_music = self.ctx.library_kind(self.item.get("libraryId")) == "music"
 
         play = Gtk.Button(label="▶ Abspielen")
         play.add_css_class("suggested-action")
         play.add_css_class("pill")
-        play.connect("clicked", lambda *_: self._play_with_resume_check())
+        play.connect("clicked", lambda *_: self._play_music() if self.is_music else self._play_with_resume_check())
         row.append(play)
+
+        if self.is_music:
+            enqueue = Gtk.Button(label="➕ Warteschlange")
+            enqueue.add_css_class("pill")
+            enqueue.set_tooltip_text("An die laufende Warteschlange anhängen")
+            enqueue.connect("clicked", lambda *_: self._enqueue_music())
+            row.append(enqueue)
 
         self.trailer_button = Gtk.Button(label="🎬 Trailer", visible=False)
         self.trailer_button.add_css_class("pill")
@@ -178,7 +190,10 @@ class DetailPage(Adw.NavigationPage):
         self.watched_toggle = Gtk.ToggleButton(active=bool(self.item.get("watched")))
         self._update_watched_label()
         self.watched_toggle.connect("toggled", self._on_watched_toggled)
-        row.append(self.watched_toggle)
+        # "Gesehen" ist ein Videobegriff; für Musik führt der Server ihn
+        # bewusst nicht (der Browser blendet den Filter dort ebenfalls aus).
+        if not self.is_music:
+            row.append(self.watched_toggle)
 
         self.favorite_toggle = Gtk.ToggleButton(active=bool(self.item.get("favorite")))
         self._update_favorite_label()
@@ -189,6 +204,20 @@ class DetailPage(Adw.NavigationPage):
         playlist_button.connect("clicked", lambda *_: self._open_playlist_dialog())
         row.append(playlist_button)
         return row
+
+    # -- Musik ------------------------------------------------------------
+
+    def _play_music(self) -> None:
+        """Ab diesem Titel abspielen; die Liste, aus der er geöffnet wurde,
+        wird zur Warteschlange — genauso wie ein Klick in der Titelliste eines
+        Albums."""
+        queue = self.queue or [self.item]
+        index = next((i for i, it in enumerate(queue) if int(it["id"]) == self.item_id), 0)
+        self.ctx.music.play_queue(queue, index)
+
+    def _enqueue_music(self) -> None:
+        self.ctx.music.append([self.item])
+        self._toast("An die Warteschlange angehängt.")
 
     # -- Zu Playlist hinzufügen ------------------------------------------
 

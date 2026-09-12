@@ -168,8 +168,19 @@ class HomePage(Adw.NavigationPage):
         # (ein "Zuletzt hinzugefügt" bringt zwanzig Titel mit, sichtbar sind
         # sechs). Selbst danach suchen darf die Kachel nicht — siehe Kopf von
         # widgets/poster.py.
+        # **Der Streifen liegt in einer Hülle mit Füllstück.** Der Viewport der
+        # Bildlaufleiste dehnt sein Kind auf die Fensterbreite — das `halign`
+        # der Reihe hilft dagegen nicht, und die Box verteilt den Überschuss
+        # zwischen ihre Kacheln (im breiten Fenster gemessen: 323 statt 14
+        # Pixel Abstand, genau die Lücken aus dem Bildschirmfoto). Ein
+        # ausdrücklich dehnbares Kind DANEBEN schluckt den Rest, die Reihe
+        # selbst behält ihre natürliche Breite.
+        holder = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        row.set_hexpand(False)
+        holder.append(row)
+        holder.append(Gtk.Box(hexpand=True))
         scroller = Gtk.ScrolledWindow(
-            child=row,
+            child=holder,
             vscrollbar_policy=Gtk.PolicyType.NEVER,
             propagate_natural_height=True,
         )
@@ -182,10 +193,15 @@ class HomePage(Adw.NavigationPage):
                 on_toggle_watched=lambda it, w: self._background(lambda: self.ctx.client.set_watched(it["id"], w)),
                 on_toggle_favorite=lambda it, f: self._background(lambda: self.ctx.client.set_favorite(it["id"], f)),
                 scroller=scroller,
+                # Alle Kacheln eines Streifens gleich groß, auch die von
+                # YouTube: in einer Reihe mit Filmpostern sähen 16:9-Kacheln
+                # wie ein Fehler aus. Die Form ist immer die des Posters.
+                aspect_kind="movies",
             )
             card.bind(item)
             card.set_size_request(CARD_WIDTH, -1)
             row.append(card)
+
 
         box.append(scroller)
         return box

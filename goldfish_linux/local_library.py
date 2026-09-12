@@ -43,6 +43,8 @@ VIDEO_EXTENSIONS = frozenset(
 # Zeitgrenze je Datei beim Einlesen. Eine beschädigte oder sehr langsam
 # angebundene Datei soll den Durchlauf nicht anhalten.
 _DISCOVER_TIMEOUT_S = 10
+# Für ein Vorschaubild braucht es keine zehn Sekunden — gemessen 0,03 bis 0,11.
+_THUMB_TIMEOUT_S = 5
 
 _gst_ready = False
 
@@ -119,6 +121,14 @@ class LocalLibrary:
     @property
     def is_merged(self) -> bool:
         return bool(self.merged_from)
+
+    @property
+    def nav_key(self) -> str:
+        """Stabiler Schlüssel für gemerkte Einstellungen (Sichtbarkeit in der
+        Seitenleiste). Eine Sammel-Bibliothek hat keine eigene Wurzel, deshalb
+        ein eigener Name — sie bleibt dieselbe, auch wenn sich ihre Teile
+        ändern."""
+        return "merged" if self.merged_from else self.root
 
     @property
     def available(self) -> bool:
@@ -302,7 +312,14 @@ class LocalLibraryManager:
                 GLib.idle_add(on_done, -1)
             return
 
-        files = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS)
+        files = sorted(
+            p
+            for p in root.rglob("*")
+            if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS and not p.name.startswith("._")
+        )
+        # `._*` sind die Beihefte, die macOS beim Kopieren auf FAT-Sticks
+        # anlegt (AppleDouble): 4 KB groß, ohne Bild und ohne Ton. Auf dem
+        # USB-Stick des Benutzers standen dutzende davon als eigene Kacheln.
         # Was schon eingelesen ist und sich nicht geändert hat, wird
         # übernommen — ein zweiter Durchlauf über eine große Platte soll nicht
         # alles neu ermitteln.
@@ -349,6 +366,68 @@ class LocalLibraryManager:
             video.width = streams[0].get_width()
             video.height = streams[0].get_height()
         return video
+
+
+def thumbnail_bytes(path: str, width: int = 320, at_fraction: float = 0.15) -> bytes | None:
+    """Ein Vorschaubild aus der Datei selbst — als JPEG-Bytes.
+
+    **Die Antwort auf "geht das nicht doch ohne ffmpeg?": ja, mit GStreamer.**
+    Dieselbe Bibliothek, die die Videos abspielt, kann auch ein Einzelbild
+    liefern: die Pipeline wird nur in den Pause-Zustand gebracht (dabei
+    entsteht bereits das erste Bild), auf 15 % der Laufzeit gesprungen und das
+    dort anliegende Bild als JPEG abgeholt. Gemessen 0,03 bis 0,11 Sekunden je
+    Datei — schnell genug, um es beim Anzeigen im Hintergrund zu machen.
+
+    Ergebnis wird vom Aufrufer zwischengespeichert (siehe `widgets/poster.py`),
+    hier passiert nichts weiter als das Erzeugen. Läuft im Ladefaden, nicht im
+    Hauptablauf."""
+    _ensure_gst()
+    try:
+        uri = GLib.filename_to_uri(path, None)
+    except GLib.Error:
+        return None
+    # `pixel-aspect-ratio=1/1` nagelt die Höhe an das Seitenverhältnis, ohne
+    # sie vorzugeben — ein festes Maß würde bei Breitwand verzerren oder die
+    # Aushandlung scheitern lassen.
+    description = (
+        f'uridecodebin uri="{uri}" ! videoconvert ! videoscale ! '
+        f"video/x-raw,width={width},pixel-aspect-ratio=1/1 ! jpegenc quality=80 ! "
+        "appsink name=sink max-buffers=1 drop=false sync=false"
+    )
+    try:
+        pipeline = Gst.parse_launch(description)
+    except GLib.Error:
+        return None
+    sink = pipeline.get_by_name("sink")
+    try:
+        pipeline.set_state(Gst.State.PAUSED)
+        changed, _state, _pending = pipeline.get_state(_THUMB_TIMEOUT_S * Gst.SECOND)
+        if changed != Gst.StateChangeReturn.SUCCESS:
+            return None
+        found, duration = pipeline.query_duration(Gst.Format.TIME)
+        if found and duration > 0:
+            # Keyframe-genau reicht und ist deutlich schneller als exakt.
+            pipeline.seek_simple(
+                Gst.Format.TIME,
+                Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT,
+                int(duration * at_fraction),
+            )
+            pipeline.get_state(_THUMB_TIMEOUT_S * Gst.SECOND)
+        sample = sink.emit("pull-preroll")
+        if sample is None:
+            return None
+        buffer = sample.get_buffer()
+        ok, info = buffer.map(Gst.MapFlags.READ)
+        if not ok:
+            return None
+        try:
+            return bytes(info.data)
+        finally:
+            buffer.unmap(info)
+    except GLib.Error:
+        return None
+    finally:
+        pipeline.set_state(Gst.State.NULL)
 
 
 def system_thumbnail(path: str) -> str | None:

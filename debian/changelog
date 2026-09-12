@@ -1,3 +1,45 @@
+goldfish-linux (0.1.19-1) unstable; urgency=medium
+
+  * Behoben (vom Benutzer gemeldet): "In allen Bibliotheken zieht sich der
+    Abstand auf, wenn ich das Fenster größer mache." Ursache war eine
+    Eigenheit von Gtk.Picture: bei vorgegebener Höhe fordert es eine Breite
+    nach dem Seitenverhältnis seines Bildes an — ein 16:9-Standbild in einer
+    301 Pixel hohen Kachel verlangte 536 statt 168 Pixel. Die Kachel zeichnete
+    weiter ihre 168, der überschüssige Platz landete als Lücke daneben. Das
+    Bild liegt jetzt in einem Rahmen fester Größe.
+  * Kacheln sind überall gleich groß: Privatvideos (YouTube) und Folgen haben
+    dasselbe Format wie Filme und Serien, auch in den Streifen der Startseite.
+    Musik bleibt quadratisch — ein Cover ist nun einmal quadratisch.
+  * Neu: die Anzahl über dem Raster. "3.170 Videos", bei Serien
+    "267 Serien · 18.574 Folgen", beim Suchen "10 Treffer" und bei gewähltem
+    Buchstaben "12 Videos mit B".
+  * Buchstabenleiste: der gewählte Buchstabe ist farbig hinterlegt, ein
+    zweiter Klick hebt den Filter auf.
+  * Genre-Filter: die Liste zeigt rund sechs Genres statt zwei.
+  * Privatvideos: das Erscheinungsdatum steht unter der Kachel (wie in der
+    Mac-App), zusammen mit dem Ordner bzw. Kanal.
+  * Das 🚫 für "vom Auto-Scan ausgenommen" ist von den Ordnerkacheln
+    verschwunden — Serververwaltung gehört in den Browser.
+  * Player: Knöpfe für 15 Sekunden zurück und 30 Sekunden vor.
+  * Zufällig abspielen startet jetzt wirklich ein Video, statt nur die
+    Detailseite zu öffnen — in den Bibliotheken, in Playlists und auf eigenen
+    Datenträgern. Im Player führen ⏮ und ⏭ zum vorherigen bzw. nächsten
+    Zufallsvideo, und am Ende läuft von selbst das nächste.
+  * Musik: die Warteschlange lässt sich leeren, und einzelne Titel lassen sich
+    anhängen — in der Titelliste eines Albums und in der Detailansicht eines
+    Titels. Ein Musiktitel öffnet dort auch kein Videofenster mehr.
+  * Eigene Datenträger erscheinen als eigene Einträge in der Seitenleiste
+    (eine Sammlung als einer), lassen sich dort umbenennen und über
+    "Startseite und Reiterleiste" ausblenden. Der Knopf zum Zusammenlegen ist
+    ab dem ersten Datenträger sichtbar und erklärt, was noch fehlt.
+  * Eigene Datenträger: fehlt ein Vorschaubild des Dateimanagers, erzeugt die
+    App selbst eines (über GStreamer, gemessen 0,03 bis 0,11 Sekunden je
+    Datei). Zufallswiedergabe gibt es hier ebenfalls.
+  * Beim Einlesen eines Datenträgers werden die Beihefte übersprungen, die
+    macOS beim Kopieren anlegt ("._"-Dateien, 4 KB, ohne Bild und Ton).
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 20:45:00 +0200
+
 goldfish-linux (0.1.18-1) unstable; urgency=medium
 
   * Behoben (vom Benutzer gemeldet): in "Filme" fehlten die Filmcover, und auf

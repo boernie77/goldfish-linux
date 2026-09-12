@@ -158,6 +158,19 @@ class ViewPrefs:
         self._data["alphaSidebar"] = enabled
         self._save()
 
+    def local_in_sidebar(self, key: str) -> bool:
+        """Ob eine eigene Bibliothek (Datenträger oder Sammlung) in der
+        Seitenleiste erscheint. Standard: ja.
+
+        Bewusst hier und nicht auf dem Server: eigene Datenträger kennt der
+        Server nicht, ihre Sichtbarkeit kann also nur lokal gemerkt werden —
+        anders als bei den Server-Bibliotheken, wo `user_nav_prefs` gilt."""
+        return self._data.get(f"localNav:{key}", True) is not False
+
+    def set_local_in_sidebar(self, key: str, visible: bool) -> None:
+        self._data[f"localNav:{key}"] = visible
+        self._save()
+
     def clear_sort(self, library_id: int, folder: str) -> None:
         if self._data.pop(self._key(library_id, folder), None) is not None:
             self._save()

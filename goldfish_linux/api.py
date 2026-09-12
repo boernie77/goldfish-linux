@@ -438,6 +438,15 @@ class GoldfishClient:
             params["refresh"] = "true"
         return self.get(f"/api/libraries/{library_id}/seasons", params) or {}
 
+    def library_stats(self, library_id: int, folder: str = "") -> dict:
+        """`{totalItems, folderCount}` — bei Musik zusätzlich `albumCount`.
+
+        Reine Zähl-Abfrage (COUNT/SUM), kein Laden von Items; der Server
+        beantwortet sie aus zwei indexierten Scans. `folderCount` und
+        `albumCount` liefert er nur für die Bibliothekswurzel."""
+        params = {"folder": folder} if folder else None
+        return self.get(f"/api/libraries/{library_id}/stats", params) or {}
+
     def genres(self, library_id: int) -> list[str]:
         """Trefferliste für den Genre-Filter, serverseitig pro Bibliothek
         gescoped: Filme/Serien aus `metadata.genres`, Musik aus `items.genre`.

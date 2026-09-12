@@ -62,6 +62,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.16 | Einstellungen, SSO, Buchstabenleiste, Zufall, kleinere Downloads |
 | 0.1.17 | Mehrere Datenträger zu einem Eintrag zusammenlegen |
 | 0.1.18 | Sechs Meldungen des Benutzers: Filme flach mit Postern, Tempo, Startseiten-Streifen, Reiterleisten-Schalter, Sammlungs-Abzeichen, Playlist-Zufall |
+| 0.1.19 | Kachelbreiten, einheitliche Kachelform, Anzahl-Zeile, Player-Sprungknöpfe, echte Zufallswiedergabe, Musik-Warteschlange, eigene Datenträger in der Seitenleiste, eigene Vorschaubilder |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -241,6 +242,24 @@ System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
   hiddenCount - unreleasedCount` (beide Abzüge schickt der Server nur, wenn
   sie nicht 0 sind). Ohne die Abzüge gilt jede Reihe mit angekündigter
   Fortsetzung dauerhaft als unvollständig.
+- **⚠ `Gtk.Picture` meldet bei vorgegebener Höhe eine seitenverhältnis-
+  abhängige NATURBREITE.** Ein 16:9-Bild in einem 168×252 angeforderten
+  Picture verlangt bei `for_size=301` eine Breite von 536 Pixeln
+  (nachgemessen; bei `for_size=-1` immerhin die Texturbreite). Ist im Fenster
+  Platz übrig, verteilt die umgebende Box diesen Wunsch — die Kachel zeichnet
+  weiter 168 und daneben klafft eine Lücke. Genau das war als "in allen
+  Bibliotheken zieht sich der Abstand auf, wenn ich das Fenster größer mache"
+  gemeldet. **Weder `set_size_request` noch `halign`, `hexpand=False`,
+  `Adw.Clamp` (216) oder `Gtk.AspectFrame` (536) helfen dagegen.** Was hilft:
+  die Sollgröße gibt eine leere Box als HAUPTKIND eines `Gtk.Overlay` vor, das
+  Bild liegt als Overlay-Kind darüber und ist von der Messung ausgenommen
+  (`set_measure_overlay(picture, False)`) — Naturbreite dann 168 bei jeder
+  Höhe. Siehe `_image_frame` in `widgets/card.py`; JEDE neue Bildkachel muss
+  darüber gebaut werden.
+- **`Gtk.GridView` teilt seine Breite auf genau so viele Spalten, wie er
+  anlegt.** Mit `max_columns=12` sind das in einem 2600 Pixel breiten Fenster
+  216 Pixel je Spalte, also 48 Pixel Luft je 168er-Kachel. Deshalb steht die
+  Grenze auf 36: dann bestimmt die Kachelbreite die Spaltenzahl.
 - **Die Startseite hat zwei übergreifende Streifen, keine pro Bibliothek.**
   "Fortsetzen" und "Als nächstes" führen die Titel ALLER Bibliotheken in je
   einer Zeile (sortiert nach letztem Abspielen bzw. Hinzufügen, je 24), erst
@@ -268,9 +287,13 @@ Jeweils nachgeprüft, nicht vermutet:
   und ffmpeg sind auf dem Zielsystem nicht zwingend installiert (hier:
   fehlen beide), GStreamer dagegen schon. Gemessen 0,12 Sekunden pro Datei,
   122 Videos in anderthalb Sekunden.
-- **Vorschaubilder lokaler Dateien** kommen aus dem Zwischenspeicher des
-  Dateimanagers (`thumbnail::path` über Gio); eigene zu erzeugen bräuchte
-  wieder ffmpeg.
+- **Vorschaubilder lokaler Dateien** kommen zuerst aus dem Zwischenspeicher
+  des Dateimanagers (`thumbnail::path` über Gio). Fehlt eines, erzeugt die App
+  seit 0.1.19 selbst eins — **mit GStreamer, nicht mit ffmpeg**: Pipeline in
+  den Pause-Zustand bringen, auf 15 % der Laufzeit springen, das anliegende
+  Bild als JPEG abholen (`local_library.thumbnail_bytes`, gemessen 0,03 bis
+  0,11 Sekunden je Datei). Die frühere Aussage "bräuchte wieder ffmpeg" war
+  falsch.
 
 ## Packaging
 

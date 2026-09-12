@@ -239,7 +239,11 @@ class FilterBar(Gtk.Box):
             genre_scroll = Gtk.ScrolledWindow(
                 child=self.genre_box,
                 propagate_natural_height=True,
-                max_content_height=220,
+                # Mindesthöhe, damit immer mindestens vier Genres zu sehen
+                # sind: vorher blieben bei vielen Filtern über der Liste nur
+                # zwei übrig, weil sich das Fenster den Platz von unten nahm.
+                min_content_height=150,
+                max_content_height=300,
                 hscrollbar_policy=Gtk.PolicyType.NEVER,
             )
             outer.append(genre_scroll)
@@ -253,7 +257,7 @@ class FilterBar(Gtk.Box):
             child=outer,
             propagate_natural_height=True,
             propagate_natural_width=True,
-            max_content_height=560,
+            max_content_height=760,
             hscrollbar_policy=Gtk.PolicyType.NEVER,
         )
         return Gtk.Popover(child=scroll)

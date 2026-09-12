@@ -212,6 +212,21 @@ class MainWindow(Adw.ApplicationWindow):
             row.special = ""
             self.sidebar_list.append(row)
 
+        # Eigene Datenträger stehen wie Bibliotheken in der Leiste — jede
+        # Sammel-Bibliothek als EIN Eintrag, die übrigen einzeln. Welche davon
+        # erscheinen, steht in den Einstellungen ("Startseite und
+        # Reiterleiste"); gemerkt wird das lokal, weil der Server diese
+        # Bibliotheken nicht kennt.
+        for local in self.ctx.local.visible_libraries():
+            if not self.ctx.view_prefs.local_in_sidebar(local.nav_key):
+                continue
+            row = self._build_sidebar_row(f"💾  {local.name}")
+            row.library = None
+            row.is_downloads = False
+            row.special = ""
+            row.local_library = local
+            self.sidebar_list.append(row)
+
         separator_row = Gtk.ListBoxRow(selectable=False, activatable=False)
         separator_row.set_child(Gtk.Separator(margin_top=6, margin_bottom=6))
         self.sidebar_list.append(separator_row)
@@ -249,6 +264,13 @@ class MainWindow(Adw.ApplicationWindow):
         # immer mehr Ebenen übereinander.
         while self.nav_view.get_navigation_stack().get_n_items() > 1:
             self.nav_view.pop()
+
+        local_library = getattr(row, "local_library", None)
+        if local_library is not None:
+            from .local_page import LocalVideosPage
+
+            self.nav_view.push(LocalVideosPage(self.ctx, self.nav_view, local_library))
+            return
 
         special = getattr(row, "special", "")
         if special == "home":

@@ -315,10 +315,20 @@ def _fetch_and_apply(
         except OSError:
             data = None
     if data is None:
-        # Drei Quellen: eine Datei auf der Platte (Vorschaubilder lokaler
-        # Bibliotheken), eine fremde Adresse (TMDB liefert Standbilder und
+        # Vier Quellen: ein selbst zu erzeugendes Vorschaubild einer lokalen
+        # Datei (`gstthumb://`), eine Datei auf der Platte (Vorschaubild des
+        # Dateimanagers), eine fremde Adresse (TMDB liefert Standbilder und
         # Poster direkt aus) oder ein Pfad am eigenen Server.
-        if server_path.startswith("file://"):
+        if server_path.startswith("gstthumb://"):
+            # Vorschaubild einer lokalen Datei selbst erzeugen (GStreamer).
+            # Erst hier, im Ladefaden, und danach wie jedes andere Bild im
+            # Dateizwischenspeicher — erzeugt wird es also nur einmal.
+            from ..local_library import thumbnail_bytes
+
+            data = thumbnail_bytes(server_path[len("gstthumb://") :])
+            if not data:
+                return
+        elif server_path.startswith("file://"):
             try:
                 data = pathlib.Path(server_path[7:]).read_bytes()
             except OSError:

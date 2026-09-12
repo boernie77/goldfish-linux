@@ -182,9 +182,19 @@ class MiniPlayer(Gtk.Box):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
         box.set_size_request(340, -1)
 
-        heading = Gtk.Label(label=f"Warteschlange · {len(self.player.queue)} Titel", xalign=0)
+        head_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        heading = Gtk.Label(label=f"Warteschlange · {len(self.player.queue)} Titel", xalign=0, hexpand=True)
         heading.add_css_class("heading")
-        box.append(heading)
+        head_row.append(heading)
+        clear = Gtk.Button(
+            icon_name="user-trash-symbolic",
+            has_frame=False,
+            valign=Gtk.Align.CENTER,
+            tooltip_text="Warteschlange leeren (beendet die Wiedergabe)",
+        )
+        clear.connect("clicked", lambda *_: self._clear())
+        head_row.append(clear)
+        box.append(head_row)
 
         listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         listbox.add_css_class("boxed-list")
@@ -216,3 +226,12 @@ class MiniPlayer(Gtk.Box):
     def _remove(self, index: int) -> None:
         self.player.remove_index(index)
         self._fill_queue()
+
+    def _clear(self) -> None:
+        """Warteschlange leeren.
+
+        `MusicPlayer.stop()` macht genau das — Wiedergabe beenden UND die Liste
+        leeren; danach verschwindet die Leiste von selbst, weil sie sich an
+        einer leeren Warteschlange ausblendet."""
+        self.queue_popover.popdown()
+        self.player.stop()

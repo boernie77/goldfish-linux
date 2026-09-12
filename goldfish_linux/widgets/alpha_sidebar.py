@@ -26,7 +26,16 @@ _CSS = b"""
   opacity: 0.55;
 }
 .gf-alpha-bar button:hover { opacity: 1; }
-.gf-alpha-active { opacity: 1; font-weight: bold; }
+/* Der gewaehlte Buchstabe wird farbig hinterlegt, nicht nur fett: nur so
+   sieht man auf einen Blick, dass ein Filter aktiv ist (und dass man ihn mit
+   einem zweiten Klick wieder loswird). */
+.gf-alpha-active {
+  opacity: 1;
+  font-weight: bold;
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+  border-radius: 4px;
+}
 """
 
 _css_loaded = False
@@ -71,6 +80,7 @@ class AlphaSidebar(Gtk.Box):
 
         for letter in _LETTERS:
             button = Gtk.Button(label=letter, has_frame=False)
+            button.set_tooltip_text(f"Nur Titel mit {letter} — nochmal klicken hebt den Filter auf")
             button.connect("clicked", lambda _b, l=letter: self._clicked(l))
             self._buttons[letter] = button
             self.append(button)

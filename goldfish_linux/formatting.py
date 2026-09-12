@@ -15,6 +15,31 @@ def format_size(size_bytes: float) -> str:
     return f"{size:.1f} TB"
 
 
+def format_count(value: int) -> str:
+    """Tausenderpunkte wie im Deutschen: 18574 wird zu "18.574".
+
+    Bewusst von Hand und nicht über `locale`: die App setzt nirgends eine
+    Locale, und `f"{n:n}"` liefert ohne gesetzte Locale wieder die nackte
+    Zahl."""
+    text = f"{int(value):,}".replace(",", ".")
+    return text
+
+
+def format_date(iso: str | None) -> str:
+    """Ein ISO-Zeitstempel des Servers als Tagesdatum, z. B. "08.09.2026".
+
+    Der Server liefert `releasedAt` als vollen Zeitstempel ("2026-09-08T00:00:
+    00Z"); die Uhrzeit ist dabei bedeutungslos — sie kommt je nach Quelle aus
+    einem Datei-Tag, einem yt-dlp-`DATE`-Feld oder schlicht der Änderungszeit
+    der Datei. Deshalb nur das Datum."""
+    if not iso or not isinstance(iso, str) or len(iso) < 10:
+        return ""
+    year, month, day = iso[:4], iso[5:7], iso[8:10]
+    if not (year.isdigit() and month.isdigit() and day.isdigit()):
+        return ""
+    return f"{day}.{month}.{year}"
+
+
 def format_duration(seconds: float) -> str:
     if seconds <= 0:
         return ""

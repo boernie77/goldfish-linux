@@ -22,6 +22,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..formatting import format_count  # noqa: E402
 from ..widgets.alpha_sidebar import AlphaSidebar, first_letter  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
@@ -62,6 +63,11 @@ class BrowsePage(Adw.NavigationPage):
         self.all_folders: list[dict] = []
         self.all_items: list[dict] = []
         self.shown_items: list[dict] = []
+        # Zahlen der ganzen Bibliothek (aus /stats), für die Zeile über dem
+        # Raster. Nur in der Wurzel gefüllt — in einem Ordner zählt, was
+        # geladen wurde.
+        self.stats: dict = {}
+        self.count_label: Gtk.Label | None = None
         self.search_entry = search_entry
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_text = ""
@@ -115,7 +121,9 @@ class BrowsePage(Adw.NavigationPage):
         status = Adw.StatusPage(icon_name="dialog-error-symbolic", title="Fehler", description=message)
         self.toolbar_view.set_content(status)
 
-    def _show_results(self, folders: list[dict], items: list[dict]) -> None:
+    def _show_results(self, folders: list[dict], items: list[dict], stats: dict | None = None) -> None:
+        if stats:
+            self.stats = stats
         if not folders and not items:
             # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
             # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
@@ -137,6 +145,7 @@ class BrowsePage(Adw.NavigationPage):
             status.set_vexpand(True)
             self.grid = None
             self.content_box = None
+            self.count_label = None
             self.alpha = None
             self.shown_items = []
             self.toolbar_view.set_content(status)
@@ -160,15 +169,78 @@ class BrowsePage(Adw.NavigationPage):
         self._apply_alpha()
 
         if self.content_box is None:
-            # Raster und Buchstabenleiste nebeneinander. Die Leiste kommt nur,
-            # wenn sie in den Einstellungen aktiv ist.
-            self.content_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
-            self.content_box.append(self.grid)
+            # Raster und Buchstabenleiste nebeneinander, darüber die Zeile mit
+            # der Anzahl. Die Leiste kommt nur, wenn sie in den Einstellungen
+            # aktiv ist.
+            grid_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0, vexpand=True)
+            grid_row.append(self.grid)
             if self.ctx.view_prefs.alpha_sidebar():
                 self.alpha = AlphaSidebar(on_select=lambda letter: self._apply_alpha())
-                self.content_box.append(self.alpha)
+                grid_row.append(self.alpha)
+            self.count_label = Gtk.Label(xalign=0, margin_start=16, margin_top=8, margin_end=16)
+            self.count_label.add_css_class("dim-label")
+            self.count_label.add_css_class("caption")
+            self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            self.content_box.append(self.count_label)
+            self.content_box.append(grid_row)
+        self._update_count()
         if self.toolbar_view.get_content() is not self.content_box:
             self.toolbar_view.set_content(self.content_box)
+
+    def _update_count(self) -> None:
+        """Die Zeile über dem Raster: wie viel hier drin ist.
+
+        Drei Fälle, weil drei verschiedene Zahlen gemeint sind:
+
+        * **Suche oder Filter aktiv** → wie viele Treffer. Eine Gesamtzahl
+          daneben wäre irreführend, weil der Server nur die Treffer liefert.
+        * **Bibliothekswurzel** → die Zahlen der ganzen Bibliothek aus
+          `/stats`; bei Serien die Serien UND die Folgen (18.574 Folgen in 267
+          Serien sind zwei Angaben, die beide interessieren), bei Musik die
+          Titel und Alben.
+        * **In einem Ordner** → was tatsächlich geladen wurde. Dafür braucht
+          es keine Abfrage, die Liste liegt ja vor."""
+        if self.count_label is None:
+            return
+        kind = self.library.get("kind") or ""
+        noun = {"music": "Titel", "tv": "Folgen"}.get(kind, "Videos")
+        shown_items, shown_folders = len(self.shown_items), len(self.grid_folder_count())
+
+        letter = self.alpha.active if self.alpha is not None else None
+        if letter:
+            # Mit gewähltem Buchstaben zählt, was davon übrig ist — die
+            # Gesamtzahl der Bibliothek wäre hier irreführend.
+            parts = [f"{format_count(shown_items)} {noun} mit „{letter}“"]
+            if shown_folders:
+                parts.append(f"{format_count(shown_folders)} Ordner")
+            self.count_label.set_text(" · ".join(parts))
+        elif self.search_text or self.filters.active_filter_count():
+            parts = [f"{format_count(shown_items)} Treffer"]
+            if shown_folders:
+                parts.append(f"{format_count(shown_folders)} Ordner")
+            self.count_label.set_text(" · ".join(parts))
+        elif not self.folder and self.stats:
+            total = int(self.stats.get("totalItems") or 0)
+            parts = []
+            if kind == "tv":
+                parts.append(f"{format_count(len(self.all_folders) or int(self.stats.get('folderCount') or 0))} Serien")
+            elif kind == "music" and self.stats.get("albumCount"):
+                parts.append(f"{format_count(int(self.stats['albumCount']))} Alben")
+            parts.append(f"{format_count(total)} {noun}")
+            self.count_label.set_text(" · ".join(parts))
+        else:
+            parts = []
+            if shown_folders:
+                parts.append(f"{format_count(shown_folders)} Ordner")
+            parts.append(f"{format_count(shown_items)} {noun}")
+            self.count_label.set_text(" · ".join(parts))
+
+    def grid_folder_count(self) -> list[dict]:
+        """Die aktuell gezeigten Ordnerkacheln (nach Buchstabenfilter)."""
+        letter = self.alpha.active if self.alpha is not None else None
+        if letter is None:
+            return self.all_folders
+        return [f for f in self.all_folders if first_letter(_folder_label(f)) == letter]
 
     def _apply_alpha(self) -> None:
         """Filtert auf den gewählten Anfangsbuchstaben.
@@ -180,11 +252,13 @@ class BrowsePage(Adw.NavigationPage):
         if letter is None:
             self.grid.set_content(self.all_folders, self.all_items)
             self.shown_items = self.all_items
+            self._update_count()
             return
         folders = [f for f in self.all_folders if first_letter(_folder_label(f)) == letter]
         items = [i for i in self.all_items if first_letter(_item_label(i)) == letter]
         self.shown_items = items
         self.grid.set_content(folders, items)
+        self._update_count()
 
     # -- Kachel-Abzeichen ------------------------------------------------
 
@@ -288,29 +362,55 @@ class BrowsePage(Adw.NavigationPage):
         self._load(search=self.search_text)
 
     def _play_random(self) -> None:
-        """Zufälliges Video aus dem aktuellen Bereich.
+        """Zufälliges Video aus dem aktuellen Bereich — und zwar **sofort
+        abspielen**, nicht bloß die Detailseite öffnen.
 
         Der Bereich folgt derselben Regel wie im Browser: im Ordner nur dessen
         Inhalt, in der Wurzel die ganze Bibliothek. Die aktiven Filter gelten
-        mit, damit "zufällig" zu dem passt, was man gerade sieht."""
+        mit, damit "zufällig" zu dem passt, was man gerade sieht.
+
+        Im Player geht es danach mit ⏭ zum nächsten Zufallsvideo weiter und
+        mit ⏮ zurück zum vorherigen; dafür bekommt er die Ziehfunktion selbst
+        in die Hand (`random_fetch`), samt der Filter von jetzt."""
         f = self.filters
+
+        def draw() -> dict:
+            return self.ctx.client.random_item(
+                library_id=self.library["id"],
+                folder=self.folder,
+                search=self.search_text,
+            )
 
         def worker() -> None:
             try:
-                item = self.ctx.client.random_item(
-                    library_id=self.library["id"],
-                    folder=self.folder,
-                    search=self.search_text,
-                )
+                item = draw()
             except GoldfishAPIError as exc:
                 GLib.idle_add(self._toast, f"Kein Zufallstreffer: {exc}")
                 return
             if not item:
                 GLib.idle_add(self._toast, "Kein passendes Video gefunden.")
                 return
-            GLib.idle_add(self._open_detail, item)
+            GLib.idle_add(self._open_random, item, draw)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _open_random(self, item: dict, draw) -> bool:
+        # Musik gehört in die Abspielleiste, nicht ins Videofenster — dieselbe
+        # Regel wie überall sonst in dieser App.
+        if (self.library.get("kind") or "") == "music":
+            self.ctx.music.play_queue([item], 0)
+            return False
+        from .player_window import PlayerWindow
+
+        window = PlayerWindow(
+            self.ctx.application,
+            self.ctx.client,
+            item,
+            random_fetch=draw,
+        )
+        window.set_transient_for(self.ctx.window)
+        window.present()
+        return False
 
     def _load_genres(self) -> list[str]:
         """Wird vom Filtermenü beim ersten Öffnen aufgerufen. Läuft bewusst
@@ -396,6 +496,15 @@ class BrowsePage(Adw.NavigationPage):
             "buckets": sorted(f.buckets),
             "genres": sorted(f.genres),
         }
+        stats: dict = {}
+        if not self.folder:
+            # Nur in der Wurzel: dort kennt niemand die Gesamtzahl, ohne zu
+            # fragen. Reine Zähl-Abfrage, kein Item-Laden.
+            try:
+                stats = client.library_stats(lib_id)
+            except Exception:  # noqa: BLE001 — eine fehlende Zahl ist kein Grund,
+                # die ganze Ansicht scheitern zu lassen
+                stats = {}
         try:
             if search:
                 folders = []
@@ -430,7 +539,7 @@ class BrowsePage(Adw.NavigationPage):
             return
         if seq != self._load_seq:
             return  # ein neuerer Lauf ist unterwegs
-        GLib.idle_add(self._show_results, folders, items)
+        GLib.idle_add(self._show_results, folders, items, stats)
 
 
 def _folder_label(folder: dict) -> str:

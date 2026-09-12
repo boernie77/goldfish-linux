@@ -45,9 +45,12 @@ class LocalLibrariesPage(Adw.NavigationPage):
 
     def _render(self) -> None:
         libraries = self.ctx.local.visible_libraries()
-        # Zusammenlegen lohnt erst ab zwei eingerichteten Datenträgern.
+        # Zusammenlegen braucht zwei Datenträger. Der Knopf bleibt trotzdem ab
+        # dem ersten sichtbar — sonst findet man die Funktion nie (genau so
+        # gefragt: "wie kann ich eigene Datenträger zusammenlegen?"); der
+        # Dialog erklärt dann, was fehlt.
         if hasattr(self, "merge_button"):
-            self.merge_button.set_visible(len(self.ctx.local.libraries) >= 2)
+            self.merge_button.set_visible(bool(self.ctx.local.libraries))
         if not libraries:
             self.toolbar_view.set_content(
                 Adw.StatusPage(
@@ -106,6 +109,10 @@ class LocalLibrariesPage(Adw.NavigationPage):
             rescan.connect("clicked", lambda _b, lib=library: self._scan(lib))
             row.add_suffix(rescan)
 
+        rename = Gtk.Button(icon_name="document-edit-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Umbenennen")
+        rename.connect("clicked", lambda _b, lib=library: self._ask_rename(lib))
+        row.add_suffix(rename)
+
         dupes = Gtk.Button(icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Doppelte Dateien finden")
         dupes.connect("clicked", lambda _b, lib=library: self._show_duplicates(lib))
         row.add_suffix(dupes)
@@ -122,6 +129,44 @@ class LocalLibrariesPage(Adw.NavigationPage):
         if available:
             row.connect("activated", lambda _r, lib=library: self.nav_view.push(LocalVideosPage(self.ctx, self.nav_view, lib)))
         return row
+
+    def _ask_rename(self, library: LocalLibrary) -> None:
+        """Namen ändern — der Name steht in der Übersicht UND in der
+        Seitenleiste. Bei einer Sammlung ist es der Name der Gruppe."""
+        dialog = Adw.MessageDialog(
+            transient_for=self.ctx.window,
+            heading="Umbenennen",
+            body="Unter diesem Namen erscheint der Eintrag in der Seitenleiste.",
+        )
+        entry = Gtk.Entry(text=library.name, activates_default=True)
+        dialog.set_extra_child(entry)
+        dialog.add_response("cancel", "Abbrechen")
+        dialog.add_response("save", "Speichern")
+        dialog.set_default_response("save")
+        dialog.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+
+        def on_response(_d, response: str) -> None:
+            name = entry.get_text().strip()
+            if response != "save" or not name:
+                return
+            if library.is_merged:
+                # Eine Sammlung hat keine eigene Zeile in der Liste; ihr Name
+                # gehört zur Gruppe.
+                self.ctx.local.set_merged(self.ctx.local.merged_roots, name)
+            else:
+                self.ctx.local.rename(library, name)
+            self._render()
+            self._refresh_sidebar()
+
+        dialog.connect("response", on_response)
+        dialog.present()
+
+    def _refresh_sidebar(self) -> None:
+        """Die Seitenleiste zeigt die eigenen Datenträger mit an — nach jeder
+        Änderung muss sie neu gebaut werden."""
+        window = self.ctx.window
+        if hasattr(window, "reload_libraries"):
+            window.reload_libraries()
 
     # -- Hinzufügen und einlesen -----------------------------------------
 
@@ -140,6 +185,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
                 _toast(self, "Dieser Ordner ist schon eingerichtet.")
                 return
             self._render()
+            self._refresh_sidebar()
             self._scan(library)
 
         dialog.select_folder(self.ctx.window, None, picked)
@@ -181,7 +227,12 @@ class LocalLibrariesPage(Adw.NavigationPage):
         dialog.add_response("cancel", "Abbrechen")
         dialog.add_response("remove", "Entfernen")
         dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
-        dialog.connect("response", lambda _d, r: (self.ctx.local.remove(library), self._render()) if r == "remove" else None)
+        dialog.connect(
+            "response",
+            lambda _d, r: (self.ctx.local.remove(library), self._render(), self._refresh_sidebar())
+            if r == "remove"
+            else None,
+        )
         dialog.present()
 
     def _ask_merge(self) -> None:
@@ -199,6 +250,17 @@ class LocalLibrariesPage(Adw.NavigationPage):
             ),
         )
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        if len(self.ctx.local.libraries) < 2:
+            note = Gtk.Label(
+                label=(
+                    "Dafür braucht es mindestens zwei eingerichtete Datenträger. "
+                    "Über das Plus oben rechts kommt ein weiterer dazu."
+                ),
+                wrap=True,
+                xalign=0,
+            )
+            note.add_css_class("dim-label")
+            box.append(note)
         name_entry = Gtk.Entry(text=self.ctx.local.merged_name, placeholder_text="Name der Sammlung")
         box.append(name_entry)
 
@@ -235,6 +297,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
             chosen = [root for root, check in checks.items() if check.get_active()]
             self.ctx.local.set_merged(chosen, name_entry.get_text().strip())
             self._render()
+            self._refresh_sidebar()
             if len(chosen) >= 2:
                 _toast(self, f"{len(chosen)} Datenträger erscheinen jetzt gemeinsam.")
             else:
@@ -245,6 +308,7 @@ class LocalLibrariesPage(Adw.NavigationPage):
 
     def _split_merge(self) -> None:
         self.ctx.local.set_merged([])
+        self._refresh_sidebar()
         self._render()
         _toast(self, "Die Datenträger erscheinen wieder einzeln.")
 
@@ -295,7 +359,14 @@ class LocalVideosPage(Adw.NavigationPage):
         header.set_title_widget(search)
         toolbar_view.add_top_bar(header)
 
+        shuffle = Gtk.Button(
+            icon_name="media-playlist-shuffle-symbolic",
+            tooltip_text="Zufällig abspielen",
+        )
+        header.pack_start(shuffle)
+
         super().__init__(title=library.name, tag=f"local-{library.root}", child=toolbar_view)
+        shuffle.connect("clicked", lambda *_: self._play_random())
         self.ctx = ctx
         self.nav_view = nav_view
         self.library = library
@@ -329,7 +400,21 @@ class LocalVideosPage(Adw.NavigationPage):
         if self.toolbar_view.get_content() is not self.grid:
             self.toolbar_view.set_content(self.grid)
 
-    def _play(self, video: dict) -> None:
+    def _play_random(self) -> None:
+        """Zufälliges Video von diesem Datenträger — und im Player geht es mit
+        ⏭ zum nächsten Zufallsvideo weiter, genau wie bei den
+        Server-Bibliotheken. Die Suche wirkt mit: was gefiltert ist, wird auch
+        nicht gezogen."""
+        import random
+
+        needle = self.search.get_text().strip().lower()
+        pool = [v.as_item() for v in self.library.videos if not needle or needle in v.name.lower()]
+        if not pool:
+            _toast(self, "Keine Videos zum Ziehen.")
+            return
+        self._play(random.choice(pool), draw=lambda: random.choice(pool))
+
+    def _play(self, video: dict, draw=None) -> None:
         """Spielt direkt von der Platte.
 
         Kein Umweg über den Server und keine Formatanpassung: GStreamer spielt
@@ -344,6 +429,7 @@ class LocalVideosPage(Adw.NavigationPage):
             video,
             local_path=path,
             window_title=video.get("title") or "",
+            random_fetch=draw,
         )
         window.set_transient_for(self.ctx.window)
         window.present()

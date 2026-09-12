@@ -314,9 +314,47 @@ class HomePrefsPage(Adw.NavigationPage):
 
         page.add(self._library_group("Auf der Startseite", home.get("libraries") or [], "onHome", self._set_home))
         page.add(self._library_group("In der Reiterleiste", nav.get("libraries") or [], "onNav", self._set_nav))
+        local_group = self._local_group()
+        if local_group is not None:
+            page.add(local_group)
 
         self.toolbar_view.set_content(page)
         return False
+
+    def _local_group(self) -> Adw.PreferencesGroup | None:
+        """Eigene Datenträger in der Seitenleiste ein- und ausblenden.
+
+        Eigene Gruppe, weil diese Bibliotheken nicht vom Server kommen: ihre
+        Sichtbarkeit wird lokal gemerkt (`ViewPrefs`), nicht in
+        `user_nav_prefs`. Ohne eingerichtete Datenträger entfällt die Gruppe
+        ganz."""
+        libraries = self.ctx.local.visible_libraries()
+        if not libraries:
+            return None
+        group = Adw.PreferencesGroup(
+            title="Eigene Datenträger in der Seitenleiste",
+            description="Gilt nur auf diesem Rechner — der Server kennt diese Bibliotheken nicht.",
+        )
+        for library in libraries:
+            row = Adw.SwitchRow(
+                title=library.name,
+                subtitle=(
+                    f"Sammlung aus {len(library.merged_from)} Datenträgern"
+                    if library.is_merged
+                    else library.root
+                ),
+                active=self.ctx.view_prefs.local_in_sidebar(library.nav_key),
+            )
+            row.connect(
+                "notify::active",
+                lambda r, _p, key=library.nav_key: self._set_local(key, r.get_active()),
+            )
+            group.add(row)
+        return group
+
+    def _set_local(self, key: str, visible: bool) -> None:
+        self.ctx.view_prefs.set_local_in_sidebar(key, visible)
+        self._refresh_sidebar()
 
     def _library_group(self, title: str, libraries: list[dict], key: str, setter) -> Adw.PreferencesGroup:
         """Eine Schaltergruppe pro Achse (Startseite bzw. Reiterleiste).
