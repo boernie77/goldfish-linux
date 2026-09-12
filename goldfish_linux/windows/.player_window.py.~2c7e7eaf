@@ -266,13 +266,6 @@ class PlayerWindow(Adw.Window):
             draw_value=False,
             hexpand=True,
         )
-        # Größere Trefferfläche fürs Hovern (User-Report: "Cursor musste ganz
-        # genau an der richtigen Stelle sein" für die Trickplay-Vorschau) — der
-        # sichtbare Balken (die Rille/`trough`) bleibt bei Adwaita mittig und
-        # gleich dünn, unabhängig von der Widget-Höhe; nur die unsichtbare
-        # Hover-/Klickfläche drumherum wird größer. Reine Höhenänderung, keine
-        # Breitenänderung, verändert also nichts am Aussehen der Zeitleiste.
-        self.scale.set_size_request(-1, 32)
         self.scale.connect("change-value", self._on_scale_change)
         # Während des Ziehens nicht aus dem Medium lesen, sonst springt der
         # Griff zurück, solange die Wiedergabe der neuen Position nachläuft.
@@ -308,11 +301,7 @@ class PlayerWindow(Adw.Window):
         self.fullscreen_button.connect("clicked", lambda *_: self.toggle_fullscreen())
         bar.append(self.fullscreen_button)
 
-        # Vorschaubild beim Zeigen auf den Balken. 160×90 = native Größe der
-        # Server-Sprite-Kacheln (siehe Server-CLAUDE.md Trickplay-Filter-Chain)
-        # — NICHT die Bildgröße vergrößern (User-Korrektur: die Größe war schon
-        # richtig, gemeint war der Hover-AUSLÖSEBEREICH, siehe Motion-Controller
-        # weiter unten).
+        # Vorschaubild beim Zeigen auf den Balken.
         self.preview_picture = Gtk.Picture(width_request=160, height_request=90)
         self.preview_label = Gtk.Label()
         self.preview_label.add_css_class("gf-player-time")
