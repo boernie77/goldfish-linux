@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch: {}
 
+permissions:
+  contents: write # nötig, damit softprops/action-gh-release ein Release anlegen darf
+
 jobs:
   build:
     runs-on: ubuntu-latest
