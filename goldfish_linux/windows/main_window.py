@@ -61,7 +61,15 @@ class MainWindow(Adw.ApplicationWindow):
         self.sidebar_list.connect("row-activated", self._on_sidebar_row_activated)
         sidebar_scrolled = Gtk.ScrolledWindow(vexpand=True)
         sidebar_scrolled.set_child(self.sidebar_list)
-        sidebar_toolbar.set_content(sidebar_scrolled)
+
+        # Version unten links als normaler Box-Sibling unter der Liste —
+        # BEWUSST NICHT über Adw.ToolbarView.add_bottom_bar(): diese API ist
+        # laut libadwaita-Doku für "Bar"-Widgets (AdwHeaderBar/GtkActionBar/
+        # AdwTabBar) gedacht, ein einfaches Gtk.Label dort ist nicht
+        # ausdrücklich als unterstützt dokumentiert. Ein normaler Gtk.Box mit
+        # zwei Kindern (Liste + Label) ist garantiert unproblematisch.
+        sidebar_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        sidebar_content.append(sidebar_scrolled)
 
         version_label = Gtk.Label(
             label=f"Goldfish Linux {__version__}",
@@ -73,7 +81,9 @@ class MainWindow(Adw.ApplicationWindow):
         )
         version_label.add_css_class("dim-label")
         version_label.add_css_class("caption")
-        sidebar_toolbar.add_bottom_bar(version_label)
+        sidebar_content.append(version_label)
+
+        sidebar_toolbar.set_content(sidebar_content)
 
         sidebar_page = Adw.NavigationPage(title="Goldfish", child=sidebar_toolbar)
         split_view.set_sidebar(sidebar_page)

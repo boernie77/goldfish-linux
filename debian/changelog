@@ -1,3 +1,14 @@
+goldfish-linux (0.1.6-1) unstable; urgency=medium
+
+  * Fix: mutmaßlicher Absturz beim Start durch 0.1.5 behoben — die
+    Versionsanzeige in der Hauptansicht nutzte Adw.ToolbarView.add_bottom_bar()
+    für ein einfaches Gtk.Label; diese API ist laut libadwaita-Doku für
+    "Bar"-Widgets (AdwHeaderBar/GtkActionBar/AdwTabBar) gedacht. Jetzt als
+    normaler Gtk.Box-Sibling unter der Bibliotheksliste, garantiert
+    unproblematisch.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:21:02 +0200
+
 goldfish-linux (0.1.5-1) unstable; urgency=medium
 
   * Feature (User-Wunsch): Versionsnummer wird jetzt angezeigt — unten auf
