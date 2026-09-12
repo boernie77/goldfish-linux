@@ -1,18 +1,37 @@
-"""Detail-Ansicht für ein einzelnes Item: Poster, Plot, Play/Download/
-Gesehen/Favorit."""
+"""Detailansicht eines Titels.
+
+Zeigt Poster, Beschreibung und Kenndaten, lässt Tonspur, Untertitel und
+Qualität vorwählen und bietet Wiedergabe, Trailer, Download sowie die Schalter
+für Gesehen und Favorit. Die Besetzung ist anklickbar.
+
+Die Auswahlmenüs für Ton, Untertitel und Qualität werden aus
+`GET /api/playback/{id}` gefüllt und NICHT aus `item["streams"]`: nur der
+Wiedergabe-Endpunkt kennt auch die erzeugten Untertitel (Whisper und OCR).
+Derselbe Grund, aus dem der Browser es ebenso macht.
+"""
 
 from __future__ import annotations
 
+import json
 import threading
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gtk  # noqa: E402
+from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
-from ..api import GoldfishAPIError  # noqa: E402
-from ..formatting import format_duration, format_resolution, format_size  # noqa: E402
+from ..api import GoldfishAPIError, PlaybackProfile  # noqa: E402
+from ..formatting import (  # noqa: E402
+    audio_stream_label,
+    format_duration,
+    format_resolution,
+    format_size,
+    is_displayable_subtitle,
+    subtitle_stream_label,
+)
+from ..widgets.card import ensure_card_css  # noqa: E402
+from ..widgets.cast import CastStrip  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
 from .player_window import PlayerWindow  # noqa: E402
 
@@ -22,114 +41,369 @@ class DetailPage(Adw.NavigationPage):
         metadata = item.get("metadata") or {}
         title = metadata.get("title") or item.get("title") or "Unbenannt"
 
-        # Adw.NavigationPage.child ist construct-only — Widget-Baum muss vor
-        # super().__init__() feststehen (Inhalt darf danach noch befüllt
-        # werden, nur der Ziel-Container selbst nicht mehr getauscht).
+        # Adw.NavigationPage.child ist construct-only — der Widget-Baum muss vor
+        # super().__init__() feststehen. Der Inhalt darf danach noch befüllt
+        # werden, nur der Zielcontainer selbst nicht mehr getauscht.
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(Adw.HeaderBar())
 
         scrolled = Gtk.ScrolledWindow(vexpand=True)
-        clamp = Adw.Clamp(maximum_size=700, margin_top=24, margin_bottom=24, margin_start=18, margin_end=18)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        clamp = Adw.Clamp(maximum_size=820, margin_top=20, margin_bottom=24, margin_start=18, margin_end=18)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
         clamp.set_child(box)
         scrolled.set_child(clamp)
         toolbar_view.set_content(scrolled)
 
         super().__init__(title=title, tag=f"detail-{item['id']}", child=toolbar_view)
+        # Die Plaketten und der Posterrahmen nutzen das Kachel-Stylesheet. Es
+        # wird zwar beim ersten Raster geladen, aber darauf soll sich diese
+        # Seite nicht verlassen — der Aufruf ist idempotent.
+        ensure_card_css()
         self.ctx = ctx
         self.nav_view = nav_view
         self.item = item
         self.item_id = int(item["id"])
+        self.box = box
 
-        self.picture = Gtk.Picture()
-        self.picture.set_size_request(200, 300)
-        self.picture.set_content_fit(Gtk.ContentFit.COVER)
-        self.picture.set_halign(Gtk.Align.CENTER)
-        box.append(self.picture)
-        poster_path = ctx.client.poster_path_for_item(item)
-        load_poster_async(self.picture, ctx.client, poster_path)
+        # Vorwahl für den Player; wird von den Menüs unten gesetzt.
+        self.chosen_profile = ""
+        self.chosen_audio: int | None = None
+        self.chosen_subtitle: dict | None = None
+        self.variants: list[dict] = []
+        self._audio_streams: list[dict] = []
+        self._subtitle_streams: list[dict] = []
+        self._profiles: list[PlaybackProfile] = []
 
-        title_label = Gtk.Label(label=title, wrap=True, justify=Gtk.Justification.CENTER)
-        title_label.add_css_class("title-1")
-        box.append(title_label)
+        box.append(self._build_head())
+        self.stream_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        box.append(self.stream_box)
+        box.append(self._build_buttons())
 
-        parts = []
-        year = metadata.get("year")
-        if year:
-            parts.append(str(year))
-        res = format_resolution(item.get("width", 0), item.get("height", 0))
-        if res:
-            parts.append(res)
-        dur = format_duration(item.get("durationSec", 0))
-        if dur:
-            parts.append(dur)
-        size = format_size(item.get("sizeBytes", 0))
-        if size:
-            parts.append(size)
-        if parts:
-            subtitle_label = Gtk.Label(label=" · ".join(parts), justify=Gtk.Justification.CENTER)
-            subtitle_label.add_css_class("dim-label")
-            box.append(subtitle_label)
-
-        overview = metadata.get("overview")
-        if overview:
-            overview_label = Gtk.Label(label=overview, wrap=True, justify=Gtk.Justification.LEFT)
-            overview_label.set_halign(Gtk.Align.FILL)
-            box.append(overview_label)
-
-        button_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
-        box.append(button_row)
-
-        play_button = Gtk.Button(label="▶ Abspielen")
-        play_button.add_css_class("suggested-action")
-        play_button.add_css_class("pill")
-        play_button.connect("clicked", lambda *_: self._open_player(local_path=None))
-        button_row.append(play_button)
-
-        self.watched_toggle = Gtk.ToggleButton(label="✓ Gesehen", active=bool(item.get("watched")))
-        self.watched_toggle.connect("toggled", self._on_watched_toggled)
-        button_row.append(self.watched_toggle)
-
-        self.favorite_toggle = Gtk.ToggleButton(label="♥ Favorit", active=bool(item.get("favorite")))
-        self.favorite_toggle.connect("toggled", self._on_favorite_toggled)
-        button_row.append(self.favorite_toggle)
-
-        self.download_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, halign=Gtk.Align.CENTER)
+        self.download_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, halign=Gtk.Align.START)
         box.append(self.download_box)
         self._refresh_download_ui()
 
-    # -- Wiedergabe -----------------------------------------------------
+        if metadata.get("id"):
+            box.append(CastStrip(ctx.client, int(metadata["id"]), on_person=self._open_person))
 
-    def _open_player(self, local_path: str | None) -> None:
-        window = PlayerWindow(self.ctx.application, self.ctx.client, self.item, local_path=local_path)
+        # Spuren, Qualitätsstufen, Varianten und Trailer-Verfügbarkeit brauchen
+        # eigene Abfragen — die Seite steht schon, das kommt nach.
+        threading.Thread(target=self._load_extras, daemon=True).start()
+
+    # -- Aufbau ----------------------------------------------------------
+
+    def _build_head(self) -> Gtk.Widget:
+        metadata = self.item.get("metadata") or {}
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+
+        self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
+        self.picture.set_size_request(180, 270)
+        self.picture.set_valign(Gtk.Align.START)
+        self.picture.add_css_class("gf-card-image")
+        load_poster_async(self.picture, self.ctx.client, self.ctx.client.poster_path_for_item(self.item))
+        row.append(self.picture)
+
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, hexpand=True)
+        title_label = Gtk.Label(
+            label=metadata.get("title") or self.item.get("title") or "Unbenannt",
+            xalign=0,
+            wrap=True,
+        )
+        title_label.add_css_class("title-2")
+        text.append(title_label)
+
+        self.meta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._fill_meta_row()
+        text.append(self.meta_row)
+
+        genres = metadata.get("genres") or ""
+        if genres:
+            genre_label = Gtk.Label(label=_pretty_genres(genres), xalign=0, wrap=True)
+            genre_label.add_css_class("dim-label")
+            text.append(genre_label)
+
+        overview = metadata.get("overview")
+        if overview:
+            text.append(Gtk.Label(label=overview, xalign=0, wrap=True, justify=Gtk.Justification.LEFT))
+
+        row.append(text)
+        return row
+
+    def _fill_meta_row(self) -> None:
+        """Kenndaten als Reihe kleiner Plaketten. Wird beim Wechsel der Version
+        neu gefüllt, weil Auflösung, Laufzeit und Größe zur konkreten Datei
+        gehören — Jahr, Bewertung und Freigabe dagegen zum Titel."""
+        child = self.meta_row.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            self.meta_row.remove(child)
+            child = nxt
+
+        metadata = self.item.get("metadata") or {}
+        for text in (
+            str(metadata.get("year")) if metadata.get("year") else "",
+            format_resolution(self.item.get("width") or 0, self.item.get("height") or 0),
+            format_duration(self.item.get("durationSec") or 0),
+            format_size(self.item.get("sizeBytes") or 0),
+            (self.item.get("container") or "").upper(),
+        ):
+            if text:
+                self.meta_row.append(_chip(text))
+
+        age = metadata.get("ageRating")
+        if age:
+            self.meta_row.append(_chip(f"FSK {age}"))
+        rating = metadata.get("rating") or 0
+        if rating:
+            self.meta_row.append(_chip(f"★ {rating:.1f}"))
+
+    def _build_buttons(self) -> Gtk.Widget:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.START)
+
+        play = Gtk.Button(label="▶ Abspielen")
+        play.add_css_class("suggested-action")
+        play.add_css_class("pill")
+        play.connect("clicked", lambda *_: self._open_player())
+        row.append(play)
+
+        self.trailer_button = Gtk.Button(label="🎬 Trailer", visible=False)
+        self.trailer_button.add_css_class("pill")
+        self.trailer_button.connect("clicked", self._on_trailer_clicked)
+        row.append(self.trailer_button)
+
+        self.watched_toggle = Gtk.ToggleButton(active=bool(self.item.get("watched")))
+        self._update_watched_label()
+        self.watched_toggle.connect("toggled", self._on_watched_toggled)
+        row.append(self.watched_toggle)
+
+        self.favorite_toggle = Gtk.ToggleButton(active=bool(self.item.get("favorite")))
+        self._update_favorite_label()
+        self.favorite_toggle.connect("toggled", self._on_favorite_toggled)
+        row.append(self.favorite_toggle)
+        return row
+
+    # -- Spuren, Qualität, Versionen, Trailer ----------------------------
+
+    def _load_extras(self) -> None:
+        client = self.ctx.client
+        try:
+            info = client.playback_info(self.item_id)
+        except GoldfishAPIError:
+            info = {}
+        profiles = [PlaybackProfile.from_json(p) for p in (info.get("profiles") or [])]
+
+        variants: list[dict] = []
+        if self.item.get("metadataId"):
+            try:
+                fetched = client.variants(self.item_id)
+                # Erst ab zwei Dateien ist eine Auswahl sinnvoll.
+                variants = fetched if len(fetched) > 1 else []
+            except GoldfishAPIError:
+                variants = []
+
+        has_trailer = False
+        metadata = self.item.get("metadata") or {}
+        if metadata.get("tmdbType") == "movie" and metadata.get("id"):
+            try:
+                has_trailer = client.trailer(int(metadata["id"])) is not None
+            except GoldfishAPIError:
+                has_trailer = False
+
+        GLib.idle_add(self._apply_extras, info, profiles, variants, has_trailer)
+
+    def _apply_extras(
+        self,
+        info: dict,
+        profiles: list[PlaybackProfile],
+        variants: list[dict],
+        has_trailer: bool,
+    ) -> bool:
+        self.variants = variants
+        streams = info.get("streams") or []
+        audio = [s for s in streams if s.get("type") == "audio"]
+        subs = [s for s in streams if s.get("type") == "subtitle" and is_displayable_subtitle(s)]
+
+        if variants:
+            self.stream_box.append(self._variant_row(variants))
+        if len(audio) > 1:
+            self.stream_box.append(self._audio_row(audio))
+        if subs:
+            self.stream_box.append(self._subtitle_row(subs))
+        if len(profiles) > 1:
+            self.stream_box.append(self._profile_row(profiles))
+        self.trailer_button.set_visible(has_trailer)
+        return False
+
+    def _variant_row(self, variants: list[dict]) -> Gtk.Widget:
+        labels = []
+        for v in variants:
+            bits = [
+                (v.get("container") or "").upper(),
+                format_resolution(v.get("width") or 0, v.get("height") or 0),
+                format_size(v.get("sizeBytes") or 0),
+            ]
+            name = (v.get("relPath") or v.get("title") or "").rsplit("/", 1)[-1]
+            labels.append(f"{name} — {' · '.join(b for b in bits if b)}")
+        drop = Gtk.DropDown.new_from_strings(labels)
+        drop.set_selected(next((i for i, v in enumerate(variants) if int(v["id"]) == self.item_id), 0))
+        drop.connect("notify::selected", self._on_variant_changed)
+        return _picker_row("🎬", f"Version ({len(variants)})", drop)
+
+    def _audio_row(self, audio: list[dict]) -> Gtk.Widget:
+        self._audio_streams = audio
+        drop = Gtk.DropDown.new_from_strings([audio_stream_label(s) for s in audio])
+        drop.set_selected(next((i for i, s in enumerate(audio) if s.get("isDefault")), 0))
+        drop.connect("notify::selected", self._on_audio_changed)
+        row = _picker_row("🔊", "Tonspur", drop)
+        row.set_tooltip_text(
+            "Eine andere als die voreingestellte Tonspur lässt den Server das Video "
+            "umwandeln — nur dabei kann er die Spur festlegen."
+        )
+        return row
+
+    def _subtitle_row(self, subs: list[dict]) -> Gtk.Widget:
+        self._subtitle_streams = subs
+        drop = Gtk.DropDown.new_from_strings(["— Aus —"] + [subtitle_stream_label(s) for s in subs])
+        drop.set_selected(0)
+        drop.connect("notify::selected", self._on_subtitle_changed)
+        row = _picker_row("💬", "Untertitel", drop)
+        row.set_tooltip_text(
+            "Bild-Untertitel, wie sie Blu-rays mitbringen, stehen nicht zur Wahl — "
+            "sie lassen sich nicht als Text einblenden."
+        )
+        return row
+
+    def _profile_row(self, profiles: list[PlaybackProfile]) -> Gtk.Widget:
+        self._profiles = profiles
+        drop = Gtk.DropDown.new_from_strings([p.label for p in profiles])
+        drop.set_selected(next((i for i, p in enumerate(profiles) if p.id == "orig"), 0))
+        drop.connect("notify::selected", self._on_profile_changed)
+        return _picker_row("🎞", "Qualität", drop)
+
+    def _on_variant_changed(self, drop: Gtk.DropDown, _param) -> None:
+        variant = self.variants[drop.get_selected()]
+        self.item = variant
+        self.item_id = int(variant["id"])
+        # Poster und Titel gehören zum Titel, nicht zur Datei — nur die
+        # dateibezogenen Kenndaten und der Download-Bereich ändern sich.
+        self._fill_meta_row()
+        self._refresh_download_ui()
+
+    def _on_audio_changed(self, drop: Gtk.DropDown, _param) -> None:
+        stream = self._audio_streams[drop.get_selected()]
+        self.chosen_audio = None if stream.get("isDefault") else int(stream["index"])
+
+    def _on_subtitle_changed(self, drop: Gtk.DropDown, _param) -> None:
+        idx = drop.get_selected()
+        self.chosen_subtitle = None if idx == 0 else self._subtitle_streams[idx - 1]
+
+    def _on_profile_changed(self, drop: Gtk.DropDown, _param) -> None:
+        profile = self._profiles[drop.get_selected()]
+        self.chosen_profile = "" if profile.id == "orig" else profile.id
+
+    # -- Wiedergabe ------------------------------------------------------
+
+    def _open_player(self, local_path: str | None = None) -> None:
+        window = PlayerWindow(
+            self.ctx.application,
+            self.ctx.client,
+            self.item,
+            local_path=local_path,
+            profile=self.chosen_profile,
+            audio_index=self.chosen_audio,
+        )
         window.set_transient_for(self.ctx.window)
         window.present()
 
-    # -- Gesehen/Favorit --------------------------------------------------
+    def _on_trailer_clicked(self, button: Gtk.Button) -> None:
+        metadata = self.item.get("metadata") or {}
+        if not metadata.get("id"):
+            return
+        button.set_sensitive(False)
+        button.set_label("🎬 wird geholt …")
+
+        def worker() -> None:
+            # Der Server lädt den Trailer per yt-dlp und fügt Bild und Ton zu
+            # einer Datei zusammen; das dauert einige Sekunden. Eine einzelne
+            # Datei-URL ist hier nötig, weil das Videowidget kein
+            # YouTube-Einbetten kann — im Browser läuft das über ein iframe.
+            try:
+                path = self.ctx.client.trailer_stream_path(int(metadata["id"]))
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._trailer_failed, button, str(exc))
+                return
+            if not path:
+                GLib.idle_add(self._trailer_failed, button, "Kein Trailer verfügbar.")
+                return
+            GLib.idle_add(self._trailer_ready, button, path)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _trailer_ready(self, button: Gtk.Button, path: str) -> bool:
+        button.set_sensitive(True)
+        button.set_label("🎬 Trailer")
+        title = (self.item.get("metadata") or {}).get("title") or self.item.get("title") or ""
+        window = PlayerWindow(
+            self.ctx.application,
+            self.ctx.client,
+            self.item,
+            direct_url=self.ctx.client.with_session_param(path),
+            window_title=f"Trailer: {title}",
+        )
+        window.set_transient_for(self.ctx.window)
+        window.present()
+        return False
+
+    def _trailer_failed(self, button: Gtk.Button, message: str) -> bool:
+        button.set_sensitive(True)
+        button.set_label("🎬 Trailer")
+        self._toast(f"Trailer nicht abspielbar: {message}")
+        return False
+
+    def _open_person(self, member: dict) -> None:
+        from .person_page import PersonPage
+
+        tmdb_id = member.get("tmdbId")
+        if not tmdb_id:
+            return
+        self.nav_view.push(PersonPage(self.ctx, self.nav_view, int(tmdb_id), member.get("name") or ""))
+
+    # -- Gesehen und Favorit ---------------------------------------------
+
+    def _update_watched_label(self) -> None:
+        self.watched_toggle.set_label("✓ Gesehen" if self.watched_toggle.get_active() else "Als gesehen markieren")
+
+    def _update_favorite_label(self) -> None:
+        self.favorite_toggle.set_label("♥ Favorit" if self.favorite_toggle.get_active() else "♡ Favorit")
 
     def _on_watched_toggled(self, button: Gtk.ToggleButton) -> None:
         watched = button.get_active()
-        button.set_label("✓ Gesehen" if watched else "Als gesehen markieren")
-        threading.Thread(target=self._set_watched_worker, args=(watched,), daemon=True).start()
-
-    def _set_watched_worker(self, watched: bool) -> None:
-        try:
-            self.ctx.client.set_watched(self.item_id, watched)
-        except GoldfishAPIError:
-            pass  # v1: stiller Fehler, Server bleibt Wahrheitsquelle beim nächsten Laden
+        self._update_watched_label()
+        self.item["watched"] = watched
+        self._state_call(lambda: self.ctx.client.set_watched(self.item_id, watched), "Gesehen-Status")
 
     def _on_favorite_toggled(self, button: Gtk.ToggleButton) -> None:
         favorite = button.get_active()
-        button.set_label("♥ Favorit" if favorite else "♡ Favorit")
-        threading.Thread(target=self._set_favorite_worker, args=(favorite,), daemon=True).start()
+        self._update_favorite_label()
+        self.item["favorite"] = favorite
+        self._state_call(lambda: self.ctx.client.set_favorite(self.item_id, favorite), "Favorit")
 
-    def _set_favorite_worker(self, favorite: bool) -> None:
-        try:
-            self.ctx.client.set_favorite(self.item_id, favorite)
-        except GoldfishAPIError:
-            pass
+    def _state_call(self, call, label: str) -> None:
+        def worker() -> None:
+            try:
+                call()
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._toast, f"{label} konnte nicht gespeichert werden: {exc}")
 
-    # -- Download ----------------------------------------------------------
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _toast(self, message: str) -> bool:
+        root = self.get_root()
+        if hasattr(root, "show_toast"):
+            root.show_toast(message)
+        return False
+
+    # -- Download --------------------------------------------------------
 
     def _refresh_download_ui(self) -> None:
         child = self.download_box.get_first_child()
@@ -150,12 +424,12 @@ class DetailPage(Adw.NavigationPage):
             self.download_box.append(row)
         elif self.ctx.downloads.is_downloading(self.item_id):
             spinner = Gtk.Spinner()
-            spinner.start()
             label = Gtk.Label(label="Download läuft …")
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
             row.append(spinner)
             row.append(label)
             self.download_box.append(row)
+            spinner.start()  # erst nach dem Einhängen, sonst fehlt die Frame-Clock
         else:
             download_button = Gtk.Button(label="⬇ Herunterladen")
             download_button.connect("clicked", self._on_download_clicked)
@@ -193,10 +467,7 @@ class DetailPage(Adw.NavigationPage):
         if item_id != self.item_id:
             return False
         self._refresh_download_ui()
-        toast = Adw.Toast(title=f"Download fehlgeschlagen: {message}")
-        root = self.get_root()
-        if isinstance(root, Adw.ApplicationWindow) and hasattr(root, "toast_overlay"):
-            root.toast_overlay.add_toast(toast)
+        self._toast(f"Download fehlgeschlagen: {message}")
         return False
 
     def _on_play_offline(self, *_args) -> None:
@@ -207,3 +478,36 @@ class DetailPage(Adw.NavigationPage):
     def _on_delete_download(self, *_args) -> None:
         self.ctx.downloads.delete_download(self.item_id)
         self._refresh_download_ui()
+
+
+# -- kleine Bausteine ---------------------------------------------------
+
+
+def _chip(text: str) -> Gtk.Widget:
+    label = Gtk.Label(label=text)
+    label.add_css_class("gf-badge")
+    return label
+
+
+def _picker_row(icon: str, label: str, widget: Gtk.Widget) -> Gtk.Box:
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+    name = Gtk.Label(label=f"{icon} {label}", xalign=0)
+    name.set_size_request(130, -1)
+    row.append(name)
+    widget.set_hexpand(True)
+    row.append(widget)
+    return row
+
+
+def _pretty_genres(raw: str) -> str:
+    """Der Server liefert Genres als JSON-Feld in einem String. Ein
+    Lesefehler ist hier kein Grund für eine Fehlermeldung — dann wird der
+    Rohwert gezeigt."""
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw
+    if isinstance(parsed, list):
+        names = [p.get("name") if isinstance(p, dict) else str(p) for p in parsed]
+        return " · ".join(n for n in names if n)
+    return raw

@@ -1,3 +1,23 @@
+goldfish-linux (0.1.10-1) unstable; urgency=medium
+
+  * Neu: die Detailansicht zeigt Poster, Kenndaten als Plaketten (Jahr,
+    Auflösung, Laufzeit, Größe, Format, Altersfreigabe, Bewertung), Genres und
+    Beschreibung nebeneinander statt untereinander zentriert.
+  * Neu: Besetzung mit runden Portraits. Ein Klick führt zu allem, worin die
+    Person mitspielt, samt Lebensdaten und Kurzbiografie.
+  * Neu: Vorwahl von Tonspur, Untertitel und Qualität. Eine andere als die
+    voreingestellte Tonspur lässt den Server umwandeln — nur dabei kann er die
+    Spur festlegen. Bild-Untertitel von Blu-rays stehen nicht zur Wahl, sie
+    lassen sich nicht als Text einblenden.
+  * Neu: Trailer-Knopf bei Filmen. Der Server lädt den Trailer und fügt Bild
+    und Ton zu einer Datei zusammen, die das Videofenster direkt abspielt.
+  * Neu: liegt ein Titel mehrfach vor, lässt sich die Version wählen. Die
+    dateibezogenen Kenndaten und der Download-Bereich wechseln dabei mit.
+  * Das Einblenden der gewählten Untertitel im Bild folgt in der nächsten
+    Version zusammen mit Weiterschauen und den Vorschaubildern.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 17:25:00 +0200
+
 goldfish-linux (0.1.9-1) unstable; urgency=medium
 
   * Neu: Sortier- und Filterleiste in der Kopfzeile. Bis zu neun Sortierfelder

@@ -25,14 +25,40 @@ from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
 
 
 class PlayerWindow(Adw.Window):
-    def __init__(self, app, client: GoldfishClient, item: dict, local_path: str | None = None):
+    """Wiedergabefenster.
+
+    `profile` ist eine Qualitätsstufe (`PlaybackProfile.id`, z. B. "720p");
+    leer oder "orig" heißt unverändert. `audio_index` wählt eine Tonspur —
+    das **erzwingt eine serverseitige Umwandlung**, denn nur dabei entscheidet
+    der Server, welche Spur in den Stream kommt. Bei direkter Wiedergabe
+    enthält die Datei alle Spuren, und die Auswahl läge beim Abspieler, der
+    hier immer die erste nimmt. Genauso löst es die Mac-App.
+
+    `direct_url` spielt eine fertige URL ab (für Trailer), ohne den
+    Wiedergabe-Endpunkt zu fragen und ohne ins Protokoll zu melden.
+    """
+
+    def __init__(
+        self,
+        app,
+        client: GoldfishClient,
+        item: dict,
+        local_path: str | None = None,
+        profile: str = "",
+        audio_index: int | None = None,
+        direct_url: str | None = None,
+        window_title: str | None = None,
+    ):
         title = item.get("metadata", {}).get("title") if item.get("metadata") else None
-        title = title or item.get("title") or "Wiedergabe"
+        title = window_title or title or item.get("title") or "Wiedergabe"
         super().__init__(application=app, title=title)
         self.client = client
         self.item = item
         self.item_id = int(item["id"])
         self.local_path = local_path
+        self.profile = profile
+        self.audio_index = audio_index
+        self.direct_url = direct_url
         self._stop_reported = False
         self.set_default_size(1024, 640)
 
@@ -53,6 +79,8 @@ class PlayerWindow(Adw.Window):
 
         if local_path:
             self._load_file(Gio.File.new_for_path(local_path))
+        elif direct_url:
+            self._load_file(Gio.File.new_for_uri(direct_url))
         else:
             self._load_stream()
 
@@ -61,8 +89,11 @@ class PlayerWindow(Adw.Window):
         self._watch_media_stream()
 
     def _load_stream(self) -> None:
+        # Eine gewählte Tonspur gibt es nur im Umwandlungsmodus (siehe
+        # Klassenkommentar) — deshalb dann nicht "auto" anfragen.
+        mode = "transcode" if self.audio_index is not None else "auto"
         try:
-            info = self.client.playback_info(self.item_id, mode="auto")
+            info = self.client.playback_info(self.item_id, mode=mode, profile=self.profile or "orig")
         except GoldfishAPIError as exc:
             self._show_load_error(str(exc))
             return
@@ -70,6 +101,11 @@ class PlayerWindow(Adw.Window):
         if not url:
             self._show_load_error("Server lieferte keine Wiedergabe-URL.")
             return
+        if self.audio_index is not None:
+            # Der Server hängt die Wiedergabe-Parameter an jede Segment-URL der
+            # Playlist weiter — der Zusatz muss deshalb an die Playlist-URL,
+            # nicht erst an die Segmente.
+            url += ("&" if "?" in url else "?") + f"audio={self.audio_index}"
         full_url = self.client.with_session_param(url)
         self.client.playback_start(self.item_id)
         self._load_file(Gio.File.new_for_uri(full_url))
@@ -94,7 +130,9 @@ class PlayerWindow(Adw.Window):
         return False  # Fenster trotzdem schließen lassen
 
     def _report_stop(self, reason: str) -> None:
-        if self._stop_reported or self.local_path:
+        # Bei lokalen Dateien und Trailern gibt es nichts zu melden — beides
+        # gehört nicht zur Wiedergabestatistik eines Bibliothekstitels.
+        if self._stop_reported or self.local_path or self.direct_url:
             return
         self._stop_reported = True
         stream = self.video.get_media_stream()

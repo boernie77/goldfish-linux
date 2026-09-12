@@ -49,3 +49,87 @@ def format_resolution(width: int, height: int) -> str:
         if effective >= limit:
             return label
     return "360p"
+
+
+# ISO-639-2/B-Codes, wie ffprobe sie in den Stream-Metadaten liefert (also
+# "ger" und nicht "deu"). Bewusst nur die Sprachen, die in dieser Sammlung
+# vorkommen können — ein unbekannter Code wird unverändert groß geschrieben
+# gezeigt, das ist ehrlicher als ihn zu verschweigen.
+_LANGUAGES = {
+    "ger": "Deutsch", "deu": "Deutsch", "de": "Deutsch",
+    "eng": "Englisch", "en": "Englisch",
+    "fre": "Französisch", "fra": "Französisch", "fr": "Französisch",
+    "ita": "Italienisch", "it": "Italienisch",
+    "spa": "Spanisch", "es": "Spanisch",
+    "dut": "Niederländisch", "nld": "Niederländisch", "nl": "Niederländisch",
+    "pol": "Polnisch", "pl": "Polnisch",
+    "rus": "Russisch", "ru": "Russisch",
+    "tur": "Türkisch", "tr": "Türkisch",
+    "jpn": "Japanisch", "ja": "Japanisch",
+    "kor": "Koreanisch", "ko": "Koreanisch",
+    "chi": "Chinesisch", "zho": "Chinesisch", "zh": "Chinesisch",
+    "por": "Portugiesisch", "pt": "Portugiesisch",
+    "swe": "Schwedisch", "sv": "Schwedisch",
+    "dan": "Dänisch", "da": "Dänisch",
+    "nor": "Norwegisch", "no": "Norwegisch",
+    "fin": "Finnisch", "fi": "Finnisch",
+    "cze": "Tschechisch", "ces": "Tschechisch", "cs": "Tschechisch",
+    "hun": "Ungarisch", "hu": "Ungarisch",
+    "gre": "Griechisch", "ell": "Griechisch", "el": "Griechisch",
+    "heb": "Hebräisch", "he": "Hebräisch",
+    "ara": "Arabisch", "ar": "Arabisch",
+    "hin": "Hindi", "hi": "Hindi",
+    "tha": "Thai", "th": "Thai",
+    "und": "Unbekannt",
+}
+
+# Untertitel-Formate, die als Bild vorliegen. Sie lassen sich nicht in Text
+# wandeln (der Server antwortet auf einen Abruf mit 415) und können daher auch
+# nicht eingeblendet werden — im Auswahlmenü haben sie nichts zu suchen.
+BITMAP_SUBTITLE_CODECS = frozenset({"hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle", "xsub", "vobsub", "pgssub"})
+
+
+def language_name(code: str | None) -> str:
+    if not code:
+        return "Unbekannt"
+    return _LANGUAGES.get(code.lower(), code.upper())
+
+
+def format_channels(channels: int) -> str:
+    """Kanalzahl als gängige Bezeichnung: 2 wird Stereo, 6 wird 5.1."""
+    return {0: "", 1: "Mono", 2: "Stereo", 3: "2.1", 6: "5.1", 7: "6.1", 8: "7.1"}.get(channels, f"{channels} Kanäle" if channels else "")
+
+
+def audio_stream_label(stream: dict) -> str:
+    """Eine Tonspur so beschriften, dass die Wahl ohne Nachdenken klar ist:
+    Sprache zuerst, dann Format und Kanäle."""
+    parts = [language_name(stream.get("language"))]
+    codec = (stream.get("codec") or "").upper()
+    if codec:
+        parts.append(codec)
+    channels = format_channels(stream.get("channels") or 0)
+    if channels:
+        parts.append(channels)
+    label = " · ".join(parts)
+    if stream.get("isDefault"):
+        label += "  (Standard)"
+    return label
+
+
+def subtitle_stream_label(stream: dict) -> str:
+    """Untertitel beschriften. Erzeugte Spuren behalten die Kennzeichnung des
+    Servers (🎤 für Whisper, 📝 für OCR), damit erkennbar bleibt, dass sie
+    maschinell entstanden sind."""
+    title = stream.get("title") or ""
+    if title.startswith(("🎤", "📝")):
+        return title
+    parts = [language_name(stream.get("language"))]
+    if stream.get("isForced"):
+        parts.append("erzwungen")
+    if title and title.lower() not in ("forced", "full"):
+        parts.append(title)
+    return " · ".join(parts)
+
+
+def is_displayable_subtitle(stream: dict) -> bool:
+    return (stream.get("codec") or "").lower() not in BITMAP_SUBTITLE_CODECS
