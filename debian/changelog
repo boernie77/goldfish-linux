@@ -1,3 +1,18 @@
+goldfish-linux (0.1.22-1) unstable; urgency=medium
+
+  * Behoben (vom Benutzer gemeldet, zweites Gerät): Video spielt gar nicht,
+    der Ladekreisel dreht sich endlos — auf einem Rechner lief exakt dieselbe
+    Version 0.1.21 völlig normal, auf einem anderen (frisch aufgesetztes
+    Linux Mint, dort fehlte sogar `curl`) nicht. Ursache: das Paket
+    `libgtk-4-media-gstreamer` fehlte — das ist die eigentliche GStreamer-
+    Anbindung für GTK4s `Gtk.MediaFile`, getrennt von den bisher schon
+    verlangten `gstreamer1.0-plugins-*`/`gstreamer1.0-libav`. Ohne dieses
+    Paket startet GStreamer gar nicht erst, es kommt aber auch kein
+    Fehler zurück — der Ladekreisel läuft deshalb für immer. Jetzt fest als
+    Abhängigkeit eingetragen, `apt install` zieht es künftig automatisch mit.
+
+ -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 23:00:00 +0200
+
 goldfish-linux (0.1.21-1) unstable; urgency=medium
 
   * Behoben (vom Benutzer gemeldet): die App wirkte eingefroren — "ich kann
