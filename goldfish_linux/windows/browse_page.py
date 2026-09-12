@@ -22,6 +22,8 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..config import ViewPrefs  # noqa: E402
+from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
 from .detail_page import DetailPage  # noqa: E402
 
@@ -57,6 +59,20 @@ class BrowsePage(Adw.NavigationPage):
         self.grid: CardGrid | None = None
         self.search_entry = search_entry
         self.search_entry.connect("search-changed", self._on_search_changed)
+        self.search_text = ""
+
+        self.view_prefs = ViewPrefs()
+        self.filters = FilterState()
+        remembered = self.view_prefs.get_sort(library["id"], folder)
+        if remembered is not None:
+            self.filters.sort, self.filters.ascending = remembered
+        self.filter_bar = FilterBar(
+            library.get("kind") or "movies",
+            self.filters,
+            on_change=self._on_filters_changed,
+            load_genres=self._load_genres,
+        )
+        header.pack_end(self.filter_bar)
 
         self._show_loading()
         self._load()
@@ -68,10 +84,15 @@ class BrowsePage(Adw.NavigationPage):
         # neuer als das, was Debian 12/Ubuntu 22.04 mitbringen.
         spinner = Gtk.Spinner()
         spinner.set_size_request(48, 48)
-        spinner.start()
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         box.append(spinner)
         self.toolbar_view.set_content(box)
+        # start() ERST nach dem Einhängen: ein Spinner, der sich zu drehen
+        # beginnt, bevor er im Widget-Baum hängt, hat noch keine Frame-Clock
+        # und löst beim Start der App ein
+        # "gdk_frame_clock_get_frame_time: assertion 'GDK_IS_FRAME_CLOCK
+        # (frame_clock)' failed" aus (in 0.1.7 auf der Konsole zu sehen).
+        spinner.start()
 
     def _show_error(self, message: str) -> None:
         status = Adw.StatusPage(icon_name="dialog-error-symbolic", title="Fehler", description=message)
@@ -79,10 +100,22 @@ class BrowsePage(Adw.NavigationPage):
 
     def _show_results(self, folders: list[dict], items: list[dict]) -> None:
         if not folders and not items:
+            # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
+            # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
+            active = self.filters.active_filter_count()
+            if self.search_text:
+                title, desc = "Keine Treffer", f"Für \u201e{self.search_text}\u201c wurde nichts gefunden."
+            elif active:
+                title, desc = (
+                    "Nichts passt zum Filter",
+                    f"{active} Filter sind aktiv. Über den Filterknopf zurücksetzen.",
+                )
+            else:
+                title, desc = "Keine Inhalte", "Dieser Ordner enthält nichts Sichtbares."
             status = Adw.StatusPage(
                 icon_name="folder-open-symbolic",
-                title="Keine Inhalte",
-                description="Dieser Ordner enthält nichts Sichtbares.",
+                title=title,
+                description=desc,
             )
             status.set_vexpand(True)
             self.grid = None
@@ -153,7 +186,31 @@ class BrowsePage(Adw.NavigationPage):
         self.nav_view.push(page)
 
     def _on_search_changed(self, entry: Gtk.SearchEntry) -> None:
-        self._load(search=entry.get_text().strip())
+        self.search_text = entry.get_text().strip()
+        self._load(search=self.search_text)
+
+    def _on_filters_changed(self) -> None:
+        """Eine Sortierung, die die Ordnerstruktur übergeht, wird nur dort
+        gemerkt, wo ohnehin keine Ordnerkacheln stehen — siehe
+        `config.ViewPrefs`. Im Wurzel- oder Drilldown-Fall würde sie die
+        Kacheln beim nächsten Öffnen dauerhaft verstecken."""
+        shows_folder_tiles = not self.folder or self.drilldown
+        if self.filters.is_flat and shows_folder_tiles:
+            self.view_prefs.clear_sort(self.library["id"], self.folder)
+        else:
+            self.view_prefs.set_sort(
+                self.library["id"], self.folder, self.filters.sort, self.filters.ascending
+            )
+        self._load(search=self.search_text)
+
+    def _load_genres(self) -> list[str]:
+        """Wird vom Filtermenü beim ersten Öffnen aufgerufen. Läuft bewusst
+        synchron: der Aufruf steckt im Öffnen des Menüs, und die Liste kommt in
+        Bruchteilen einer Sekunde."""
+        try:
+            return self.ctx.client.genres(self.library["id"])
+        except GoldfishAPIError:
+            return []
 
     # -- Laden --------------------------------------------------------
 
@@ -162,50 +219,70 @@ class BrowsePage(Adw.NavigationPage):
         threading.Thread(target=self._load_worker, args=(search,), daemon=True).start()
 
     def _load_worker(self, search: str) -> None:
-        """Bildet die drei Navigationsfälle des Browsers nach (grid.js).
+        """Bildet die Navigationsfälle des Browsers nach (grid.js).
 
-        1. **Bibliothekswurzel** (`folder == ""`): Ordnerkacheln plus die Items,
-           die direkt in der Wurzel liegen. Dafür MUSS `folder="/"` gesendet
-           werden — ein leeres `folder` heißt serverseitig "kein Filter" und
-           liefert alle Items der Bibliothek rekursiv, also die Dateien aus
-           jedem Unterordner vermischt mit denen der Wurzel.
-        2. **Unterordner mit Drilldown** (`folder_nav.drilldown`): seine direkten
-           Unterordner plus die Dateien, die unmittelbar darin liegen. Der Server
-           kennt kein "nur direkte Kinder", liefert also rekursiv — deshalb wird
-           hier auf echte direkte Kinder nachgefiltert. Ohne diesen Filter
-           erschienen dieselben Dateien doppelt: einmal als Ordnerkachel, einmal
-           als Video. Genau dieser Fehler ist in den Apple-Apps schon einmal
-           aufgetreten (CLAUDE.md, "Serien-Ordner zeigte Ordner-Kacheln UND
-           rekursiv alle Folgen gleichzeitig") und beim ersten Rastertest hier
-           wieder aufgeschlagen: eine Serie zeigte 31 Release-Ordner mit je
-           "1 Titel" neben ihren 75 Folgen.
-        3. **Normaler Unterordner** (der Regelfall): KEINE Ordnerkacheln,
+        1. **Suche**: nie Ordnerkacheln. Der Ordner bleibt als Bereich gesetzt,
+           in der Wurzel sucht sie damit über die ganze Bibliothek. Der Server
+           durchsucht dabei auch Besetzungsnamen, Künstler und Album — dafür ist
+           hier nichts zu tun.
+        2. **Flache Sortierung** (`FilterState.is_flat`, z. B. Hinzugefügt oder
+           Laufzeit) ODER **nur Favoriten**: ebenfalls ohne Ordnerkacheln, die
+           Struktur wird bewusst übergangen. In der Wurzel geht der
+           Ordner-Parameter GAR NICHT mit, damit die Liste die ganze Bibliothek
+           umfasst; in einem Unterordner bleibt sie auf dessen Inhalt
+           beschränkt ("nur nach unten flach"). Dass "nur Favoriten" hier
+           dazugehört, ist keine Willkür: der Browser hat dafür einen eigenen
+           flachen Zweig (`renderFavoritesFlatBranch`). Ohne ihn blieben in der
+           Wurzel alle 2808 Ordnerkacheln neben einer Handvoll Favoriten stehen
+           — im ersten Test genau so gesehen.
+        3. **Bibliothekswurzel**: Ordnerkacheln plus die Items, die direkt in
+           der Wurzel liegen. Dafür MUSS `folder="/"` gesendet werden — ein
+           leeres `folder` heißt serverseitig "kein Filter" und liefert alle
+           Items rekursiv, also die Dateien jedes Unterordners vermischt mit
+           denen der Wurzel.
+        4. **Unterordner mit Drilldown** (`folder_nav.drilldown`): seine direkten
+           Unterordner plus die Dateien unmittelbar darin. Der Server kennt kein
+           "nur direkte Kinder", liefert also rekursiv — deshalb wird hier
+           nachgefiltert. Ohne diesen Filter erschienen dieselben Dateien
+           doppelt, einmal als Ordnerkachel und einmal als Video (derselbe
+           Fehler wie in den Apple-Apps, siehe CLAUDE.md).
+        5. **Normaler Unterordner** (der Regelfall): keine Ordnerkacheln,
            sondern alle Dateien darunter rekursiv und flach.
-
-        Bei einer Suche gibt es nie Ordnerkacheln; der Ordner bleibt als Scope
-        gesetzt, in der Wurzel sucht sie damit über die ganze Bibliothek.
         """
         client = self.ctx.client
         lib_id = self.library["id"]
+        f = self.filters
+        # Die Filter gelten in jedem Fall gleichermaßen.
+        common = {
+            "sort": f.sort,
+            "sort_dir": f.sort_dir,
+            "watched": f.watched,
+            "favorite": "yes" if f.favorites_only else "",
+            "buckets": sorted(f.buckets),
+            "genres": sorted(f.genres),
+        }
         try:
             if search:
                 folders = []
-                items = client.items(lib_id, folder=self.folder, search=search, sort="title")
+                items = client.items(lib_id, folder=self.folder, search=search, **common)
+            elif f.is_flat or f.favorites_only:
+                folders = []
+                items = client.items(lib_id, folder=self.folder, **common)
             elif not self.folder:
                 folders = client.folders(lib_id)
-                items = client.items(lib_id, folder="/", sort="title")
+                items = client.items(lib_id, folder="/", **common)
             elif self.drilldown:
                 folders = client.folders(lib_id, parent=self.folder)
                 prefix = self.folder + "/"
                 items = [
                     it
-                    for it in client.items(lib_id, folder=self.folder, sort="title")
+                    for it in client.items(lib_id, folder=self.folder, **common)
                     if (it.get("relPath") or "").startswith(prefix)
-                    and "/" not in (it["relPath"][len(prefix) :])
+                    and "/" not in it["relPath"][len(prefix) :]
                 ]
             else:
                 folders = []
-                items = client.items(lib_id, folder=self.folder, sort="title")
+                items = client.items(lib_id, folder=self.folder, **common)
         except GoldfishAPIError as exc:
             GLib.idle_add(self._show_error, str(exc))
             return

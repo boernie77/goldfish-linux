@@ -27,6 +27,7 @@ DOWNLOADS_DIR = DATA_DIR / "downloads"
 POSTER_CACHE_DIR = CACHE_DIR / "posters"
 
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
+VIEW_PREFS_FILE = CONFIG_DIR / "view_prefs.json"
 DOWNLOADS_REGISTRY_FILE = DATA_DIR / "downloads.json"
 
 
@@ -73,3 +74,57 @@ class Settings:
     def clear_session(self) -> None:
         self.session_token = ""
         self.save()
+
+
+class ViewPrefs:
+    """Gemerkte Sortierung pro Bibliothek und Ordner.
+
+    Entspricht den `sort:lib:<id>:<folder>`-Einträgen des Browsers. Filter
+    werden bewusst NICHT gemerkt — auch der Browser setzt sie beim Wechsel der
+    Bibliothek zurück, sonst sucht man später vergeblich nach Titeln, die ein
+    vergessener Filter ausblendet.
+
+    **Fallstrick, den der Browser teuer gelernt hat** (siehe dortigen Kommentar
+    zu `FLAT_LIBRARY_SORTS`): eine flache Sortierung darf nur dort gemerkt
+    werden, wo ohnehin keine Ordnerkacheln stehen — also in einem normalen
+    Unterordner. Würde man sie in der Bibliothekswurzel oder einem
+    Drilldown-Ordner merken, wären die Ordnerkacheln beim nächsten Öffnen
+    dauerhaft verschwunden, ohne erkennbaren Grund.
+    """
+
+    def __init__(self) -> None:
+        self._data: dict = {}
+        self._load()
+
+    def _load(self) -> None:
+        if not VIEW_PREFS_FILE.exists():
+            return
+        try:
+            self._data = json.loads(VIEW_PREFS_FILE.read_text("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self._data = {}
+
+    def _save(self) -> None:
+        ensure_dirs()
+        try:
+            VIEW_PREFS_FILE.write_text(json.dumps(self._data, indent=2), "utf-8")
+        except OSError:
+            pass  # Merken ist Komfort, kein Muss
+
+    @staticmethod
+    def _key(library_id: int, folder: str) -> str:
+        return f"sort:lib:{library_id}:{folder}"
+
+    def get_sort(self, library_id: int, folder: str) -> tuple[str, bool | None] | None:
+        entry = self._data.get(self._key(library_id, folder))
+        if not isinstance(entry, dict) or "sort" not in entry:
+            return None
+        return entry["sort"], entry.get("ascending")
+
+    def set_sort(self, library_id: int, folder: str, sort: str, ascending: bool | None) -> None:
+        self._data[self._key(library_id, folder)] = {"sort": sort, "ascending": ascending}
+        self._save()
+
+    def clear_sort(self, library_id: int, folder: str) -> None:
+        if self._data.pop(self._key(library_id, folder), None) is not None:
+            self._save()
