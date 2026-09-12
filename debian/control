@@ -25,6 +25,7 @@ Depends: ${misc:Depends},
  gstreamer1.0-plugins-good,
  gstreamer1.0-plugins-bad,
  gstreamer1.0-libav,
+ gstreamer1.0-vaapi,
  libgtk-4-media-gstreamer
 Description: Nativer Desktop-Client für den Goldfish-Videoserver
  Goldfish Linux ist ein GTK4/libadwaita-Client für selbstgehostete

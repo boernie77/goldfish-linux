@@ -141,6 +141,16 @@ System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
 - **Icon:** NIE selbst zeichnen — `internal/webassets/web/favicon.svg` aus
   dem Server-Repo wiederverwenden (Twemoji-Tropenfisch 🐠, CC-BY 4.0),
   identisches Branding über alle Plattformen.
+- **Hardware-Videodekodierung (`gstreamer1.0-vaapi`, seit 0.1.26):** ohne
+  dieses Paket dekodiert GStreamer jedes Video rein per Software (`avdec_*`
+  aus `gstreamer1.0-libav`), selbst wenn eine Intel-/AMD-iGPU per VAAPI
+  eigentlich könnte — auf einem schwächeren/älteren Prozessor sichtbar als
+  Ruckeln bei höherer Auflösung/HEVC. Kein Code-Zweig nötig: sowohl
+  `Gtk.MediaFile`s interner `playbin` (Server-Streams) als auch das
+  `uridecodebin` in `local_library.py` (Eigene Datenträger) wählen den
+  Decoder automatisch nach Rang — ist `gstreamer1.0-vaapi` installiert,
+  wird VAAPI-Dekodierung automatisch bevorzugt, ganz ohne explizite
+  Auswahl im Code.
 
 ## Fallstricke, die in Etappe 01–08 aufgetreten sind
 

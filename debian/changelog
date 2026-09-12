@@ -1,3 +1,16 @@
+goldfish-linux (0.1.26-1) unstable; urgency=medium
+
+  * Hardware-Videodekodierung ergänzt (`gstreamer1.0-vaapi`, auf
+    Benutzerwunsch nach der Frage "läuft es auf einem leistungsstärkeren
+    PC schneller?"): ohne dieses Paket dekodiert GStreamer jedes Video rein
+    per Software, selbst wenn die eingebaute Intel-/AMD-Grafik es per VAAPI
+    eigentlich könnte. Kein Code nötig — der interne GStreamer-Player wählt
+    den Decoder automatisch nach Rang, sobald das Paket installiert ist.
+    Entlastet vor allem höhere Auflösungen/HEVC-Material auf schwächeren
+    Prozessoren.
+
+ -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 00:15:00 +0200
+
 goldfish-linux (0.1.25-1) unstable; urgency=medium
 
   * Korrektur zu 0.1.24: die Trickplay-Vorschau ist wieder in ihrer
