@@ -29,10 +29,23 @@ from ..widgets.poster import load_poster_async  # noqa: E402
 class MusicLibraryPage(Adw.NavigationPage):
     """Albenübersicht mit Suche und Genre-Filter."""
 
+    # Grid → Liste → Alle Titel → Grid, ein Knopf statt drei — analog zur
+    # Mac/iOS-App (Build 211) und der Android-App. Icons bewusst nur
+    # "view-grid-symbolic"/"view-list-symbolic" (beide Teil der
+    # Freedesktop-Icon-Namenskonvention, auf jedem Zielsystem vorhanden) —
+    # die Kurzhilfe unterscheidet Alben-Liste von Alle-Titel.
+    _MODE_CYCLE = {"grid": "list", "list": "all", "all": "grid"}
+    _MODE_ICON = {"grid": "view-grid-symbolic", "list": "view-list-symbolic", "all": "view-list-symbolic"}
+    _MODE_TOOLTIP = {
+        "grid": "Alben als Kacheln",
+        "list": "Alben als Liste",
+        "all": "Alle Titel",
+    }
+
     def __init__(self, ctx, nav_view: Adw.NavigationView, library: dict):
         toolbar_view = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        search = Gtk.SearchEntry(placeholder_text="Künstler oder Album…")
+        search = Gtk.SearchEntry(placeholder_text="Titel, Künstler oder Album…")
         header.set_title_widget(search)
         toolbar_view.add_top_bar(header)
 
@@ -54,6 +67,21 @@ class MusicLibraryPage(Adw.NavigationPage):
         # Sekunden blockierten Hauptablauf (nachgemessen) — in dieser Zeit
         # stand auch die laufende Wiedergabe scheinbar still.
         self.grid: AlbumGrid | None = None
+        self.all_tracks: list[dict] | None = None
+        self.mode = self.ctx.view_prefs.music_view_mode(int(library["id"]))
+
+        self.mode_button = Gtk.Button(
+            icon_name=self._MODE_ICON[self.mode], tooltip_text=self._MODE_TOOLTIP[self.mode]
+        )
+        self.mode_button.connect("clicked", lambda *_: self._cycle_mode())
+        header.pack_end(self.mode_button)
+
+        # Kein Freedesktop-Standardsymbol für "Playlist" — Emoji statt Icon,
+        # dieselbe Konvention wie überall sonst in dieser App (Kachel-Ecken,
+        # Seitenleiste), damit nichts von der Icon-Theme-Verfügbarkeit abhängt.
+        playlists = Gtk.Button(label="📋", tooltip_text="Musik-Playlists")
+        playlists.connect("clicked", lambda *_: self._open_playlists())
+        header.pack_end(playlists)
 
         folders = Gtk.Button(icon_name="folder-symbolic", tooltip_text="Ordner durchsehen")
         folders.connect("clicked", lambda *_: self._open_folders())
@@ -61,6 +89,39 @@ class MusicLibraryPage(Adw.NavigationPage):
 
         _busy(toolbar_view)
         threading.Thread(target=self._load, daemon=True).start()
+
+    def _cycle_mode(self) -> None:
+        self.mode = self._MODE_CYCLE[self.mode]
+        self.ctx.view_prefs.set_music_view_mode(int(self.library["id"]), self.mode)
+        self.mode_button.set_icon_name(self._MODE_ICON[self.mode])
+        self.mode_button.set_tooltip_text(self._MODE_TOOLTIP[self.mode])
+        if self.mode == "all" and self.all_tracks is None:
+            self._load_all_tracks()
+            return
+        self._render()
+
+    def _load_all_tracks(self) -> None:
+        _busy(self.toolbar_view)
+
+        def worker() -> None:
+            try:
+                tracks = self.ctx.client.items(self.library["id"], sort="title")
+            except GoldfishAPIError as exc:
+                GLib.idle_add(_error, self.toolbar_view, str(exc))
+                return
+            GLib.idle_add(self._apply_all_tracks, tracks)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_all_tracks(self, tracks: list[dict]) -> bool:
+        self.all_tracks = tracks
+        self._render()
+        return False
+
+    def _open_playlists(self) -> None:
+        from .playlists_page import PlaylistsPage
+
+        self.nav_view.push(PlaylistsPage(self.ctx, self.nav_view, kind="music"))
 
     def _load(self) -> None:
         try:
@@ -136,11 +197,92 @@ class MusicLibraryPage(Adw.NavigationPage):
             )
             return
 
+        if self.mode == "all":
+            self._render_all_tracks()
+            return
+        if self.mode == "list":
+            self._render_album_list(shown)
+            return
+
         if self.grid is None:
             self.grid = AlbumGrid(self.ctx.client, on_album=self._open_album)
         self.grid.set_albums(shown)
         if self.toolbar_view.get_content() is not self.grid:
             self.toolbar_view.set_content(self.grid)
+
+    def _render_album_list(self, albums: list[dict]) -> None:
+        """Alben als Liste statt Kacheln (Build-211-Parität) — bewusst eine
+        `Gtk.ListBox`, keine eigene Recycling-Liste: die Albenzahl ist zwar
+        groß, aber `boxed-list` skaliert dafür gut genug und spart eine
+        zweite Widget-Klasse für denselben Anwendungsfall wie `_render_search`."""
+        self.grid = None
+        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
+        listbox.add_css_class("boxed-list")
+        for album in albums:
+            listbox.append(self._build_album_row(album))
+        self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, margin_top=12, margin_bottom=24, child=listbox))
+
+    def _render_all_tracks(self) -> None:
+        """Alle Titel der Bibliothek flach, unabhängig von der Album-
+        Gruppierung — Pendant zum Browser/Android „Alle Titel". `None` heißt
+        "noch nie geladen" (z. B. Seite frisch geöffnet, Modus war aber schon
+        vorher auf "all" gemerkt) — dann wird nachgeladen statt fälschlich
+        "leer" zu melden; `[]` heißt "geladen, wirklich keine Titel"."""
+        self.grid = None
+        if self.all_tracks is None:
+            self._load_all_tracks()
+            return
+        tracks = self.all_tracks
+        if not tracks:
+            _error(
+                self.toolbar_view,
+                "Diese Bibliothek enthält keine Titel.",
+                title="Leer",
+                icon="system-search-symbolic",
+            )
+            return
+        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
+        listbox.add_css_class("boxed-list")
+        for index, track in enumerate(tracks):
+            listbox.append(self._build_track_row(track, tracks, index, show_album=True))
+        self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, margin_top=12, margin_bottom=24, child=listbox))
+
+    def _build_album_row(self, album: dict) -> Gtk.Widget:
+        row = Adw.ActionRow(
+            title=album.get("album") or "",
+            subtitle=" · ".join(str(p) for p in (album.get("artist"), album.get("year") or "") if p),
+            activatable=True,
+        )
+        count = album.get("trackCount") or 0
+        if count:
+            label = Gtk.Label(label=f"{count} Titel", valign=Gtk.Align.CENTER)
+            label.add_css_class("dim-label")
+            row.add_suffix(label)
+        row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        row.connect("activated", lambda _r, a=album: self._open_album(a))
+        return row
+
+    def _build_track_row(self, track: dict, queue: list[dict], index: int, *, show_album: bool) -> Gtk.Widget:
+        subtitle_parts = [track.get("artist")]
+        if show_album:
+            subtitle_parts.append(track.get("album"))
+        subtitle = " · ".join(str(p) for p in subtitle_parts if p)
+        row = Adw.ActionRow(title=track.get("title") or "", subtitle=subtitle, activatable=True)
+        duration = Gtk.Label(label=format_duration(track.get("durationSec") or 0), valign=Gtk.Align.CENTER)
+        duration.add_css_class("gf-mini-time")
+        row.add_suffix(duration)
+        enqueue = Gtk.Button(
+            icon_name="list-add-symbolic",
+            has_frame=False,
+            valign=Gtk.Align.CENTER,
+            tooltip_text="An die Warteschlange anhängen",
+        )
+        enqueue.connect("clicked", lambda _b, t=track: self._enqueue_found(t))
+        row.add_suffix(enqueue)
+        # Ab dem angeklickten Titel spielen, die angezeigte Liste ist die
+        # Warteschlange (egal ob Suchtreffer oder "Alle Titel").
+        row.connect("activated", lambda _r, i=index, q=queue: self.ctx.music.play_queue(q, i))
+        return row
 
     def _render_search(self, albums: list[dict], tracks: list[dict]) -> None:
         """Trefferliste: Alben und Titel untereinander in EINER Liste.
@@ -163,46 +305,14 @@ class MusicLibraryPage(Adw.NavigationPage):
             listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
             listbox.add_css_class("boxed-list")
             for album in albums:
-                row = Adw.ActionRow(
-                    title=album.get("album") or "",
-                    subtitle=" · ".join(
-                        str(p) for p in (album.get("artist"), album.get("year") or "") if p
-                    ),
-                    activatable=True,
-                )
-                count = album.get("trackCount") or 0
-                if count:
-                    label = Gtk.Label(label=f"{count} Titel", valign=Gtk.Align.CENTER)
-                    label.add_css_class("dim-label")
-                    row.add_suffix(label)
-                row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
-                row.connect("activated", lambda _r, a=album: self._open_album(a))
-                listbox.append(row)
+                listbox.append(self._build_album_row(album))
             box.append(listbox)
         if tracks:
             box.append(_heading(f"Titel · {len(tracks)}"))
             listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
             listbox.add_css_class("boxed-list")
             for index, track in enumerate(tracks):
-                subtitle = " · ".join(str(p) for p in (track.get("artist"), track.get("album")) if p)
-                row = Adw.ActionRow(title=track.get("title") or "", subtitle=subtitle, activatable=True)
-                duration = Gtk.Label(
-                    label=format_duration(track.get("durationSec") or 0), valign=Gtk.Align.CENTER
-                )
-                duration.add_css_class("gf-mini-time")
-                row.add_suffix(duration)
-                enqueue = Gtk.Button(
-                    icon_name="list-add-symbolic",
-                    has_frame=False,
-                    valign=Gtk.Align.CENTER,
-                    tooltip_text="An die Warteschlange anhängen",
-                )
-                enqueue.connect("clicked", lambda _b, t=track: self._enqueue_found(t))
-                row.add_suffix(enqueue)
-                # Ab dem angeklickten Titel spielen, die Trefferliste ist die
-                # Warteschlange.
-                row.connect("activated", lambda _r, i=index: self.ctx.music.play_queue(tracks, i))
-                listbox.append(row)
+                listbox.append(self._build_track_row(track, tracks, index, show_album=True))
             box.append(listbox)
         self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, child=box))
 

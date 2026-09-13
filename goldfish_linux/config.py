@@ -188,6 +188,17 @@ class ViewPrefs:
         if self._data.pop(self._key(library_id, folder), None) is not None:
             self._save()
 
+    def music_view_mode(self, library_id: int) -> str:
+        """"grid" | "list" | "all" (Alben als Kacheln, Alben als Liste, oder
+        alle Titel der Bibliothek flach) — pro Bibliothek gemerkt, analog zum
+        Browser/den anderen Clients. Standard: "grid"."""
+        value = self._data.get(f"musicView:{library_id}", "grid")
+        return value if value in ("grid", "list", "all") else "grid"
+
+    def set_music_view_mode(self, library_id: int, mode: str) -> None:
+        self._data[f"musicView:{library_id}"] = mode if mode in ("grid", "list", "all") else "grid"
+        self._save()
+
     def color_scheme(self) -> str:
         """"system" | "light" | "dark". Standard: "system".
 

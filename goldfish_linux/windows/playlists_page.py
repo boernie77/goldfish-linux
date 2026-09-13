@@ -22,7 +22,15 @@ from ..widgets.grid import CardGrid  # noqa: E402
 
 
 class PlaylistsPage(Adw.NavigationPage):
-    def __init__(self, ctx, nav_view: Adw.NavigationView):
+    """Übersicht der eigenen Playlists.
+
+    `kind=None` (Standard, von der Seitenleiste aus) zeigt Video- UND
+    Musik-Playlists gemischt, unterschieden per 🎵/🎬-Abzeichen — wie bisher.
+    `kind="music"` (vom Musik-Bibliotheks-Header aus, Build-211-Parität)
+    zeigt und erzeugt NUR Musik-Playlists — eine eigenständige Ansicht, ohne
+    dass zum Umschauen erst die Musikbibliothek verlassen werden muss."""
+
+    def __init__(self, ctx, nav_view: Adw.NavigationView, kind: str | None = None):
         toolbar_view = Adw.ToolbarView()
         header = Adw.HeaderBar()
         add = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="Neue Playlist")
@@ -30,15 +38,17 @@ class PlaylistsPage(Adw.NavigationPage):
         header.pack_end(add)
         shuffle = Gtk.Button(
             icon_name="media-playlist-shuffle-symbolic",
-            tooltip_text="Zufällig aus allen Playlists",
+            tooltip_text=f"Zufällig aus allen {'Musik-' if kind == 'music' else ''}Playlists",
         )
         shuffle.connect("clicked", lambda *_: self._play_random())
         header.pack_start(shuffle)
         toolbar_view.add_top_bar(header)
 
-        super().__init__(title="Playlists", tag="playlists", child=toolbar_view)
+        title = "Musik-Playlists" if kind == "music" else "Playlists"
+        super().__init__(title=title, tag=f"playlists-{kind or 'all'}", child=toolbar_view)
         self.ctx = ctx
         self.nav_view = nav_view
+        self.kind = kind
         self.toolbar_view = toolbar_view
         self.entries: list[dict] = []
 
@@ -50,23 +60,25 @@ class PlaylistsPage(Adw.NavigationPage):
 
     def _load(self) -> None:
         try:
-            # Beide Arten holen: die Übersicht zeigt alles, gekennzeichnet
-            # durch ein Symbol.
-            video = self.ctx.client.playlists("video")
-            music = self.ctx.client.playlists("music")
+            if self.kind:
+                entries = self.ctx.client.playlists(self.kind)
+            else:
+                # Beide Arten holen: die gemischte Übersicht zeigt alles,
+                # unterschieden durch ein Abzeichen.
+                entries = self.ctx.client.playlists("video") + self.ctx.client.playlists("music")
         except GoldfishAPIError as exc:
             GLib.idle_add(_error, self.toolbar_view, str(exc))
             return
-        GLib.idle_add(self._apply, video, music)
+        GLib.idle_add(self._apply, entries)
 
-    def _apply(self, video: list[dict], music: list[dict]) -> bool:
-        entries = video + music
+    def _apply(self, entries: list[dict]) -> bool:
         self.entries = entries
         if not entries:
+            empty_title = "Noch keine Musik-Playlists" if self.kind == "music" else "Noch keine Playlists"
             _error(
                 self.toolbar_view,
                 "Über das Plus oben rechts lässt sich eine anlegen.",
-                title="Noch keine Playlists",
+                title=empty_title,
                 icon="view-list-symbolic",
             )
             return False
@@ -177,7 +189,7 @@ class PlaylistsPage(Adw.NavigationPage):
     def _create(self, name: str) -> None:
         def worker() -> None:
             try:
-                self.ctx.client.create_playlist(name, "video")
+                self.ctx.client.create_playlist(name, self.kind or "video")
             except GoldfishAPIError as exc:
                 GLib.idle_add(_toast, self, f"Anlegen fehlgeschlagen: {exc}")
                 return
