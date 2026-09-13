@@ -43,6 +43,13 @@ from ..widgets.poster import load_poster_async  # noqa: E402
 # "—" statt leer: eine leere Zelle sieht in einer Tabelle wie ein Fehler aus.
 _EMPTY = "—"
 
+# Wieviele Titel eine Zufallswiedergabe zieht. NICHT die ganze Bibliothek:
+# aus 4438 Titeln wurde sonst eine Warteschlange mit 4438 Einträgen — der
+# Zähler an der Abspielleiste sah aus wie ein Fehler ("woher kommen die über
+# 4000 Titel?"), und das Fenster dazu war kaum noch zu gebrauchen. 200 Titel
+# sind über zwölf Stunden; für eine neue Auswahl einfach erneut drücken.
+_SHUFFLE_LIMIT = 200
+
 
 def _text(value) -> str:
     if value in (None, "", 0):
@@ -706,8 +713,12 @@ class MusicLibraryPage(Adw.NavigationPage):
         if not pool:
             _toast(self, "Nichts zum Abspielen.")
             return
-        random.shuffle(pool)
-        self.ctx.music.play_queue(pool, 0)
+        # `sample` zieht ohne Zurücklegen und liefert die Auswahl bereits in
+        # zufälliger Reihenfolge — ein zusätzliches Mischen wäre überflüssig.
+        drawn = random.sample(pool, min(len(pool), _SHUFFLE_LIMIT))
+        self.ctx.music.play_queue(drawn, 0)
+        if len(pool) > len(drawn):
+            _toast(self, f"{len(drawn)} von {len(pool)} Titeln zufällig gezogen.")
 
     # -- Aktionen in den Zeilen ------------------------------------------
 

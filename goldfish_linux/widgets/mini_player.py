@@ -19,6 +19,8 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Pango", "1.0")
 from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
 
+from gi.repository import Gio, GObject  # noqa: E402
+
 from ..formatting import format_duration  # noqa: E402
 from ..music_player import MusicPlayer  # noqa: E402
 from .poster import load_poster_async  # noqa: E402
@@ -41,13 +43,25 @@ _CSS = b"""
 _css_loaded = False
 
 
+class _QueueRow(GObject.Object):
+    """Eine Zeile der Warteschlange. `Gtk.ListView` nimmt nur GObjects."""
+
+    __gtype_name__ = "GfQueueRow"
+
+    def __init__(self, index: int, track: dict) -> None:
+        super().__init__()
+        self.index = index
+        self.track = track
+
+
 def _queue_icon() -> str:
-    """Symbol für die Warteschlange — "music-queue" kennt nur Yaru, deshalb
-    eine Kette bis zu einem Namen, den jedes Thema hat."""
+    """Symbol für die Warteschlange — eine nummerierte Liste. ("music-queue"
+    kennt nur Yaru und zeigt dort einen Abspiel-Kasten, der eher nach Video
+    aussieht; deshalb erst an zweiter Stelle.)"""
     from gi.repository import Gdk
 
     display = Gdk.Display.get_default()
-    names = ("music-queue-symbolic", "view-list-ordered-symbolic", "view-list-symbolic")
+    names = ("view-list-ordered-symbolic", "music-queue-symbolic", "view-list-symbolic")
     if display is not None:
         theme = Gtk.IconTheme.get_for_display(display)
         for name in names:
@@ -215,8 +229,15 @@ class MiniPlayer(Gtk.Box):
     # -- Warteschlange ---------------------------------------------------
 
     def _fill_queue(self) -> None:
+        """Das Fenster zur Warteschlange.
+
+        **Die Liste MUSS wiederverwenden** (`Gtk.ListView` über einem
+        `Gio.ListStore`): eine Zeile je Titel zu bauen, ging bei einer
+        gemischten Bibliothek mit tausenden Titeln schlicht nicht mehr auf —
+        das Fenster öffnete gar nicht erst. Gebaut wird jetzt nur, was man
+        sieht."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
-        box.set_size_request(340, -1)
+        box.set_size_request(380, -1)
 
         head_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         heading = Gtk.Label(label=f"Warteschlange · {len(self.player.queue)} Titel", xalign=0, hexpand=True)
@@ -232,28 +253,68 @@ class MiniPlayer(Gtk.Box):
         head_row.append(clear)
         box.append(head_row)
 
-        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        listbox.add_css_class("boxed-list")
+        self._queue_store = Gio.ListStore.new(_QueueRow)
         for i, track in enumerate(self.player.queue):
-            row = Adw.ActionRow(
-                title=track.get("title") or "",
-                subtitle=track.get("artist") or "",
-                activatable=True,
-            )
-            if i == self.player.index:
-                icon = Gtk.Image(icon_name="media-playback-start-symbolic")
-                icon.set_tooltip_text("Läuft gerade")
-                row.add_prefix(icon)
-            remove = Gtk.Button(icon_name="list-remove-symbolic", has_frame=False, valign=Gtk.Align.CENTER)
-            remove.set_tooltip_text("Aus der Warteschlange nehmen")
-            remove.connect("clicked", lambda _b, idx=i: self._remove(idx))
-            row.add_suffix(remove)
-            row.connect("activated", lambda _r, idx=i: self._jump(idx))
-            listbox.append(row)
+            self._queue_store.append(_QueueRow(i, track))
 
-        scroll = Gtk.ScrolledWindow(child=listbox, propagate_natural_height=True, max_content_height=380, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        factory = Gtk.SignalListItemFactory()
+        factory.connect("setup", self._queue_setup)
+        factory.connect("bind", self._queue_bind)
+        view = Gtk.ListView(model=Gtk.NoSelection.new(self._queue_store), factory=factory)
+        view.add_css_class("navigation-sidebar")
+
+        scroll = Gtk.ScrolledWindow(
+            child=view,
+            propagate_natural_height=True,
+            min_content_height=240,
+            max_content_height=380,
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+        )
         box.append(scroll)
         self.queue_popover.set_child(box)
+        # Zur laufenden Stelle springen, damit man nicht erst scrollen muss.
+        if 0 <= self.player.index < len(self.player.queue):
+            GLib.idle_add(lambda: (view.scroll_to(self.player.index, Gtk.ListScrollFlags.NONE, None), False)[1])
+
+    def _queue_setup(self, _factory, list_item: Gtk.ListItem) -> None:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, margin_top=2, margin_bottom=2)
+        play = Gtk.Button(icon_name="media-playback-start-symbolic", has_frame=False, valign=Gtk.Align.CENTER)
+        play.set_tooltip_text("Diesen Titel abspielen")
+        row.append(play)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True, valign=Gtk.Align.CENTER)
+        title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, single_line_mode=True)
+        artist = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, single_line_mode=True)
+        artist.add_css_class("dim-label")
+        artist.add_css_class("caption")
+        text.append(title)
+        text.append(artist)
+        row.append(text)
+        remove = Gtk.Button(icon_name="list-remove-symbolic", has_frame=False, valign=Gtk.Align.CENTER)
+        remove.set_tooltip_text("Aus der Warteschlange nehmen")
+        row.append(remove)
+        list_item.set_child(row)
+
+    def _queue_bind(self, _factory, list_item: Gtk.ListItem) -> None:
+        entry = list_item.get_item()
+        row = list_item.get_child()
+        play = row.get_first_child()
+        text = play.get_next_sibling()
+        remove = text.get_next_sibling()
+        title = text.get_first_child()
+        artist = title.get_next_sibling()
+
+        running = entry.index == self.player.index
+        title.set_label(("▶  " if running else "") + (entry.track.get("title") or ""))
+        artist.set_label(entry.track.get("artist") or "")
+        play.set_sensitive(not running)
+
+        # Frisch verbinden — die Zeile wird für andere Titel wiederverwendet.
+        for button, handler in ((play, "_queue_play_handler"), (remove, "_queue_remove_handler")):
+            old = getattr(button, handler, 0)
+            if old:
+                button.disconnect(old)
+        setattr(play, "_queue_play_handler", play.connect("clicked", lambda _b, i=entry.index: self._jump(i)))
+        setattr(remove, "_queue_remove_handler", remove.connect("clicked", lambda _b, i=entry.index: self._remove(i)))
 
     def _jump(self, index: int) -> None:
         self.player.play_index(index)

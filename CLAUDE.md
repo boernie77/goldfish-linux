@@ -70,6 +70,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.34 | Musik: Zufallswiedergabe in jeder Ansicht (ohne Hörbücher), Cover in den Suchtreffern, umschaltbare Playlist-Ansicht |
 | 0.1.35 | Ansichts-Schalter der Musikseite als Symbole statt Beschriftungen |
 | 0.1.36 | Rahmen am Zufallsknopf, Spaltenbreite ohne Seiteneffekt, auffindbare Warteschlange |
+| 0.1.37 | Warteschlangen-Fenster öffnet wieder (Wiederverwendung statt einer Zeile je Titel), Zufall zieht 200 Titel |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -365,6 +366,18 @@ System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
     bekommt beim Binden seinen Zustand gesetzt und meldet das als `toggled` —
     ohne Vergleich mit dem gemerkten Wert löst allein das Scrollen
     Server-Aufrufe aus.
+
+- **Jede Liste, die tausende Einträge haben KANN, muss wiederverwenden.**
+  Das Fenster der Warteschlange baute eine `Adw.ActionRow` je Titel — bei
+  einer gemischten Bibliothek (4438 Titel) öffnete es dadurch gar nicht mehr.
+  Mit `Gtk.ListView` über einem `Gio.ListStore` sind es 0,07 Sekunden
+  (nachgemessen, seit 0.1.37). Dasselbe gilt für die Kachelraster
+  (`CardGrid`/`AlbumGrid`) und die Musiktabellen (`ColumnList`) — die
+  `Gtk.ListBox`-Listen im Rest der App sind nur dort in Ordnung, wo die
+  Länge von Natur aus klein ist (Titel eines Albums, Suchtreffer).
+- **Die Zufallswiedergabe zieht 200 Titel, nicht die ganze Bibliothek**
+  (`_SHUFFLE_LIMIT`): eine Warteschlange mit tausenden Einträgen ist nicht
+  mehr überschaubar — der Zähler an der Abspielleiste sah aus wie ein Fehler.
 
 ## Was diese App bewusst anders macht als die Mac-App
 

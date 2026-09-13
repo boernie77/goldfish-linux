@@ -1,3 +1,20 @@
+goldfish-linux (0.1.37-1) unstable; urgency=medium
+
+  * Das Fenster der Warteschlange öffnet wieder. Es baute bisher eine Zeile
+    je Titel — bei einer gemischten Bibliothek mit tausenden Titeln kam es
+    damit nicht mehr zurecht. Jetzt wird nur gebaut, was man sieht (geprüft
+    mit 4438 Einträgen: 0,07 Sekunden).
+  * Die Zufallswiedergabe zieht 200 Titel statt der ganzen Bibliothek — daher
+    kamen die über 4000 Einträge in der Warteschlange. Für eine neue Auswahl
+    einfach erneut drücken; eine Meldung nennt die gezogene Anzahl.
+  * Jede Zeile der Warteschlange hat jetzt einen Abspiel- und einen
+    Entfernen-Knopf, der laufende Titel ist markiert, und die Liste springt
+    beim Öffnen zur aktuellen Stelle.
+  * Anderes Symbol für die Warteschlange (nummerierte Liste statt eines
+    Kastens mit Abspielzeichen, der nach Video aussah).
+
+ -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:26:50 +0200
+
 goldfish-linux (0.1.36-1) unstable; urgency=medium
 
   * Der Zufallsknopf hat wieder einen Rahmen wie die übrigen Knöpfe — die
