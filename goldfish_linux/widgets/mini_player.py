@@ -41,6 +41,21 @@ _CSS = b"""
 _css_loaded = False
 
 
+def _queue_icon() -> str:
+    """Symbol für die Warteschlange — "music-queue" kennt nur Yaru, deshalb
+    eine Kette bis zu einem Namen, den jedes Thema hat."""
+    from gi.repository import Gdk
+
+    display = Gdk.Display.get_default()
+    names = ("music-queue-symbolic", "view-list-ordered-symbolic", "view-list-symbolic")
+    if display is not None:
+        theme = Gtk.IconTheme.get_for_display(display)
+        for name in names:
+            if theme.has_icon(name):
+                return name
+    return names[-1]
+
+
 def _ensure_css() -> None:
     global _css_loaded
     if _css_loaded:
@@ -117,7 +132,17 @@ class MiniPlayer(Gtk.Box):
         self.shuffle_button.connect("clicked", lambda *_: self.player.shuffle())
         self.append(self.shuffle_button)
 
-        self.queue_button = Gtk.MenuButton(icon_name="view-list-symbolic", tooltip_text="Warteschlange")
+        # Die Warteschlange war da, aber niemand fand sie ("wo ist die
+        # Schlange?"): ein Listensymbol zwischen lauter anderen Symbolen sagt
+        # nicht, dass dahinter die Titelfolge steckt. Jetzt mit der Anzahl
+        # daneben — eine Zahl fällt auf und sagt gleich, wie viel drin ist.
+        self.queue_count = Gtk.Label(label="0")
+        self.queue_count.add_css_class("numeric")
+        queue_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        queue_box.append(Gtk.Image.new_from_icon_name(_queue_icon()))
+        queue_box.append(self.queue_count)
+        self.queue_button = Gtk.MenuButton(tooltip_text="Warteschlange")
+        self.queue_button.set_child(queue_box)
         self.queue_popover = Gtk.Popover()
         self.queue_button.set_popover(self.queue_popover)
         self.queue_popover.connect("show", lambda *_: self._fill_queue())
@@ -153,6 +178,14 @@ class MiniPlayer(Gtk.Box):
             decode_width=_COVER * 2,
         )
         self._update_play_icon()
+        self._update_queue_count()
+
+    def _update_queue_count(self) -> None:
+        count = len(self.player.queue)
+        self.queue_count.set_label(str(count))
+        self.queue_button.set_tooltip_text(
+            f"Warteschlange · {count} Titel — hier einzelne Titel entfernen oder alles leeren"
+        )
 
     def _update_play_icon(self) -> None:
         playing = self.player.playing
@@ -170,6 +203,9 @@ class MiniPlayer(Gtk.Box):
         self.position_label.set_label(format_duration(position))
         self.duration_label.set_label(format_duration(duration))
         self._update_play_icon()
+        # Anhängen an die Warteschlange meldet sich nicht eigens — der Zähler
+        # kommt deshalb mit dem Sekundentakt mit.
+        self._update_queue_count()
         return True
 
     def _on_seek(self, _scale, _scroll, value: float) -> bool:
@@ -187,11 +223,11 @@ class MiniPlayer(Gtk.Box):
         heading.add_css_class("heading")
         head_row.append(heading)
         clear = Gtk.Button(
-            icon_name="user-trash-symbolic",
-            has_frame=False,
+            label="Leeren",
             valign=Gtk.Align.CENTER,
             tooltip_text="Warteschlange leeren (beendet die Wiedergabe)",
         )
+        clear.add_css_class("destructive-action")
         clear.connect("clicked", lambda *_: self._clear())
         head_row.append(clear)
         box.append(head_row)

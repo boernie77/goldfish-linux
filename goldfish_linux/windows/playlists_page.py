@@ -244,7 +244,10 @@ class PlaylistItemsPage(Adw.NavigationPage):
             margin_start=12,
             margin_end=12,
         )
-        bar.add_css_class("toolbar")
+        # BEWUSST ohne die Klasse "toolbar": libadwaita macht Knöpfe darin
+        # rahmenlos. Der Zufallsknopf stand dadurch als einziger nackt neben
+        # dem verbundenen Umschalter ("hängt lose in der Gegend"). Ohne die
+        # Klasse trägt jeder Knopf seinen normalen Rahmen.
 
         modes = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         modes.add_css_class("linked")

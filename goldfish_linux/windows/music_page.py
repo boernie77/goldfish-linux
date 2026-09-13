@@ -64,10 +64,17 @@ def _sort_number(value) -> float:
 def _album_columns(actions) -> list[ColumnSpec]:
     """Spalten der Albenliste. `default=False` heißt: erst nach dem Anhaken im
     Spalten-Menü sichtbar — sonst wäre die Tabelle beim ersten Öffnen voll mit
-    Feldern, die die meisten nie brauchen."""
+    Feldern, die die meisten nie brauchen.
+
+    **Keine Spalte ist dehnbar** (`expand`), und das ist Absicht: eine dehnbare
+    Spalte saugt den Restplatz auf und rechnet sich bei JEDER Breitenänderung
+    neu — zieht man eine Spalte breiter, wandern dadurch auch die Spalten links
+    und rechts davon (genau so gemeldet). Mit festen Breiten ändert sich nur
+    die Spalte, die man anfasst; rechts bleibt im breiten Fenster etwas Platz
+    frei, den man bei Bedarf durch Ziehen füllt (die Breite wird gemerkt)."""
     return [
-        ColumnSpec("album", "Album", width=260, expand=True, text=lambda a: _text(a.get("album")), sort_key=lambda a: _sort_text(a.get("album"))),
-        ColumnSpec("artist", "Künstler", width=200, expand=True, text=lambda a: _text(a.get("artist")), sort_key=lambda a: _sort_text(a.get("artist"))),
+        ColumnSpec("album", "Album", width=300, text=lambda a: _text(a.get("album")), sort_key=lambda a: _sort_text(a.get("album"))),
+        ColumnSpec("artist", "Künstler", width=240, text=lambda a: _text(a.get("artist")), sort_key=lambda a: _sort_text(a.get("artist"))),
         ColumnSpec("genre", "Genre", width=140, text=lambda a: _text(a.get("genre")), sort_key=lambda a: _sort_text(a.get("genre"))),
         ColumnSpec("year", "Jahr", width=70, numeric=True, text=lambda a: _text(a.get("year")), sort_key=lambda a: _sort_number(a.get("year"))),
         ColumnSpec("trackCount", "Titel", width=70, numeric=True, text=lambda a: _text(a.get("trackCount")), sort_key=lambda a: _sort_number(a.get("trackCount"))),
@@ -85,13 +92,13 @@ def _track_columns(actions, *, show_track_no: bool, show_album: bool) -> list[Co
             ColumnSpec("trackNo", "Nr.", width=56, numeric=True, text=lambda t: _text(t.get("trackNo")), sort_key=lambda t: _sort_number(t.get("trackNo")))
         )
     specs.append(
-        ColumnSpec("title", "Titel", width=280, expand=True, text=lambda t: _text(t.get("title")), sort_key=lambda t: _sort_text(t.get("title")))
+        ColumnSpec("title", "Titel", width=320, text=lambda t: _text(t.get("title")), sort_key=lambda t: _sort_text(t.get("title")))
     )
     specs.append(
-        ColumnSpec("artist", "Künstler", width=190, expand=True, text=lambda t: _text(t.get("artist")), sort_key=lambda t: _sort_text(t.get("artist")))
+        ColumnSpec("artist", "Künstler", width=230, text=lambda t: _text(t.get("artist")), sort_key=lambda t: _sort_text(t.get("artist")))
     )
     specs.append(
-        ColumnSpec("album", "Album", width=190, expand=True, default=show_album, text=lambda t: _text(t.get("album")), sort_key=lambda t: _sort_text(t.get("album")))
+        ColumnSpec("album", "Album", width=230, default=show_album, text=lambda t: _text(t.get("album")), sort_key=lambda t: _sort_text(t.get("album")))
     )
     specs.extend(
         [
@@ -248,7 +255,10 @@ class MusicLibraryPage(Adw.NavigationPage):
             margin_start=12,
             margin_end=12,
         )
-        bar.add_css_class("toolbar")
+        # BEWUSST ohne die Klasse "toolbar": libadwaita macht Knöpfe darin
+        # rahmenlos. Der Zufallsknopf stand dadurch als einziger nackt neben
+        # dem verbundenen Umschalter ("hängt lose in der Gegend"). Ohne die
+        # Klasse trägt jeder Knopf seinen normalen Rahmen.
 
         modes = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         modes.add_css_class("linked")

@@ -1,3 +1,17 @@
+goldfish-linux (0.1.36-1) unstable; urgency=medium
+
+  * Der Zufallsknopf hat wieder einen Rahmen wie die übrigen Knöpfe — die
+    Leiste trug die Klasse "toolbar", und die macht Knöpfe rahmenlos.
+  * Spaltenbreite ziehen bewegt nur noch die angefasste Spalte. Vorher waren
+    Titel, Künstler und Album dehnbar; eine dehnbare Spalte verteilt den
+    Restplatz neu, sobald sich irgendeine Breite ändert — dadurch wanderten
+    auch die Nachbarn links und rechts.
+  * Die Warteschlange ist leichter zu finden: der Knopf in der Abspielleiste
+    zeigt jetzt die Anzahl der Titel, und "Leeren" steht als Wort statt als
+    Papierkorb-Symbol im Fenster.
+
+ -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:20:36 +0200
+
 goldfish-linux (0.1.35-1) unstable; urgency=medium
 
   * Die Ansichts-Schalter (Alben, Liste, Alle Titel) sind jetzt Symbole statt
