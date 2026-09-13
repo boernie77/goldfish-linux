@@ -21,9 +21,67 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
-from ..formatting import format_duration  # noqa: E402
+from ..formatting import format_date, format_duration  # noqa: E402
 from ..widgets.grid import AlbumGrid  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
+
+# Server-Wunsch 2026-09-14 (siehe Server-CLAUDE.md "Listenspalten Zuletzt
+# abgespielt/Wiedergaben/Hinzugefügt + Spalten-Auswahl") — drei optionale
+# Spalten für Alben- und Titel-Listen, ein-/ausblendbar über ein
+# "Spalten"-Menü, analog zum Browser-Dropdown und dem Mac-"☰ Spalten"-Menü.
+_MUSIC_COLUMN_LABELS = {
+    "lastPlayed": "Zuletzt gehört",
+    "playCount": "Wiedergaben",
+    "added": "Hinzugefügt",
+}
+
+
+def _build_columns_popover(ctx, context: str, on_change) -> Gtk.Popover:
+    """Kontrollkästchen pro optionaler Spalte — `context` unterscheidet
+    Albenliste/"Alle Titel"/Album-Detail (jede hat ihre eigene gemerkte
+    Sichtbarkeit, siehe `ViewPrefs.music_columns_visible`)."""
+    visible = ctx.view_prefs.music_columns_visible(context)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
+    for key, label in _MUSIC_COLUMN_LABELS.items():
+        check = Gtk.CheckButton(label=label, active=key in visible)
+
+        def _toggled(btn: Gtk.CheckButton, k=key) -> None:
+            current = ctx.view_prefs.music_columns_visible(context)
+            if btn.get_active():
+                current.add(k)
+            else:
+                current.discard(k)
+            ctx.view_prefs.set_music_columns_visible(context, current)
+            on_change()
+
+        check.connect("toggled", _toggled)
+        box.append(check)
+    return Gtk.Popover(child=box)
+
+
+def _build_columns_menu_button(ctx, context: str, on_change) -> Gtk.MenuButton:
+    popover = _build_columns_popover(ctx, context, on_change)
+    return Gtk.MenuButton(icon_name="view-more-symbolic", tooltip_text="Spalten", popover=popover)
+
+
+def _column_suffixes(ctx, context: str, entry: dict) -> list[Gtk.Widget]:
+    """Suffix-Labels für die drei optionalen Spalten, nur für die aktuell
+    sichtbaren (siehe `ViewPrefs.music_columns_visible`)."""
+    visible = ctx.view_prefs.music_columns_visible(context)
+    widgets: list[Gtk.Widget] = []
+    if "lastPlayed" in visible:
+        label = Gtk.Label(label=format_date(entry.get("lastPlayedAt")) or "—", valign=Gtk.Align.CENTER)
+        label.add_css_class("dim-label")
+        widgets.append(label)
+    if "playCount" in visible:
+        label = Gtk.Label(label=str(entry.get("playCount") or 0), valign=Gtk.Align.CENTER)
+        label.add_css_class("dim-label")
+        widgets.append(label)
+    if "added" in visible:
+        label = Gtk.Label(label=format_date(entry.get("addedAt")) or "—", valign=Gtk.Align.CENTER)
+        label.add_css_class("dim-label")
+        widgets.append(label)
+    return widgets
 
 
 class MusicLibraryPage(Adw.NavigationPage):
@@ -76,6 +134,15 @@ class MusicLibraryPage(Adw.NavigationPage):
         self.mode_button.connect("clicked", lambda *_: self._cycle_mode())
         header.pack_end(self.mode_button)
 
+        # "Spalten"-Menü nur sinnvoll, wo tatsächlich Zeilen (keine Kacheln)
+        # stehen — Kachelmodus bekommt keinen Knopf, analog zum Verzicht auf
+        # Spaltenbreiten in `AlbumGrid`.
+        self.columns_button = _build_columns_menu_button(
+            self.ctx, self._columns_context(), self._render
+        )
+        self.columns_button.set_visible(self._columns_context() is not None)
+        header.pack_end(self.columns_button)
+
         # Kein Freedesktop-Standardsymbol für "Playlist" — Emoji statt Icon,
         # dieselbe Konvention wie überall sonst in dieser App (Kachel-Ecken,
         # Seitenleiste), damit nichts von der Icon-Theme-Verfügbarkeit abhängt.
@@ -90,11 +157,27 @@ class MusicLibraryPage(Adw.NavigationPage):
         _busy(toolbar_view)
         threading.Thread(target=self._load, daemon=True).start()
 
+    def _columns_context(self) -> str | None:
+        """Welcher Spalten-Sichtbarkeits-Kontext gerade gilt — `None` im
+        Kachelmodus, wo es keine Zeilen mit Suffix-Platz gibt."""
+        if self.mode == "list":
+            return "albums"
+        if self.mode == "all":
+            return "allTracks"
+        return None
+
+    def _refresh_columns_button(self) -> None:
+        context = self._columns_context()
+        self.columns_button.set_visible(context is not None)
+        if context is not None:
+            self.columns_button.set_popover(_build_columns_popover(self.ctx, context, self._render))
+
     def _cycle_mode(self) -> None:
         self.mode = self._MODE_CYCLE[self.mode]
         self.ctx.view_prefs.set_music_view_mode(int(self.library["id"]), self.mode)
         self.mode_button.set_icon_name(self._MODE_ICON[self.mode])
         self.mode_button.set_tooltip_text(self._MODE_TOOLTIP[self.mode])
+        self._refresh_columns_button()
         if self.mode == "all" and self.all_tracks is None:
             self._load_all_tracks()
             return
@@ -253,6 +336,8 @@ class MusicLibraryPage(Adw.NavigationPage):
             subtitle=" · ".join(str(p) for p in (album.get("artist"), album.get("year") or "") if p),
             activatable=True,
         )
+        for widget in _column_suffixes(self.ctx, "albums", album):
+            row.add_suffix(widget)
         count = album.get("trackCount") or 0
         if count:
             label = Gtk.Label(label=f"{count} Titel", valign=Gtk.Align.CENTER)
@@ -268,6 +353,8 @@ class MusicLibraryPage(Adw.NavigationPage):
             subtitle_parts.append(track.get("album"))
         subtitle = " · ".join(str(p) for p in subtitle_parts if p)
         row = Adw.ActionRow(title=track.get("title") or "", subtitle=subtitle, activatable=True)
+        for widget in _column_suffixes(self.ctx, "allTracks", track):
+            row.add_suffix(widget)
         duration = Gtk.Label(label=format_duration(track.get("durationSec") or 0), valign=Gtk.Align.CENTER)
         duration.add_css_class("gf-mini-time")
         row.add_suffix(duration)
@@ -334,7 +421,10 @@ class AlbumPage(Adw.NavigationPage):
 
     def __init__(self, ctx, nav_view: Adw.NavigationView, album: dict):
         toolbar_view = Adw.ToolbarView()
-        toolbar_view.add_top_bar(Adw.HeaderBar())
+        header = Adw.HeaderBar()
+        self.columns_button = _build_columns_menu_button(ctx, "albumTracks", self._rerender)
+        header.pack_end(self.columns_button)
+        toolbar_view.add_top_bar(header)
 
         super().__init__(title=album.get("album") or "Album", tag=f"album-{album['id']}", child=toolbar_view)
         self.ctx = ctx
@@ -357,12 +447,16 @@ class AlbumPage(Adw.NavigationPage):
     def _apply(self, detail: dict) -> bool:
         self.album = {**self.album, **(detail.get("album") or {})}
         self.tracks = detail.get("tracks") or []
+        self._rerender()
+        return False
 
+    def _rerender(self) -> None:
+        """Baut den Inhalt neu — auch für das "Spalten"-Menü, das keine
+        eigenen Daten nachlädt, nur die schon vorhandenen Titel neu zeigt."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, margin_top=16, margin_bottom=24)
         box.append(self._header())
         box.append(self._track_list())
         self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, child=box))
-        return False
 
     def _header(self) -> Gtk.Widget:
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18, margin_start=16, margin_end=16)
@@ -456,6 +550,9 @@ class AlbumPage(Adw.NavigationPage):
             num_label = Gtk.Label(label=str(number), width_chars=3, xalign=1)
             num_label.add_css_class("dim-label")
             row.add_prefix(num_label)
+
+            for widget in _column_suffixes(self.ctx, "albumTracks", track):
+                row.add_suffix(widget)
 
             duration = Gtk.Label(label=format_duration(track.get("durationSec") or 0), valign=Gtk.Align.CENTER)
             duration.add_css_class("gf-mini-time")

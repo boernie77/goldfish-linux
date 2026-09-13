@@ -199,6 +199,24 @@ class ViewPrefs:
         self._data[f"musicView:{library_id}"] = mode if mode in ("grid", "list", "all") else "grid"
         self._save()
 
+    _MUSIC_COLUMN_KEYS = {"lastPlayed", "playCount", "added"}
+
+    def music_columns_visible(self, context: str) -> set[str]:
+        """Welche der drei optionalen Spalten ("Zuletzt gehört"/"Wiedergaben"/
+        "Hinzugefügt") in einer Musik-Liste sichtbar sind — pro Kontext
+        ("albums"/"allTracks"/"albumTracks") gemerkt, analog zu den
+        Browser-/Mac-Spalten-Dropdowns (`musicColumns:*` bzw.
+        `musicColumnsVisible.*`). Bewusst eine ALLOWLIST: Standard ist leer,
+        eine Spalte erscheint erst nach explizitem Anhaken."""
+        raw = self._data.get(f"musicColumnsVisible:{context}", [])
+        if not isinstance(raw, list):
+            return set()
+        return {v for v in raw if v in self._MUSIC_COLUMN_KEYS}
+
+    def set_music_columns_visible(self, context: str, visible: set[str]) -> None:
+        self._data[f"musicColumnsVisible:{context}"] = sorted(visible & self._MUSIC_COLUMN_KEYS)
+        self._save()
+
     def color_scheme(self) -> str:
         """"system" | "light" | "dark". Standard: "system".
 

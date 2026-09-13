@@ -65,6 +65,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.19 | Kachelbreiten, einheitliche Kachelform, Anzahl-Zeile, Player-Sprungknöpfe, echte Zufallswiedergabe, Musik-Warteschlange, eigene Datenträger in der Seitenleiste, eigene Vorschaubilder |
 | 0.1.20 | Musik-Titelsuche, Sortierung/Filter für eigene Datenträger, Vorschaubilder im Vorgriff |
 | 0.1.21 | Scheinbares Einfrieren (Dialog hinter dem Player), Medien-Abbau, Auflösungsanzeige, Symbolknöpfe |
+| 0.1.32 | Musik-Spalten (Zuletzt gehört/Wiedergaben/Hinzugefügt) + Spalten-Menü; Startseiten-Serien-/Kanalname-Race-Fix (siehe unten) |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -270,6 +271,23 @@ System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
   den Benutzer wirkt der Schalter wirkungslos ("ein An- und Abwählen bewirkt
   nichts"). Außerdem MUSS die Seitenleiste diese Einstellung selbst lesen und
   nach einer Änderung neu aufgebaut werden.
+- **⚠ `MainWindow.ctx.library_kinds` ist beim allerersten Öffnen der
+  Startseite oft noch leer (Bug, gefixt 0.1.32, User-Report: "bei Linux
+  fehlt auf der Startseite der Serienname und der Kanalname bei YouTube").**
+  `MainWindow.__init__` pusht `HomePage` SOFORT, das Befüllen von
+  `ctx.library_kinds` (eigener Hintergrund-Ladevorgang über
+  `_load_libraries()`) läuft daneben her und braucht zwei sequentielle
+  Netzwerk-Anfragen (`/api/libraries` + `/api/nav/preferences`) — die
+  Home-Antwort selbst (nur EIN Aufruf) kommt praktisch immer zuerst zurück.
+  `home_page.py`s `_strip()` fragte für die beiden bibliotheksübergreifenden
+  Streifen ("Fortsetzen"/"Als nächstes", die einzigen zwei ohne explizit
+  mitgegebenes `kind`) genau dieses noch leere `ctx.library_kinds` ab — die
+  Bibliotheksart fiel dadurch praktisch immer auf den Fallback "movies"
+  zurück, `CardWidget.bind()`s Serien-/Kanalname-Zeile (nur bei
+  `kind in ("tv", "private")`) blieb unsichtbar. Fix: `_strip()` nutzt
+  jetzt `self._library_by_id`, das `_apply()` bereits synchron aus der
+  EIGENEN Home-Antwort baut (`section["library"]` je Sektion) — dieselbe
+  Datenquelle, kein zweiter, race-anfälliger Ladevorgang.
 - **Vollständigkeit einer Sammlung** ist `movieCount >= partCount -
   hiddenCount - unreleasedCount` (beide Abzüge schickt der Server nur, wenn
   sie nicht 0 sind). Ohne die Abzüge gilt jede Reihe mit angekündigter

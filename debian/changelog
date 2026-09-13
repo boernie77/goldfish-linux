@@ -1,3 +1,17 @@
+goldfish-linux (0.1.32-1) unstable; urgency=medium
+
+  * Fehler behoben: Der Serien-/Kanalname auf der Startseite blieb trotz
+    0.1.31 unsichtbar (und damit auch nicht anklickbar), weil die Art der
+    Bibliothek in einer separaten, verzögerten Abfrage geladen wurde und
+    beim ersten Anzeigen der Startseite regelmäßig noch nicht vorlag. Die
+    Startseite bestimmt die Bibliotheksart jetzt aus ihrer eigenen, schon
+    geladenen Antwort.
+  * Musik: Spalten "Zuletzt gehört"/"Wiedergaben"/"Hinzugefügt" für Alben-
+    und Titellisten, ein-/ausblendbar über ein neues Spalten-Menü (analog
+    zu Browser und Mac-App).
+
+ -- boernie77 <boernie77@gmail.com>  Sun, 14 Sep 2026 10:00:00 +0200
+
 goldfish-linux (0.1.31-1) unstable; urgency=medium
 
   * Auf der Startseite ist der Serienname (bei Folgen) bzw. der Kanalname

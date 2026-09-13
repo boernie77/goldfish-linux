@@ -194,7 +194,19 @@ class HomePage(Adw.NavigationPage):
             propagate_natural_height=True,
         )
         for item in items:
-            card_kind = kind or self.ctx.library_kind(item.get("libraryId")) or "movies"
+            # NICHT `self.ctx.library_kind(...)` — der wird von `MainWindow`
+            # in einem eigenen Hintergrund-Ladevorgang befüllt, der beim
+            # allerersten Öffnen der Startseite (sie erscheint sofort beim
+            # Start, noch vor jenem Ladevorgang) regelmäßig noch leer ist.
+            # `self._library_by_id` kommt dagegen direkt aus DIESER
+            # Home-Antwort (siehe `_apply` oben) und ist deshalb nie leer,
+            # wenn hier überhaupt schon Items zum Anzeigen da sind. Bug:
+            # ohne diesen Fix blieb die Serien-/Kanalname-Zeile in
+            # "Fortsetzen"/"Als nächstes" (den einzigen zwei Streifen ohne
+            # explizit übergebenes `kind`) dauerhaft leer, weil `card_kind`
+            # so gut wie immer auf den Fallback "movies" zurückfiel.
+            item_library = self._library_by_id.get(item.get("libraryId")) or {}
+            card_kind = kind or item_library.get("kind") or "movies"
             card = CardWidget(
                 self.ctx.client,
                 card_kind,
