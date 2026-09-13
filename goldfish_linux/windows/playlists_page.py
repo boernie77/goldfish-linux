@@ -250,8 +250,13 @@ class PlaylistItemsPage(Adw.NavigationPage):
         modes.add_css_class("linked")
         self.mode_buttons: dict[str, Gtk.ToggleButton] = {}
         group: Gtk.ToggleButton | None = None
-        for key, label, tooltip in (("grid", "Kacheln", "Titel als Kacheln"), ("list", "Liste", "Titel als Liste mit Spalten")):
-            button = Gtk.ToggleButton(label=label, tooltip_text=tooltip)
+        # Symbole wie in der Musikbibliothek — dieselbe Bedeutung, dieselbe
+        # Optik neben dem Zufallsknopf.
+        for key, icon, tooltip in (
+            ("grid", "view-grid-symbolic", "Titel als Kacheln"),
+            ("list", "view-list-symbolic", "Titel als Liste mit Spalten"),
+        ):
+            button = Gtk.ToggleButton(icon_name=icon, tooltip_text=tooltip)
             if group is None:
                 group = button
             else:

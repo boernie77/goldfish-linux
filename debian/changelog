@@ -1,3 +1,12 @@
+goldfish-linux (0.1.35-1) unstable; urgency=medium
+
+  * Die Ansichts-Schalter (Alben, Liste, Alle Titel) sind jetzt Symbole statt
+    Beschriftungen — passend zum Zufallsknopf daneben. Was sie bedeuten, sagt
+    weiterhin die Kurzhilfe beim Zeigen mit der Maus. Gleiches gilt für den
+    Umschalter in einer Musik-Playlist.
+
+ -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:06:44 +0200
+
 goldfish-linux (0.1.34-1) unstable; urgency=medium
 
   * Musik-Suche: Albentreffer zeigen jetzt ihr Cover, der Text daneben steht

@@ -173,13 +173,16 @@ def _columns_popover(column_list: ColumnList) -> Gtk.Popover:
 class MusicLibraryPage(Adw.NavigationPage):
     """Albenübersicht mit Suche, Filter und drei Ansichten."""
 
-    # Drei beschriftete Schalter statt eines reihum schaltenden Knopfes
-    # (User-Wunsch 2026-09-13). Ein Umschalter zeigt, wo man ist; ein
-    # Reihum-Knopf zeigte nur, was als Nächstes käme.
+    # Drei Schalter statt eines reihum schaltenden Knopfes (User-Wunsch
+    # 2026-09-13): ein Umschalter zeigt, wo man ist; ein Reihum-Knopf zeigte
+    # nur, was als Nächstes käme. Symbole statt Beschriftungen — sie stehen
+    # neben dem Zufallsknopf und sollen sich in dieselbe Reihe fügen
+    # (Nachtrag desselben Tages). Was sie bedeuten, sagt die Kurzhilfe.
     _MODES = (
-        ("grid", "Alben", "Alben als Kacheln"),
-        ("list", "Liste", "Alben als Liste mit Spalten"),
-        ("all", "Alle Titel", "Alle Titel der Bibliothek als Liste"),
+        ("grid", ("view-grid-symbolic",), "Alben als Kacheln"),
+        ("list", ("view-list-symbolic",), "Alben als Liste mit Spalten"),
+        # "music-note" gibt es nur in Yaru, "audio-x-generic" überall.
+        ("all", ("music-note-symbolic", "audio-x-generic-symbolic"), "Alle Titel der Bibliothek als Liste"),
     )
 
     def __init__(self, ctx, nav_view: Adw.NavigationView, library: dict):
@@ -251,8 +254,8 @@ class MusicLibraryPage(Adw.NavigationPage):
         modes.add_css_class("linked")
         self.mode_buttons: dict[str, Gtk.ToggleButton] = {}
         group: Gtk.ToggleButton | None = None
-        for key, label, tooltip in self._MODES:
-            button = Gtk.ToggleButton(label=label, tooltip_text=tooltip)
+        for key, icons, tooltip in self._MODES:
+            button = Gtk.ToggleButton(icon_name=first_available_icon(*icons), tooltip_text=tooltip)
             if group is None:
                 group = button
             else:

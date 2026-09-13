@@ -68,6 +68,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.32 | Musik-Spalten (Zuletzt gehört/Wiedergaben/Hinzugefügt) + Spalten-Menü; Startseiten-Serien-/Kanalname-Race-Fix (siehe unten) |
 | 0.1.33 | Musikseite als Tabelle: verschieb- und breitenverstellbare Spalten, drei beschriftete Ansichtsschalter, eigene Knöpfe für Spalten und Filter (siehe unten) |
 | 0.1.34 | Musik: Zufallswiedergabe in jeder Ansicht (ohne Hörbücher), Cover in den Suchtreffern, umschaltbare Playlist-Ansicht |
+| 0.1.35 | Ansichts-Schalter der Musikseite als Symbole statt Beschriftungen |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
