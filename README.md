@@ -84,8 +84,16 @@ inzwischen im Wesentlichen denselben Funktionsumfang ab wie die Mac-App
 
 ### Musik
 
-- **Albenübersicht mit Covern**, Suche nach Künstler oder Album; der
-  Ordner-Browser bleibt erreichbar.
+- **Drei Ansichten, ein Klick auseinander:** Alben als Kacheln, Alben als
+  Liste, alle Titel der Bibliothek — Suche nach Titel, Künstler oder Album;
+  der Ordner-Browser bleibt erreichbar.
+- **Listen sind echte Tabellen:** Spaltenbreite ziehen, Reihenfolge am
+  Spaltenkopf verschieben, Kopfklick sortiert. Welche Spalten erscheinen
+  (Album, Künstler, Genre, Jahr, Dauer, Zuletzt gehört, Wiedergaben,
+  Hinzugefügt …), wählt ein eigenes „Spalten"-Menü; Breite, Reihenfolge und
+  Auswahl bleiben gemerkt.
+- Eigener Filter für „nur Favoriten" und Genre, dazu die Anzahl der
+  gezeigten Alben bzw. Titel.
 - Albumansicht mit Titelliste, Dauer, Genre, Jahr und Favoritenherz.
 - **Abspielleiste am unteren Fensterrand**, die beim Navigieren stehen bleibt.
 - Warteschlange ansehen, anspringen, einzelne Titel entfernen, mischen.

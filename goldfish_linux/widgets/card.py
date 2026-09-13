@@ -91,9 +91,9 @@ _CSS = b"""
 }
 .gf-card-watched .gf-card-image { opacity: 0.55; }
 /* Serien-/Kanalname-Link auf der Startseite (User-Wunsch 2026-09-13):
-   optisch als Link erkennbar (Akzentfarbe, kein grau wie sonst
-   bei gf-card-sub). */
-.gf-card-link { opacity: 1; color: alpha(currentColor, 0.9); text-decoration: underline; }
+   KEIN Unterstrich (ausdruecklich abgewaehlt) - erkennbar wird er
+   allein durch die Akzentfarbe beim Zeigen mit der Maus. */
+.gf-card-link { opacity: 1; color: alpha(currentColor, 0.9); }
 .gf-card-link:hover { color: @accent_color; }
 """
 

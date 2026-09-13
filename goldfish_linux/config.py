@@ -199,22 +199,47 @@ class ViewPrefs:
         self._data[f"musicView:{library_id}"] = mode if mode in ("grid", "list", "all") else "grid"
         self._save()
 
-    _MUSIC_COLUMN_KEYS = {"lastPlayed", "playCount", "added"}
+    def music_column_layout(self, context: str) -> dict:
+        """Spaltenreihenfolge, -breiten und -sichtbarkeit einer Musikliste,
+        gemerkt pro Kontext ("albums"/"allTracks"/"albumTracks") — dasselbe
+        Muster wie `MUSIC_LIST_CONTEXTS` im Browser, wo `{order, widths}` je
+        Kontext im localStorage liegen.
 
-    def music_columns_visible(self, context: str) -> set[str]:
-        """Welche der drei optionalen Spalten ("Zuletzt gehört"/"Wiedergaben"/
-        "Hinzugefügt") in einer Musik-Liste sichtbar sind — pro Kontext
-        ("albums"/"allTracks"/"albumTracks") gemerkt, analog zu den
-        Browser-/Mac-Spalten-Dropdowns (`musicColumns:*` bzw.
-        `musicColumnsVisible.*`). Bewusst eine ALLOWLIST: Standard ist leer,
-        eine Spalte erscheint erst nach explizitem Anhaken."""
-        raw = self._data.get(f"musicColumnsVisible:{context}", [])
-        if not isinstance(raw, list):
-            return set()
-        return {v for v in raw if v in self._MUSIC_COLUMN_KEYS}
+        Ein fehlender Eintrag heißt "noch nie angefasst": dann entscheidet die
+        Spaltenbeschreibung, was erscheint. Ein leeres `visible` ist etwas
+        anderes — der Benutzer hat dann alles abgewählt."""
+        raw = self._data.get(f"musicColumns:{context}")
+        if not isinstance(raw, dict):
+            return {}
+        layout: dict = {}
+        if isinstance(raw.get("order"), list):
+            layout["order"] = [str(k) for k in raw["order"]]
+        if isinstance(raw.get("widths"), dict):
+            layout["widths"] = {str(k): int(v) for k, v in raw["widths"].items() if isinstance(v, (int, float))}
+        if isinstance(raw.get("visible"), list):
+            layout["visible"] = [str(k) for k in raw["visible"]]
+        return layout
 
-    def set_music_columns_visible(self, context: str, visible: set[str]) -> None:
-        self._data[f"musicColumnsVisible:{context}"] = sorted(visible & self._MUSIC_COLUMN_KEYS)
+    def set_music_column_layout(self, context: str, *, order: list[str], widths: dict[str, int], visible: list[str]) -> None:
+        self._data[f"musicColumns:{context}"] = {
+            "order": list(order),
+            "widths": {k: int(v) for k, v in widths.items()},
+            "visible": list(visible),
+        }
+        self._save()
+
+    def music_filter(self, library_id: int) -> dict:
+        """Gemerkte Musik-Filter (nur Favoriten, Genres) je Bibliothek."""
+        raw = self._data.get(f"musicFilter:{library_id}")
+        if not isinstance(raw, dict):
+            return {}
+        return {
+            "favorites": bool(raw.get("favorites")),
+            "genres": [str(g) for g in raw.get("genres") or []],
+        }
+
+    def set_music_filter(self, library_id: int, *, favorites: bool, genres: list[str]) -> None:
+        self._data[f"musicFilter:{library_id}"] = {"favorites": favorites, "genres": sorted(genres)}
         self._save()
 
     def color_scheme(self) -> str:

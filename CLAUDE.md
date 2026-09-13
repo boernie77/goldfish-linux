@@ -66,6 +66,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.20 | Musik-Titelsuche, Sortierung/Filter für eigene Datenträger, Vorschaubilder im Vorgriff |
 | 0.1.21 | Scheinbares Einfrieren (Dialog hinter dem Player), Medien-Abbau, Auflösungsanzeige, Symbolknöpfe |
 | 0.1.32 | Musik-Spalten (Zuletzt gehört/Wiedergaben/Hinzugefügt) + Spalten-Menü; Startseiten-Serien-/Kanalname-Race-Fix (siehe unten) |
+| 0.1.33 | Musikseite als Tabelle: verschieb- und breitenverstellbare Spalten, drei beschriftete Ansichtsschalter, eigene Knöpfe für Spalten und Filter (siehe unten) |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -318,6 +319,39 @@ System stellen, das die Oberfläche nicht ausführen kann. Der Rechner unter
   (`views.js renderHomeView` macht es genauso). In den übergreifenden
   Streifen bestimmt jede Kachel ihre Art selbst über `libraryId` — dort liegen
   Filme, Folgen und Privatvideos nebeneinander.
+
+- **Musiklisten sind ein `Gtk.ColumnView`, kein Stapel aus Zeilen-Widgets**
+  (`widgets/column_list.py`, seit 0.1.33). Entscheidend sind drei Dinge, die
+  eine selbstgebaute Zeilenliste nicht mitbringt: Recycling (7317 Titel als
+  einzelne Zeilen-Widgets blockieren den Hauptablauf sekundenlang, dieselbe
+  Messung wie beim Album-Raster), ziehbare Spaltenbreiten und per Kopf
+  verschiebbare Spalten. Was der ColumnView NICHT mitbringt und diese Klasse
+  ergänzt, ist das Merken: Reihenfolge, Breiten und Auswahl liegen unter
+  einem Kontextnamen ("albums"/"allTracks"/"albumTracks") in den
+  Ansichtseinstellungen, genau wie `MUSIC_LIST_CONTEXTS` im Browser.
+  Fallstricke dabei:
+  - **Beim Aufbau darf nicht gespeichert werden.** Das Anhängen der Spalten
+    löst dasselbe `items-changed` aus wie ein Verschieben durch den Benutzer
+    und würde die gerade gelesene Reihenfolge sofort überschreiben
+    (`_building`-Schalter).
+  - **`notify::fixed-width` feuert beim Ziehen für jedes Pixel** — Speichern
+    erst nach 400 ms Ruhe, sonst schreibt die App die Einstellungsdatei
+    hunderte Male je Zug.
+  - **Einer dehnbaren Spalte keine feste Breite vorgeben.** `expand=True` plus
+    `set_fixed_width` nimmt ihr das Dehnen, und rechts bleibt im breiten
+    Fenster eine leere Fläche. Eine feste Breite bekommt sie erst, wenn der
+    Benutzer sie selbst gezogen hat.
+  - **Die Aktionsspalte muss nach jedem Einblenden wieder ans Ende geholt
+    werden** (`_move_fixed_columns_last`) — angehängt wird immer hinten, also
+    sonst hinter den Knöpfen.
+  - **Kein Bildlauf um die Tabelle herum.** Sie bringt einen eigenen mit;
+    zwei ineinander sind mit dem Rad kaum zu treffen, und die Spaltenköpfe
+    wären beim Blättern weg. Auf der Albumseite steht der Kopf deshalb fest
+    darüber statt mitzuscrollen.
+  - **Zeilen werden wiederverwendet.** Ein Favoriten-Umschalter in der Zeile
+    bekommt beim Binden seinen Zustand gesetzt und meldet das als `toggled` —
+    ohne Vergleich mit dem gemerkten Wert löst allein das Scrollen
+    Server-Aufrufe aus.
 
 ## Was diese App bewusst anders macht als die Mac-App
 

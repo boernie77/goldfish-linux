@@ -1,3 +1,24 @@
+goldfish-linux (0.1.33-1) unstable; urgency=medium
+
+  * Musikseite überarbeitet (Wunsch: "so Spalten, wie auch auf Mac, welche
+    verschiebbar sind"): Alben-Liste, "Alle Titel" und die Titelliste eines
+    Albums sind jetzt echte Tabellen. Spaltenbreite am Rand ziehen,
+    Reihenfolge am Spaltenkopf verschieben, Klick auf den Kopf sortiert.
+    Breite, Reihenfolge und Auswahl bleiben je Ansicht gemerkt.
+  * Drei beschriftete Schalter für die drei Ansichten — Alben (Kacheln),
+    Liste (Alben) und Alle Titel — statt eines Knopfes, der reihum schaltete.
+  * Eigene Knöpfe "Spalten" und "Filter" in einer neuen Leiste, dazu die
+    Anzahl der gezeigten Alben bzw. Titel. Der Filter kennt "nur Favoriten"
+    und Genre.
+  * Zusätzliche Spalten für Musik: Genre, Jahr, Dauer, Track-Nummer, Album,
+    Künstler, Titelzahl — zu- und abwählbar wie die drei bisherigen.
+  * Jede Zeile hat Knöpfe zum Abspielen ab dieser Stelle, zum Anhängen an die
+    Warteschlange und für Favoriten; ein Doppelklick startet die Zeile.
+  * Startseite: der Unterstrich unter dem Serien- bzw. Kanalnamen ist weg,
+    die Färbung beim Zeigen mit der Maus genügt (Wunsch).
+
+ -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 12:46:05 +0200
+
 goldfish-linux (0.1.32-1) unstable; urgency=medium
 
   * Fehler behoben: Der Serien-/Kanalname auf der Startseite blieb trotz

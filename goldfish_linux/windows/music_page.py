@@ -8,6 +8,17 @@ Titeln, und über Ordner käme man nur mühsam dorthin.
 
 Wer die Ordner sehen will, kommt weiterhin über den Bibliotheks-Browser
 dorthin — das ist dieselbe zweigleisige Auslegung wie im Browser.
+
+**Aufbau der Leiste (Wunsch vom 2026-09-13, „so wie auf dem Mac"):** drei
+beschriftete Schalter für die drei Ansichten — Alben als Kacheln, Alben als
+Liste, alle Titel — und rechts davon eigene Knöpfe für Spalten und Filter.
+Vorher schaltete EIN Knopf reihum durch die drei Ansichten; man sah ihm nicht
+an, wo man gerade ist und was als Nächstes käme.
+
+Die beiden Listen sind echte Tabellen (`widgets/column_list.py`): Spalten
+lassen sich in der Breite ziehen, mit dem Kopf umsortieren, über das
+Spalten-Menü zu- und abwählen, und ein Klick auf den Kopf sortiert. Breite,
+Reihenfolge und Auswahl bleiben je Ansicht gemerkt.
 """
 
 from __future__ import annotations
@@ -22,83 +33,115 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
 from ..formatting import format_date, format_duration  # noqa: E402
+from ..widgets.column_list import ColumnList, ColumnSpec  # noqa: E402
 from ..widgets.grid import AlbumGrid  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
 
-# Server-Wunsch 2026-09-14 (siehe Server-CLAUDE.md "Listenspalten Zuletzt
-# abgespielt/Wiedergaben/Hinzugefügt + Spalten-Auswahl") — drei optionale
-# Spalten für Alben- und Titel-Listen, ein-/ausblendbar über ein
-# "Spalten"-Menü, analog zum Browser-Dropdown und dem Mac-"☰ Spalten"-Menü.
-_MUSIC_COLUMN_LABELS = {
-    "lastPlayed": "Zuletzt gehört",
-    "playCount": "Wiedergaben",
-    "added": "Hinzugefügt",
-}
+# "—" statt leer: eine leere Zelle sieht in einer Tabelle wie ein Fehler aus.
+_EMPTY = "—"
 
 
-def _build_columns_popover(ctx, context: str, on_change) -> Gtk.Popover:
-    """Kontrollkästchen pro optionaler Spalte — `context` unterscheidet
-    Albenliste/"Alle Titel"/Album-Detail (jede hat ihre eigene gemerkte
-    Sichtbarkeit, siehe `ViewPrefs.music_columns_visible`)."""
-    visible = ctx.view_prefs.music_columns_visible(context)
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
-    for key, label in _MUSIC_COLUMN_LABELS.items():
-        check = Gtk.CheckButton(label=label, active=key in visible)
+def _text(value) -> str:
+    if value in (None, "", 0):
+        return _EMPTY
+    return str(value)
 
-        def _toggled(btn: Gtk.CheckButton, k=key) -> None:
-            current = ctx.view_prefs.music_columns_visible(context)
-            if btn.get_active():
-                current.add(k)
-            else:
-                current.discard(k)
-            ctx.view_prefs.set_music_columns_visible(context, current)
-            on_change()
 
-        check.connect("toggled", _toggled)
+def _sort_text(value) -> str:
+    return str(value or "").casefold()
+
+
+def _sort_number(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _album_columns(actions) -> list[ColumnSpec]:
+    """Spalten der Albenliste. `default=False` heißt: erst nach dem Anhaken im
+    Spalten-Menü sichtbar — sonst wäre die Tabelle beim ersten Öffnen voll mit
+    Feldern, die die meisten nie brauchen."""
+    return [
+        ColumnSpec("album", "Album", width=260, expand=True, text=lambda a: _text(a.get("album")), sort_key=lambda a: _sort_text(a.get("album"))),
+        ColumnSpec("artist", "Künstler", width=200, expand=True, text=lambda a: _text(a.get("artist")), sort_key=lambda a: _sort_text(a.get("artist"))),
+        ColumnSpec("genre", "Genre", width=140, text=lambda a: _text(a.get("genre")), sort_key=lambda a: _sort_text(a.get("genre"))),
+        ColumnSpec("year", "Jahr", width=70, numeric=True, text=lambda a: _text(a.get("year")), sort_key=lambda a: _sort_number(a.get("year"))),
+        ColumnSpec("trackCount", "Titel", width=70, numeric=True, text=lambda a: _text(a.get("trackCount")), sort_key=lambda a: _sort_number(a.get("trackCount"))),
+        ColumnSpec("lastPlayed", "Zuletzt gehört", width=130, default=False, text=lambda a: format_date(a.get("lastPlayedAt")) or _EMPTY, sort_key=lambda a: str(a.get("lastPlayedAt") or "")),
+        ColumnSpec("playCount", "Wiedergaben", width=110, numeric=True, default=False, text=lambda a: str(a.get("playCount") or 0), sort_key=lambda a: _sort_number(a.get("playCount"))),
+        ColumnSpec("added", "Hinzugefügt", width=130, default=False, text=lambda a: format_date(a.get("addedAt")) or _EMPTY, sort_key=lambda a: str(a.get("addedAt") or "")),
+        ColumnSpec("actions", "", width=96, fixed=True, build=actions),
+    ]
+
+
+def _track_columns(actions, *, show_track_no: bool, show_album: bool) -> list[ColumnSpec]:
+    specs = []
+    if show_track_no:
+        specs.append(
+            ColumnSpec("trackNo", "Nr.", width=56, numeric=True, text=lambda t: _text(t.get("trackNo")), sort_key=lambda t: _sort_number(t.get("trackNo")))
+        )
+    specs.append(
+        ColumnSpec("title", "Titel", width=280, expand=True, text=lambda t: _text(t.get("title")), sort_key=lambda t: _sort_text(t.get("title")))
+    )
+    specs.append(
+        ColumnSpec("artist", "Künstler", width=190, expand=True, text=lambda t: _text(t.get("artist")), sort_key=lambda t: _sort_text(t.get("artist")))
+    )
+    specs.append(
+        ColumnSpec("album", "Album", width=190, expand=True, default=show_album, text=lambda t: _text(t.get("album")), sort_key=lambda t: _sort_text(t.get("album")))
+    )
+    specs.extend(
+        [
+            ColumnSpec("genre", "Genre", width=130, default=False, text=lambda t: _text(t.get("genre")), sort_key=lambda t: _sort_text(t.get("genre"))),
+            ColumnSpec("year", "Jahr", width=70, numeric=True, default=False, text=lambda t: _text(t.get("year")), sort_key=lambda t: _sort_number(t.get("year"))),
+            ColumnSpec("duration", "Dauer", width=80, numeric=True, text=lambda t: format_duration(t.get("durationSec") or 0), sort_key=lambda t: _sort_number(t.get("durationSec"))),
+            ColumnSpec("lastPlayed", "Zuletzt gehört", width=130, default=False, text=lambda t: format_date(t.get("lastPlayedAt")) or _EMPTY, sort_key=lambda t: str(t.get("lastPlayedAt") or "")),
+            ColumnSpec("playCount", "Wiedergaben", width=110, numeric=True, default=False, text=lambda t: str(t.get("playCount") or 0), sort_key=lambda t: _sort_number(t.get("playCount"))),
+            ColumnSpec("added", "Hinzugefügt", width=130, default=False, text=lambda t: format_date(t.get("addedAt")) or _EMPTY, sort_key=lambda t: str(t.get("addedAt") or "")),
+            ColumnSpec("actions", "", width=118, fixed=True, build=actions),
+        ]
+    )
+    return specs
+
+
+def _icon_button(icon: str, tooltip: str, on_click) -> Gtk.Button:
+    button = Gtk.Button(icon_name=icon, has_frame=False, valign=Gtk.Align.CENTER, tooltip_text=tooltip)
+    button.connect("clicked", lambda *_: on_click())
+    return button
+
+
+def _columns_popover(column_list: ColumnList) -> Gtk.Popover:
+    """Kontrollkästchen je abwählbarer Spalte der gerade gezeigten Tabelle."""
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_top=10, margin_bottom=10, margin_start=12, margin_end=12)
+    title = Gtk.Label(label="Spalten", xalign=0)
+    title.add_css_class("heading")
+    box.append(title)
+    for key in column_list.spec_order:
+        spec = column_list.specs[key]
+        if spec.fixed:
+            continue
+        check = Gtk.CheckButton(label=spec.title, active=key in column_list.visible)
+        check.connect("toggled", lambda btn, k=key: column_list.set_column_visible(k, btn.get_active()))
         box.append(check)
+    hint = Gtk.Label(label="Breite am Spaltenrand ziehen,\nReihenfolge am Spaltenkopf.", xalign=0)
+    hint.add_css_class("dim-label")
+    hint.add_css_class("caption")
+    box.append(Gtk.Separator())
+    box.append(hint)
     return Gtk.Popover(child=box)
 
 
-def _build_columns_menu_button(ctx, context: str, on_change) -> Gtk.MenuButton:
-    popover = _build_columns_popover(ctx, context, on_change)
-    return Gtk.MenuButton(icon_name="view-more-symbolic", tooltip_text="Spalten", popover=popover)
-
-
-def _column_suffixes(ctx, context: str, entry: dict) -> list[Gtk.Widget]:
-    """Suffix-Labels für die drei optionalen Spalten, nur für die aktuell
-    sichtbaren (siehe `ViewPrefs.music_columns_visible`)."""
-    visible = ctx.view_prefs.music_columns_visible(context)
-    widgets: list[Gtk.Widget] = []
-    if "lastPlayed" in visible:
-        label = Gtk.Label(label=format_date(entry.get("lastPlayedAt")) or "—", valign=Gtk.Align.CENTER)
-        label.add_css_class("dim-label")
-        widgets.append(label)
-    if "playCount" in visible:
-        label = Gtk.Label(label=str(entry.get("playCount") or 0), valign=Gtk.Align.CENTER)
-        label.add_css_class("dim-label")
-        widgets.append(label)
-    if "added" in visible:
-        label = Gtk.Label(label=format_date(entry.get("addedAt")) or "—", valign=Gtk.Align.CENTER)
-        label.add_css_class("dim-label")
-        widgets.append(label)
-    return widgets
-
-
 class MusicLibraryPage(Adw.NavigationPage):
-    """Albenübersicht mit Suche und Genre-Filter."""
+    """Albenübersicht mit Suche, Filter und drei Ansichten."""
 
-    # Grid → Liste → Alle Titel → Grid, ein Knopf statt drei — analog zur
-    # Mac/iOS-App (Build 211) und der Android-App. Icons bewusst nur
-    # "view-grid-symbolic"/"view-list-symbolic" (beide Teil der
-    # Freedesktop-Icon-Namenskonvention, auf jedem Zielsystem vorhanden) —
-    # die Kurzhilfe unterscheidet Alben-Liste von Alle-Titel.
-    _MODE_CYCLE = {"grid": "list", "list": "all", "all": "grid"}
-    _MODE_ICON = {"grid": "view-grid-symbolic", "list": "view-list-symbolic", "all": "view-list-symbolic"}
-    _MODE_TOOLTIP = {
-        "grid": "Alben als Kacheln",
-        "list": "Alben als Liste",
-        "all": "Alle Titel",
-    }
+    # Drei beschriftete Schalter statt eines reihum schaltenden Knopfes
+    # (User-Wunsch 2026-09-13). Ein Umschalter zeigt, wo man ist; ein
+    # Reihum-Knopf zeigte nur, was als Nächstes käme.
+    _MODES = (
+        ("grid", "Alben", "Alben als Kacheln"),
+        ("list", "Liste", "Alben als Liste mit Spalten"),
+        ("all", "Alle Titel", "Alle Titel der Bibliothek als Liste"),
+    )
 
     def __init__(self, ctx, nav_view: Adw.NavigationView, library: dict):
         toolbar_view = Adw.ToolbarView()
@@ -125,23 +168,13 @@ class MusicLibraryPage(Adw.NavigationPage):
         # Sekunden blockierten Hauptablauf (nachgemessen) — in dieser Zeit
         # stand auch die laufende Wiedergabe scheinbar still.
         self.grid: AlbumGrid | None = None
+        self.column_list: ColumnList | None = None
         self.all_tracks: list[dict] | None = None
         self.mode = self.ctx.view_prefs.music_view_mode(int(library["id"]))
 
-        self.mode_button = Gtk.Button(
-            icon_name=self._MODE_ICON[self.mode], tooltip_text=self._MODE_TOOLTIP[self.mode]
-        )
-        self.mode_button.connect("clicked", lambda *_: self._cycle_mode())
-        header.pack_end(self.mode_button)
-
-        # "Spalten"-Menü nur sinnvoll, wo tatsächlich Zeilen (keine Kacheln)
-        # stehen — Kachelmodus bekommt keinen Knopf, analog zum Verzicht auf
-        # Spaltenbreiten in `AlbumGrid`.
-        self.columns_button = _build_columns_menu_button(
-            self.ctx, self._columns_context(), self._render
-        )
-        self.columns_button.set_visible(self._columns_context() is not None)
-        header.pack_end(self.columns_button)
+        saved_filter = self.ctx.view_prefs.music_filter(int(library["id"]))
+        self.favorites_only = bool(saved_filter.get("favorites"))
+        self.genres: set[str] = set(saved_filter.get("genres") or [])
 
         # Kein Freedesktop-Standardsymbol für "Playlist" — Emoji statt Icon,
         # dieselbe Konvention wie überall sonst in dieser App (Kachel-Ecken,
@@ -154,37 +187,155 @@ class MusicLibraryPage(Adw.NavigationPage):
         folders.connect("clicked", lambda *_: self._open_folders())
         header.pack_end(folders)
 
+        toolbar_view.add_top_bar(self._build_toolbar())
+
         _busy(toolbar_view)
         threading.Thread(target=self._load, daemon=True).start()
 
-    def _columns_context(self) -> str | None:
-        """Welcher Spalten-Sichtbarkeits-Kontext gerade gilt — `None` im
-        Kachelmodus, wo es keine Zeilen mit Suffix-Platz gibt."""
-        if self.mode == "list":
-            return "albums"
-        if self.mode == "all":
-            return "allTracks"
-        return None
+    # -- Leiste ----------------------------------------------------------
 
-    def _refresh_columns_button(self) -> None:
-        context = self._columns_context()
-        self.columns_button.set_visible(context is not None)
-        if context is not None:
-            self.columns_button.set_popover(_build_columns_popover(self.ctx, context, self._render))
+    def _build_toolbar(self) -> Gtk.Widget:
+        bar = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=8,
+            margin_top=6,
+            margin_bottom=6,
+            margin_start=12,
+            margin_end=12,
+        )
+        bar.add_css_class("toolbar")
 
-    def _cycle_mode(self) -> None:
-        self.mode = self._MODE_CYCLE[self.mode]
-        self.ctx.view_prefs.set_music_view_mode(int(self.library["id"]), self.mode)
-        self.mode_button.set_icon_name(self._MODE_ICON[self.mode])
-        self.mode_button.set_tooltip_text(self._MODE_TOOLTIP[self.mode])
-        self._refresh_columns_button()
-        if self.mode == "all" and self.all_tracks is None:
+        modes = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        modes.add_css_class("linked")
+        self.mode_buttons: dict[str, Gtk.ToggleButton] = {}
+        group: Gtk.ToggleButton | None = None
+        for key, label, tooltip in self._MODES:
+            button = Gtk.ToggleButton(label=label, tooltip_text=tooltip)
+            if group is None:
+                group = button
+            else:
+                button.set_group(group)
+            button.set_active(key == self.mode)
+            button.connect("toggled", self._on_mode_toggled, key)
+            modes.append(button)
+            self.mode_buttons[key] = button
+        bar.append(modes)
+
+        bar.append(Gtk.Box(hexpand=True))
+
+        self.count_label = Gtk.Label(valign=Gtk.Align.CENTER)
+        self.count_label.add_css_class("dim-label")
+        bar.append(self.count_label)
+
+        # Zwei eigene Knöpfe statt eines Sammelmenüs: beides wird oft
+        # gebraucht und meint völlig Verschiedenes.
+        self.columns_button = Gtk.MenuButton(label="Spalten", tooltip_text="Welche Spalten die Liste zeigt")
+        bar.append(self.columns_button)
+
+        self.filter_button = Gtk.MenuButton(label="Filter", tooltip_text="Favoriten und Genres")
+        self.filter_popover = Gtk.Popover()
+        self.filter_button.set_popover(self.filter_popover)
+        self.filter_popover.connect("show", lambda *_: self.filter_popover.set_child(self._build_filter_box()))
+        bar.append(self.filter_button)
+        self._update_filter_label()
+        return bar
+
+    def _update_columns_button(self) -> None:
+        """Das Spalten-Menü gehört zur gerade gezeigten Tabelle. Im
+        Kachelmodus gibt es keine, dann ist der Knopf abgeblendet."""
+        if self.column_list is None:
+            self.columns_button.set_sensitive(False)
+            self.columns_button.set_popover(None)
+            return
+        self.columns_button.set_sensitive(True)
+        self.columns_button.set_popover(_columns_popover(self.column_list))
+
+    def _update_filter_label(self) -> None:
+        active = (1 if self.favorites_only else 0) + len(self.genres)
+        self.filter_button.set_label("Filter" if not active else f"Filter ({active})")
+
+    def _build_filter_box(self) -> Gtk.Widget:
+        """Favoriten und Genre — beides wird hier im Client gefiltert, die
+        Werte stehen in den bereits geladenen Alben bzw. Titeln. Eine eigene
+        Server-Abfrage (wie bei den Video-Bibliotheken) wäre dafür unnötig."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=12, margin_bottom=12, margin_start=12, margin_end=12)
+        box.set_size_request(240, -1)
+
+        fav_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        fav_row.append(Gtk.Label(label="Nur Favoriten", xalign=0, hexpand=True))
+        switch = Gtk.Switch(active=self.favorites_only, valign=Gtk.Align.CENTER)
+        switch.connect("notify::active", self._on_favorites_toggled)
+        fav_row.append(switch)
+        box.append(fav_row)
+
+        known = sorted({(a.get("genre") or "").strip() for a in self.albums if (a.get("genre") or "").strip()})
+        if known:
+            box.append(Gtk.Separator())
+            heading = Gtk.Label(label="Genre", xalign=0)
+            heading.add_css_class("heading")
+            box.append(heading)
+            genre_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            for genre in known:
+                check = Gtk.CheckButton(label=genre, active=genre in self.genres)
+                check.connect("toggled", self._on_genre_toggled, genre)
+                genre_box.append(check)
+            box.append(
+                Gtk.ScrolledWindow(
+                    child=genre_box,
+                    propagate_natural_height=True,
+                    min_content_height=150,
+                    max_content_height=320,
+                    hscrollbar_policy=Gtk.PolicyType.NEVER,
+                )
+            )
+
+        box.append(Gtk.Separator())
+        reset = Gtk.Button(label="Filter zurücksetzen")
+        reset.connect("clicked", lambda *_: self._reset_filters())
+        box.append(reset)
+        return box
+
+    def _on_favorites_toggled(self, switch: Gtk.Switch, *_args) -> None:
+        self.favorites_only = switch.get_active()
+        self._save_filter()
+
+    def _on_genre_toggled(self, check: Gtk.CheckButton, genre: str) -> None:
+        if check.get_active():
+            self.genres.add(genre)
+        else:
+            self.genres.discard(genre)
+        self._save_filter()
+
+    def _reset_filters(self) -> None:
+        self.favorites_only = False
+        self.genres.clear()
+        self.filter_popover.popdown()
+        self._save_filter()
+
+    def _save_filter(self) -> None:
+        self.ctx.view_prefs.set_music_filter(
+            int(self.library["id"]), favorites=self.favorites_only, genres=sorted(self.genres)
+        )
+        self._update_filter_label()
+        self._render()
+
+    # -- Ansicht wechseln ------------------------------------------------
+
+    def _on_mode_toggled(self, button: Gtk.ToggleButton, key: str) -> None:
+        # Ein Umschalter meldet auch den Knopf, der gerade AUSgeht.
+        if not button.get_active() or key == self.mode:
+            return
+        self.mode = key
+        self.ctx.view_prefs.set_music_view_mode(int(self.library["id"]), key)
+        if key == "all" and self.all_tracks is None:
             self._load_all_tracks()
             return
         self._render()
 
     def _load_all_tracks(self) -> None:
         _busy(self.toolbar_view)
+        self.column_list = None
+        self._update_columns_button()
 
         def worker() -> None:
             try:
@@ -216,8 +367,13 @@ class MusicLibraryPage(Adw.NavigationPage):
 
     def _apply(self, albums: list[dict]) -> bool:
         self.albums = albums
+        if self.mode == "all" and self.all_tracks is None:
+            self._load_all_tracks()
+            return False
         self._render()
         return False
+
+    # -- Suche -----------------------------------------------------------
 
     def _on_search_changed(self) -> None:
         if self._search_timeout:
@@ -257,53 +413,77 @@ class MusicLibraryPage(Adw.NavigationPage):
         self._render()
         return False
 
-    def _render(self) -> None:
+    # -- Filtern und Anzeigen --------------------------------------------
+
+    def _matching_albums(self) -> list[dict]:
         needle = self.search.get_text().strip().lower()
-        shown = [
-            a
-            for a in self.albums
-            if not needle or needle in (a.get("album") or "").lower() or needle in (a.get("artist") or "").lower()
-        ]
-        if needle:
-            # Bei einer Suche zählen BEIDE Ebenen: passende Alben und passende
-            # Titel. Vorher wurde nur in der schon geladenen Albenliste
-            # gesucht — nach einem Titel zu suchen fand deshalb nie etwas.
-            self._render_search(shown, self.tracks)
+        out = []
+        for album in self.albums:
+            if self.favorites_only and not album.get("favorite"):
+                continue
+            if self.genres and (album.get("genre") or "").strip() not in self.genres:
+                continue
+            if needle and needle not in (album.get("album") or "").lower() and needle not in (album.get("artist") or "").lower():
+                continue
+            out.append(album)
+        return out
+
+    def _matching_tracks(self, tracks: list[dict]) -> list[dict]:
+        out = []
+        for track in tracks:
+            if self.favorites_only and not track.get("favorite"):
+                continue
+            if self.genres and (track.get("genre") or "").strip() not in self.genres:
+                continue
+            out.append(track)
+        return out
+
+    def _render(self) -> None:
+        if self.search.get_text().strip():
+            self._render_search(self._matching_albums(), self._matching_tracks(self.tracks))
             return
-        if not shown:
+        if self.mode == "all":
+            self._render_all_tracks()
+            return
+
+        albums = self._matching_albums()
+        if not albums:
             self.grid = None
+            self.column_list = None
+            self._update_columns_button()
+            self.count_label.set_label("")
             _error(
                 self.toolbar_view,
-                "Diese Bibliothek enthält keine Alben.",
-                title="Leer",
+                "Kein Album passt zu Suche und Filter." if (self.genres or self.favorites_only) else "Diese Bibliothek enthält keine Alben.",
+                title="Nichts zu zeigen",
                 icon="system-search-symbolic",
             )
             return
 
-        if self.mode == "all":
-            self._render_all_tracks()
-            return
+        self.count_label.set_label(f"{len(albums)} Alben")
         if self.mode == "list":
-            self._render_album_list(shown)
+            self._render_album_list(albums)
             return
 
+        self.column_list = None
+        self._update_columns_button()
         if self.grid is None:
             self.grid = AlbumGrid(self.ctx.client, on_album=self._open_album)
-        self.grid.set_albums(shown)
+        self.grid.set_albums(albums)
         if self.toolbar_view.get_content() is not self.grid:
             self.toolbar_view.set_content(self.grid)
 
     def _render_album_list(self, albums: list[dict]) -> None:
-        """Alben als Liste statt Kacheln (Build-211-Parität) — bewusst eine
-        `Gtk.ListBox`, keine eigene Recycling-Liste: die Albenzahl ist zwar
-        groß, aber `boxed-list` skaliert dafür gut genug und spart eine
-        zweite Widget-Klasse für denselben Anwendungsfall wie `_render_search`."""
         self.grid = None
-        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
-        listbox.add_css_class("boxed-list")
-        for album in albums:
-            listbox.append(self._build_album_row(album))
-        self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, margin_top=12, margin_bottom=24, child=listbox))
+        self.column_list = ColumnList(
+            self.ctx.view_prefs,
+            "albums",
+            _album_columns(self._album_actions),
+            albums,
+            on_activate=lambda rows, index: self._open_album(rows[index]),
+        )
+        self._update_columns_button()
+        self.toolbar_view.set_content(self.column_list)
 
     def _render_all_tracks(self) -> None:
         """Alle Titel der Bibliothek flach, unabhängig von der Album-
@@ -315,70 +495,41 @@ class MusicLibraryPage(Adw.NavigationPage):
         if self.all_tracks is None:
             self._load_all_tracks()
             return
-        tracks = self.all_tracks
+        tracks = self._matching_tracks(self.all_tracks)
         if not tracks:
+            self.column_list = None
+            self._update_columns_button()
+            self.count_label.set_label("")
             _error(
                 self.toolbar_view,
-                "Diese Bibliothek enthält keine Titel.",
-                title="Leer",
+                "Kein Titel passt zum Filter." if (self.genres or self.favorites_only) else "Diese Bibliothek enthält keine Titel.",
+                title="Nichts zu zeigen",
                 icon="system-search-symbolic",
             )
             return
-        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
-        listbox.add_css_class("boxed-list")
-        for index, track in enumerate(tracks):
-            listbox.append(self._build_track_row(track, tracks, index, show_album=True))
-        self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, margin_top=12, margin_bottom=24, child=listbox))
-
-    def _build_album_row(self, album: dict) -> Gtk.Widget:
-        row = Adw.ActionRow(
-            title=album.get("album") or "",
-            subtitle=" · ".join(str(p) for p in (album.get("artist"), album.get("year") or "") if p),
-            activatable=True,
+        self.count_label.set_label(f"{len(tracks)} Titel")
+        self.column_list = ColumnList(
+            self.ctx.view_prefs,
+            "allTracks",
+            _track_columns(self._track_actions, show_track_no=False, show_album=True),
+            tracks,
+            on_activate=lambda rows, index: self.ctx.music.play_queue(rows, index),
         )
-        for widget in _column_suffixes(self.ctx, "albums", album):
-            row.add_suffix(widget)
-        count = album.get("trackCount") or 0
-        if count:
-            label = Gtk.Label(label=f"{count} Titel", valign=Gtk.Align.CENTER)
-            label.add_css_class("dim-label")
-            row.add_suffix(label)
-        row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
-        row.connect("activated", lambda _r, a=album: self._open_album(a))
-        return row
-
-    def _build_track_row(self, track: dict, queue: list[dict], index: int, *, show_album: bool) -> Gtk.Widget:
-        subtitle_parts = [track.get("artist")]
-        if show_album:
-            subtitle_parts.append(track.get("album"))
-        subtitle = " · ".join(str(p) for p in subtitle_parts if p)
-        row = Adw.ActionRow(title=track.get("title") or "", subtitle=subtitle, activatable=True)
-        for widget in _column_suffixes(self.ctx, "allTracks", track):
-            row.add_suffix(widget)
-        duration = Gtk.Label(label=format_duration(track.get("durationSec") or 0), valign=Gtk.Align.CENTER)
-        duration.add_css_class("gf-mini-time")
-        row.add_suffix(duration)
-        enqueue = Gtk.Button(
-            icon_name="list-add-symbolic",
-            has_frame=False,
-            valign=Gtk.Align.CENTER,
-            tooltip_text="An die Warteschlange anhängen",
-        )
-        enqueue.connect("clicked", lambda _b, t=track: self._enqueue_found(t))
-        row.add_suffix(enqueue)
-        # Ab dem angeklickten Titel spielen, die angezeigte Liste ist die
-        # Warteschlange (egal ob Suchtreffer oder "Alle Titel").
-        row.connect("activated", lambda _r, i=index, q=queue: self.ctx.music.play_queue(q, i))
-        return row
+        self._update_columns_button()
+        self.toolbar_view.set_content(self.column_list)
 
     def _render_search(self, albums: list[dict], tracks: list[dict]) -> None:
-        """Trefferliste: Alben und Titel untereinander in EINER Liste.
+        """Trefferliste: passende Alben als Knöpfe oben, passende Titel als
+        Tabelle darunter.
 
-        Bewusst eine Liste und kein Raster mit eingebetteter Liste — zwei
-        scrollende Bereiche ineinander sind in GTK unangenehm zu bedienen, und
-        eine Trefferliste ist ohnehin kurz."""
+        Bewusst KEINE zweite Tabelle für die Alben — zwei scrollende Bereiche
+        ineinander sind in GTK unangenehm zu bedienen. Die Albentreffer sind
+        meist wenige und als Knopfreihe schneller zu erfassen."""
         self.grid = None
+        self.count_label.set_label(f"{len(albums)} Alben · {len(tracks)} Titel")
         if not albums and not tracks:
+            self.column_list = None
+            self._update_columns_button()
             _error(
                 self.toolbar_view,
                 "Kein Album und kein Titel passt zur Suche.",
@@ -386,22 +537,128 @@ class MusicLibraryPage(Adw.NavigationPage):
                 icon="system-search-symbolic",
             )
             return
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=12, margin_bottom=24)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         if albums:
             box.append(_heading(f"Alben · {len(albums)}"))
-            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
-            listbox.add_css_class("boxed-list")
-            for album in albums:
-                listbox.append(self._build_album_row(album))
-            box.append(listbox)
+            flow = Gtk.FlowBox(
+                selection_mode=Gtk.SelectionMode.NONE,
+                max_children_per_line=6,
+                row_spacing=6,
+                column_spacing=6,
+                margin_start=16,
+                margin_end=16,
+                margin_bottom=6,
+            )
+            for album in albums[:48]:
+                label = album.get("album") or "Album"
+                if album.get("artist"):
+                    label = f"{label} · {album['artist']}"
+                button = Gtk.Button(label=label)
+                button.connect("clicked", lambda _b, a=album: self._open_album(a))
+                flow.append(button)
+            box.append(flow)
         if tracks:
             box.append(_heading(f"Titel · {len(tracks)}"))
-            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
-            listbox.add_css_class("boxed-list")
-            for index, track in enumerate(tracks):
-                listbox.append(self._build_track_row(track, tracks, index, show_album=True))
-            box.append(listbox)
-        self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, child=box))
+            self.column_list = ColumnList(
+                self.ctx.view_prefs,
+                "allTracks",
+                _track_columns(self._track_actions, show_track_no=False, show_album=True),
+                tracks,
+                on_activate=lambda rows, index: self.ctx.music.play_queue(rows, index),
+            )
+            box.append(self.column_list)
+        else:
+            self.column_list = None
+        self._update_columns_button()
+        self.toolbar_view.set_content(box)
+
+    # -- Aktionen in den Zeilen ------------------------------------------
+
+    def _album_actions(self, album: dict) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2, valign=Gtk.Align.CENTER)
+        box.append(_icon_button("media-playback-start-symbolic", "Album abspielen", lambda: self._play_album(album)))
+        fav = Gtk.ToggleButton(
+            icon_name="emblem-favorite-symbolic",
+            has_frame=False,
+            valign=Gtk.Align.CENTER,
+            active=bool(album.get("favorite")),
+            tooltip_text="Album als Favorit",
+        )
+        fav.connect("toggled", lambda button, a=album: self._on_album_favorite(button, a))
+        box.append(fav)
+        return box
+
+    def _track_actions(self, track: dict) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2, valign=Gtk.Align.CENTER)
+        box.append(_icon_button("media-playback-start-symbolic", "Ab hier abspielen", lambda: self._play_track(track)))
+        box.append(_icon_button("list-add-symbolic", "An die Warteschlange anhängen", lambda: self._enqueue_found(track)))
+        fav = Gtk.ToggleButton(
+            icon_name="emblem-favorite-symbolic",
+            has_frame=False,
+            valign=Gtk.Align.CENTER,
+            active=bool(track.get("favorite")),
+            tooltip_text="Titel als Favorit",
+        )
+        fav.connect("toggled", lambda button, t=track: self._on_track_favorite(button, t))
+        box.append(fav)
+        return box
+
+    def _play_track(self, track: dict) -> None:
+        """Ab dem angeklickten Titel spielen; die angezeigte Liste ist die
+        Warteschlange — in genau der Reihenfolge, in der sie gerade sortiert
+        ist."""
+        rows = self.column_list.visible_rows() if self.column_list else [track]
+        index = next((i for i, row in enumerate(rows) if row is track), None)
+        if index is None:
+            rows, index = [track], 0
+        self.ctx.music.play_queue(rows, index)
+
+    def _play_album(self, album: dict) -> None:
+        album_id = int(album["id"])
+
+        def worker() -> None:
+            try:
+                detail = self.ctx.client.album(album_id)
+            except GoldfishAPIError as exc:
+                GLib.idle_add(_toast, self, f"Album ließ sich nicht laden: {exc}")
+                return
+            tracks = detail.get("tracks") or []
+            if not tracks:
+                GLib.idle_add(_toast, self, "Dieses Album enthält keine Titel.")
+                return
+            GLib.idle_add(lambda: (self.ctx.music.play_queue(tracks, 0), False)[1])
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_album_favorite(self, button: Gtk.ToggleButton, album: dict) -> None:
+        state = button.get_active()
+        if state == bool(album.get("favorite")):
+            return  # nur das Wiederverwenden der Zeile, kein Klick
+        album["favorite"] = state
+        album_id = int(album["id"])
+
+        def worker() -> None:
+            try:
+                self.ctx.client.set_album_favorite(album_id, state)
+            except GoldfishAPIError as exc:
+                GLib.idle_add(_toast, self, f"Favorit nicht gespeichert: {exc}")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_track_favorite(self, button: Gtk.ToggleButton, track: dict) -> None:
+        state = button.get_active()
+        if state == bool(track.get("favorite")):
+            return
+        track["favorite"] = state
+        item_id = int(track["id"])
+
+        def worker() -> None:
+            try:
+                self.ctx.client.set_favorite(item_id, state)
+            except GoldfishAPIError as exc:
+                GLib.idle_add(_toast, self, f"Favorit nicht gespeichert: {exc}")
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _enqueue_found(self, track: dict) -> None:
         self.ctx.music.append([track])
@@ -416,13 +673,17 @@ class MusicLibraryPage(Adw.NavigationPage):
         self.nav_view.push(BrowsePage(self.ctx, self.nav_view, self.library))
 
 
+
+
 class AlbumPage(Adw.NavigationPage):
     """Titelliste eines Albums, mit Cover und den Aktionen dazu."""
 
     def __init__(self, ctx, nav_view: Adw.NavigationView, album: dict):
         toolbar_view = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        self.columns_button = _build_columns_menu_button(ctx, "albumTracks", self._rerender)
+        # Das Spalten-Menü gehört zur Tabelle und entsteht deshalb erst mit
+        # ihr — bis die Titel geladen sind, bleibt der Knopf abgeblendet.
+        self.columns_button = Gtk.MenuButton(label="Spalten", tooltip_text="Welche Spalten die Titelliste zeigt", sensitive=False)
         header.pack_end(self.columns_button)
         toolbar_view.add_top_bar(header)
 
@@ -432,6 +693,7 @@ class AlbumPage(Adw.NavigationPage):
         self.album = album
         self.toolbar_view = toolbar_view
         self.tracks: list[dict] = []
+        self.column_list: ColumnList | None = None
 
         _busy(toolbar_view)
         threading.Thread(target=self._load, daemon=True).start()
@@ -451,12 +713,16 @@ class AlbumPage(Adw.NavigationPage):
         return False
 
     def _rerender(self) -> None:
-        """Baut den Inhalt neu — auch für das "Spalten"-Menü, das keine
-        eigenen Daten nachlädt, nur die schon vorhandenen Titel neu zeigt."""
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, margin_top=16, margin_bottom=24)
+        """Kopf (Cover, Angaben, Aktionen) fest oben, darunter die Tabelle.
+
+        Die Tabelle bringt ihren eigenen Bildlauf mit — sie darf deshalb NICHT
+        noch einmal in einen gesteckt werden: ineinander liegende Bildläufe
+        sind mit dem Rad kaum zu treffen, und die Spaltenköpfe wären beim
+        Blättern weg."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, margin_top=16, margin_bottom=12)
         box.append(self._header())
         box.append(self._track_list())
-        self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, child=box))
+        self.toolbar_view.set_content(box)
 
     def _header(self) -> Gtk.Widget:
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18, margin_start=16, margin_end=16)
@@ -538,52 +804,44 @@ class AlbumPage(Adw.NavigationPage):
         self.ctx.music.play_queue(order, 0)
 
     def _track_list(self) -> Gtk.Widget:
-        listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, margin_start=16, margin_end=16)
-        listbox.add_css_class("boxed-list")
-        for index, track in enumerate(self.tracks):
-            number = track.get("trackNo") or index + 1
-            row = Adw.ActionRow(
-                title=track.get("title") or "",
-                subtitle=track.get("artist") or "",
-                activatable=True,
-            )
-            num_label = Gtk.Label(label=str(number), width_chars=3, xalign=1)
-            num_label.add_css_class("dim-label")
-            row.add_prefix(num_label)
+        """Die Titel als Tabelle mit verschiebbaren Spalten — dieselbe
+        Mechanik wie in der Bibliotheksliste, nur ein eigener Kontext, damit
+        beide ihre eigenen Breiten behalten."""
+        self.column_list = ColumnList(
+            self.ctx.view_prefs,
+            "albumTracks",
+            _track_columns(self._track_actions, show_track_no=True, show_album=False),
+            self.tracks,
+            on_activate=lambda rows, index: self.ctx.music.play_queue(rows, index),
+        )
+        self.columns_button.set_sensitive(True)
+        self.columns_button.set_popover(_columns_popover(self.column_list))
+        return self.column_list
 
-            for widget in _column_suffixes(self.ctx, "albumTracks", track):
-                row.add_suffix(widget)
+    def _track_actions(self, track: dict) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2, valign=Gtk.Align.CENTER)
+        box.append(_icon_button("media-playback-start-symbolic", "Ab hier abspielen", lambda: self._play_from(track)))
+        # Einzelnen Titel anhängen. Vorher gab es das nur für ein ganzes
+        # Album ("➕ Anhängen" oben) — für einen einzelnen Titel fehlte
+        # jeder Weg in die Warteschlange.
+        box.append(_icon_button("list-add-symbolic", "An die Warteschlange anhängen", lambda: self._enqueue_track(track)))
+        fav = Gtk.ToggleButton(
+            icon_name="emblem-favorite-symbolic",
+            has_frame=False,
+            valign=Gtk.Align.CENTER,
+            active=bool(track.get("favorite")),
+            tooltip_text="Titel als Favorit",
+        )
+        fav.connect("toggled", lambda button, t=track: self._on_track_favorite(button, t))
+        box.append(fav)
+        return box
 
-            duration = Gtk.Label(label=format_duration(track.get("durationSec") or 0), valign=Gtk.Align.CENTER)
-            duration.add_css_class("gf-mini-time")
-            row.add_suffix(duration)
-
-            # Einzelnen Titel anhängen. Vorher gab es das nur für ein ganzes
-            # Album ("➕ Anhängen" oben) — für einen einzelnen Titel fehlte
-            # jeder Weg in die Warteschlange.
-            enqueue = Gtk.Button(
-                icon_name="list-add-symbolic",
-                has_frame=False,
-                valign=Gtk.Align.CENTER,
-                tooltip_text="An die Warteschlange anhängen",
-            )
-            enqueue.connect("clicked", lambda _b, t=track: self._enqueue_track(t))
-            row.add_suffix(enqueue)
-
-            fav = Gtk.ToggleButton(
-                icon_name="emblem-favorite-symbolic",
-                has_frame=False,
-                valign=Gtk.Align.CENTER,
-                active=bool(track.get("favorite")),
-                tooltip_text="Titel als Favorit",
-            )
-            fav.connect("toggled", lambda b, t=track: self._on_track_favorite(b, t))
-            row.add_suffix(fav)
-
-            # Ab dem angeklickten Titel spielen, der Rest des Albums folgt.
-            row.connect("activated", lambda _r, i=index: self.ctx.music.play_queue(self.tracks, i))
-            listbox.append(row)
-        return listbox
+    def _play_from(self, track: dict) -> None:
+        rows = self.column_list.visible_rows() if self.column_list else self.tracks
+        index = next((i for i, row in enumerate(rows) if row is track), None)
+        if index is None:
+            rows, index = [track], 0
+        self.ctx.music.play_queue(rows, index)
 
     def _enqueue_track(self, track: dict) -> None:
         """Titel hinten anhängen. Läuft gerade nichts, beginnt er sofort —
@@ -641,6 +899,8 @@ class AlbumPage(Adw.NavigationPage):
 
     def _on_track_favorite(self, button: Gtk.ToggleButton, track: dict) -> None:
         state = button.get_active()
+        if state == bool(track.get("favorite")):
+            return  # nur das Wiederverwenden der Zeile, kein Klick
         track["favorite"] = state
         item_id = int(track["id"])
 
