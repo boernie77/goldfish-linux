@@ -46,6 +46,35 @@ def card_height_for(kind: str, width: int = CARD_WIDTH) -> int:
     return int(width * _ASPECT.get(kind, 3 / 2))
 
 
+# Server-generierte Item-Thumbnails (`/api/thumb/{id}`, Fallback für Privat-
+# Bibliotheken UND unmatched TV-Episoden ohne TMDB-Poster) sind immer 16:9
+# (480×270, siehe Server-CLAUDE.md „Scanner & Metadaten"). Landet so ein Bild
+# in einer 2:3-Kartenform (Filme/Serien-Kachelform — u.a. weil private Videos
+# in `CardGrid`/`home_page.py` bewusst dieselbe Kachelform wie Filme bekommen,
+# siehe `aspect`-Kommentar dort), scaliert `Gtk.Picture`s ContentFit.COVER das
+# Bild so, dass die Höhe die Karte füllt — bei den Seitenverhältnissen hier
+# bedeutet das FAKTISCH KEIN Hochskalieren des Originalbilds selbst (Cover
+# skaliert eher leicht herunter + croppt seitlich). Der eigentliche Bug (User-
+# Report 2026-09-13, "die sind immer noch unscharf", nach dem `CARD_WIDTH_WIDE`-
+# Fix von 0.1.24, der NIE griff — `CardGrid` erzwingt für alle Bibliotheksarten
+# dieselbe Kartenform, umgeht also den in 0.1.24 gebauten Breiten-Umschalter
+# komplett) sitzt EINEN Schritt vorher: `load_poster_async(decode_width=…)`
+# dekodiert das Bild BEREITS auf `_frame_width` (168px) — bei 16:9 ergibt das
+# nur ~94px Höhe. Erst DANACH skaliert ContentFit.COVER dieses bereits stark
+# verkleinerte Bild wieder auf die volle Kartenhöhe (252px) hoch, ein Faktor
+# von ~2,7× — das ist der tatsächliche Unschärfe-Schritt, nicht der Crop
+# selbst. Fix: bei einem Thumbnail-Fallback in einer NICHT-16:9-Kartenform mit
+# genug Breite dekodieren, dass eine reine Höhen-Skalierung (kein zusätzliches
+# Hochskalieren mehr) zum Füllen der Kartenhöhe reicht — deckt sich in etwa
+# mit der nativen Serverauflösung (480×270), kein Qualitätsverlust vor dem
+# eigentlichen Zuschneiden.
+def _thumb_decode_width(frame_width: int, frame_height: int) -> int:
+    """Dekodierbreite für ein 16:9-Thumbnail, das per COVER in eine Karte der
+    gegebenen Größe eingepasst wird, OHNE nach dem Dekodieren nochmal
+    hochskaliert werden zu müssen."""
+    return max(frame_width, round(frame_height * 16 / 9))
+
+
 _CSS = b"""
 .gf-card-image {
   background-color: alpha(@window_fg_color, 0.08);
@@ -200,7 +229,8 @@ class CardWidget(Gtk.Box):
         self.set_valign(Gtk.Align.START)
 
         # -- Bildbereich mit Abzeichen --
-        self.overlay, self.picture = _image_frame(self._frame_width, card_height_for(geometry, self._frame_width))
+        self._frame_height = card_height_for(geometry, self._frame_width)
+        self.overlay, self.picture = _image_frame(self._frame_width, self._frame_height)
 
         self.watched_btn = Gtk.Button(
             icon_name="object-select-symbolic",
@@ -394,11 +424,20 @@ class CardWidget(Gtk.Box):
         self._apply_watched(bool(item.get("watched")))
         self._apply_favorite(bool(item.get("favorite")))
 
+        poster_path = self.client.poster_path_for_item(item)
+        # Siehe `_thumb_decode_width`-Kommentar oben: ein `/api/thumb/`-
+        # Fallback braucht in einer nicht-16:9-Kartenform mehr Dekodierbreite,
+        # sonst wird beim Anzeigen (ContentFit.COVER) unnötig hochskaliert.
+        decode_width = (
+            _thumb_decode_width(self._frame_width, self._frame_height)
+            if poster_path and poster_path.startswith("/api/thumb/")
+            else self._frame_width
+        )
         load_poster_async(
             self.picture,
             self.client,
-            self.client.poster_path_for_item(item),
-            decode_width=self._frame_width,
+            poster_path,
+            decode_width=decode_width,
             scroller=self.scroller,
         )
 
@@ -488,7 +527,8 @@ class FolderCardWidget(Gtk.Box):
         self.scroller = scroller
         self.set_size_request(self._frame_width, -1)
 
-        self.overlay, self.picture = _image_frame(self._frame_width, card_height_for(kind, self._frame_width))
+        self._frame_height = card_height_for(kind, self._frame_width)
+        self.overlay, self.picture = _image_frame(self._frame_width, self._frame_height)
 
         self.marker_label = Gtk.Label(halign=Gtk.Align.START, valign=Gtk.Align.START, margin_start=6, margin_top=6)
         self.marker_label.add_css_class("gf-badge")
@@ -538,7 +578,15 @@ class FolderCardWidget(Gtk.Box):
             path = f"/api/poster/metadata/{folder['metadataId']}"
         elif folder.get("thumbItemId"):
             path = f"/api/thumb/{folder['thumbItemId']}"
-        load_poster_async(self.picture, self.client, path, decode_width=self._frame_width, scroller=self.scroller)
+        # Siehe `_thumb_decode_width`-Kommentar bei CardWidget.bind: dasselbe
+        # Unschärfe-Problem betraf Ordner-Kacheln (Serien ohne Poster,
+        # Privat-Ordner) genauso.
+        decode_width = (
+            _thumb_decode_width(self._frame_width, self._frame_height)
+            if path and path.startswith("/api/thumb/")
+            else self._frame_width
+        )
+        load_poster_async(self.picture, self.client, path, decode_width=decode_width, scroller=self.scroller)
 
     def unbind(self) -> None:
         self.folder = None

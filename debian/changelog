@@ -1,3 +1,19 @@
+goldfish-linux (0.1.38-1) unstable; urgency=medium
+
+  * Vorschaubilder ohne eigenes Cover (Privat-Bibliotheken, Serienfolgen ohne
+    TMDB-Zuordnung) waren trotz des Fixes in 0.1.24 weiterhin unscharf. Der
+    damalige Fix (breitere Kachel für private Bibliotheken) griff in der
+    echten Bibliotheksansicht nie, weil private Videos dort absichtlich in
+    derselben Kartenform wie Filme/Serien angezeigt werden. Die eigentliche
+    Ursache war eine andere: das 16:9-Vorschaubild wurde beim Laden bereits
+    auf die (schmale) Kartenbreite herunterskaliert, bevor es beim Anzeigen
+    wieder auf die volle, deutlich größere Kartenhöhe hochskaliert wurde.
+    Jetzt wird für diesen Fall von vornherein breit genug geladen, keine
+    Nacharbeit auf dem Server nötig — einfach aktualisieren und die Kacheln
+    sind beim nächsten Öffnen scharf.
+
+ -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 17:35:00 +0200
+
 goldfish-linux (0.1.37-1) unstable; urgency=medium
 
   * Das Fenster der Warteschlange öffnet wieder. Es baute bisher eine Zeile

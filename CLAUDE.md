@@ -71,6 +71,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.35 | Ansichts-Schalter der Musikseite als Symbole statt Beschriftungen |
 | 0.1.36 | Rahmen am Zufallsknopf, Spaltenbreite ohne Seiteneffekt, auffindbare Warteschlange |
 | 0.1.37 | Warteschlangen-Fenster öffnet wieder (Wiederverwendung statt einer Zeile je Titel), Zufall zieht 200 Titel |
+| 0.1.38 | Echter Fix für unscharfe Kacheln ohne eigenes Cover (0.1.24 griff in der echten Bibliotheksansicht nie, siehe „Unscharfe Vorschaubilder" unten) |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
@@ -414,6 +415,58 @@ Jeweils nachgeprüft, nicht vermutet:
   Bild als JPEG abholen (`local_library.thumbnail_bytes`, gemessen 0,03 bis
   0,11 Sekunden je Datei). Die frühere Aussage "bräuchte wieder ffmpeg" war
   falsch.
+
+## Unscharfe Vorschaubilder ohne eigenes Cover — echter Fix in 0.1.38
+
+User-Report 2026-09-13: "Ich hatte auf der Linux App gestern bemängelt, dass
+die Vorschaubilder in den Kacheln, wenn kein Cover geladen ist, also bei den
+privaten Bibliotheken, aber auch bei Serienfolgen, ziemlich unscharf ist.
+Angeblich wurde das gefixt, aber die sind immer noch unscharf." Betrifft
+jedes Item OHNE TMDB/Custom-Metadata-Poster (`poster_path_for_item` fällt
+dann auf `/api/thumb/{id}` zurück — server-generiert, fix 480×270, 16:9,
+siehe Server-CLAUDE.md „Scanner & Metadaten").
+
+**Warum der 0.1.24-Fix nie griff:** er machte `CardWidget`/`FolderCardWidget`
+selbst zwar breiter für `kind == "private"` (`CARD_WIDTH_WIDE`), aber die
+tatsächlich benutzte Bibliotheksansicht (`widgets/grid.py: CardGrid`) erzwingt
+für PRIVATE Bibliotheken absichtlich dieselbe Kartenform wie Filme/Serien
+(`aspect = "movies" if self.kind == "private" else self.kind` — User-Wunsch
+aus einer früheren Session: "auch in der Bibliothek YouTube sollen die
+Kacheln die gleiche Größe haben") und übergibt diese überschriebene Form an
+beide Widgets. Der Breiten-Umschalter aus 0.1.24 wird dadurch nie erreicht —
+weder bei privaten Bibliotheken noch (da nie dafür gebaut) bei Serienfolgen
+ohne Poster, die ohnehin schon immer in der normalen Filme/Serien-Kartenform
+(2:3) laufen.
+
+**Der tatsächliche Bug saß einen Schritt früher, beim Dekodieren:**
+`load_poster_async(decode_width=…)` bekam bisher immer die KARTENBREITE
+(z. B. 168 px) — bei einem 16:9-Bild ergibt das nur ≈94 px Höhe. Erst danach
+skaliert `Gtk.Picture`s `ContentFit.COVER` dieses bereits stark verkleinerte
+Bild auf die volle, deutlich größere Kartenhöhe (z. B. 252 px bei einer
+2:3-Karte) wieder hoch — ein Faktor von ≈2,7×. Genau dieses nachträgliche
+Hochskalieren eines zu klein dekodierten Bilds war die Unschärfe, nicht der
+Zuschnitt selbst (der reine COVER-Crop eines 16:9-Bilds in eine 2:3-Karte
+skaliert eigentlich eher leicht HERUNTER + croppt seitlich, kein
+Qualitätsverlust).
+
+**Fix (`widgets/card.py`):** neue Funktion `_thumb_decode_width(frame_width,
+frame_height)` — liefert `max(frame_width, frame_height * 16/9)`, also genug
+Dekodierbreite, damit die anschließende COVER-Höhenskalierung nicht mehr
+über die native Auflösung hinaus hochskalieren muss (deckt sich ungefähr mit
+der nativen Server-Auflösung 480×270, kein künstlicher Zusatzverlust vorher).
+`CardWidget`/`FolderCardWidget` merken sich jetzt zusätzlich `_frame_height`
+und nutzen die Funktion NUR, wenn der gewählte Pfad tatsächlich ein
+`/api/thumb/`-Fallback ist (echte TMDB/Custom-Poster behalten `_frame_width`
+als Dekodierbreite — deren Seitenverhältnis passt schon zur Kartenform, da
+gibt es das COVER-Mismatch-Problem gar nicht).
+
+**Kein Server-seitiger Rescan/Neu-Einlesen nötig** — reines Client-
+Rendering-Problem, keine gespeicherten Daten waren betroffen. Nach dem
+Update auf 0.1.38 sind die Kacheln beim nächsten Öffnen der Bibliothek
+automatisch scharf (der Bild-Cache in `widgets/poster.py` schlüsselt ohnehin
+über `(server_path, decode_width)` — ein geänderter `decode_width` erzeugt
+automatisch einen neuen Cache-Eintrag statt eine alte, zu klein dekodierte
+Version wiederzuverwenden).
 
 ## Packaging
 
