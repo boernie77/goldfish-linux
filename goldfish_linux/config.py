@@ -228,6 +228,16 @@ class ViewPrefs:
         }
         self._save()
 
+    def playlist_view_mode(self, playlist_id: int) -> str:
+        """"grid" | "list" — wie eine Musik-Playlist gezeigt wird (Kacheln
+        oder Titelliste mit Spalten). Standard: "grid"."""
+        value = self._data.get(f"playlistView:{playlist_id}", "grid")
+        return value if value in ("grid", "list") else "grid"
+
+    def set_playlist_view_mode(self, playlist_id: int, mode: str) -> None:
+        self._data[f"playlistView:{playlist_id}"] = mode if mode in ("grid", "list") else "grid"
+        self._save()
+
     def music_filter(self, library_id: int) -> dict:
         """Gemerkte Musik-Filter (nur Favoriten, Genres) je Bibliothek."""
         raw = self._data.get(f"musicFilter:{library_id}")

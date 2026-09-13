@@ -1,3 +1,18 @@
+goldfish-linux (0.1.34-1) unstable; urgency=medium
+
+  * Musik-Suche: Albentreffer zeigen jetzt ihr Cover, der Text daneben steht
+    links. Die Knopfreihe selbst bleibt unverändert.
+  * Zufallswiedergabe für Musik in JEDER Ansicht — neuer Knopf in der Leiste.
+    Gemischt wird, was gerade gezeigt wird: in einer Titelliste genau diese
+    Titel, in der Albenansicht alle Titel der Bibliothek (gefiltert wie die
+    Ansicht). Hörbücher bleiben außen vor, wie beim Server auch.
+  * Musik-Playlists lassen sich jetzt zwischen Kacheln und Titelliste
+    umschalten, die Liste mit denselben verschiebbaren Spalten wie die
+    Bibliothek (eigene Breiten, eigenes Spalten-Menü).
+  * Anderes Symbol für "Musik-Playlists" statt des Klemmbrett-Emojis.
+
+ -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:03:41 +0200
+
 goldfish-linux (0.1.33-1) unstable; urgency=medium
 
   * Musikseite überarbeitet (Wunsch: "so Spalten, wie auch auf Mac, welche

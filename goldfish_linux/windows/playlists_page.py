@@ -18,6 +18,7 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
 from ..widgets.card import SimpleCard, card_flow  # noqa: E402
+from ..widgets.column_list import ColumnList  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
 
 
@@ -222,9 +223,60 @@ class PlaylistItemsPage(Adw.NavigationPage):
         self.playlist = playlist
         self.toolbar_view = toolbar_view
         self.items: list[dict] = []
+        self.column_list: ColumnList | None = None
+        self.mode = ctx.view_prefs.playlist_view_mode(int(playlist["id"]))
+
+        # Umschalter + Spalten-Menü nur bei Musik: die Spalten (Künstler,
+        # Album, Dauer) sind Musikbegriffe, und eine Video-Playlist öffnet
+        # ohnehin die Detailseite statt etwas abzuspielen.
+        if self._is_music():
+            toolbar_view.add_top_bar(self._build_toolbar())
 
         _busy(toolbar_view)
         threading.Thread(target=self._load, daemon=True).start()
+
+    def _build_toolbar(self) -> Gtk.Widget:
+        bar = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=8,
+            margin_top=6,
+            margin_bottom=6,
+            margin_start=12,
+            margin_end=12,
+        )
+        bar.add_css_class("toolbar")
+
+        modes = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        modes.add_css_class("linked")
+        self.mode_buttons: dict[str, Gtk.ToggleButton] = {}
+        group: Gtk.ToggleButton | None = None
+        for key, label, tooltip in (("grid", "Kacheln", "Titel als Kacheln"), ("list", "Liste", "Titel als Liste mit Spalten")):
+            button = Gtk.ToggleButton(label=label, tooltip_text=tooltip)
+            if group is None:
+                group = button
+            else:
+                button.set_group(group)
+            button.set_active(key == self.mode)
+            button.connect("toggled", self._on_mode_toggled, key)
+            modes.append(button)
+            self.mode_buttons[key] = button
+        bar.append(modes)
+        bar.append(Gtk.Box(hexpand=True))
+
+        self.count_label = Gtk.Label(valign=Gtk.Align.CENTER)
+        self.count_label.add_css_class("dim-label")
+        bar.append(self.count_label)
+
+        self.columns_button = Gtk.MenuButton(label="Spalten", tooltip_text="Welche Spalten die Liste zeigt", sensitive=False)
+        bar.append(self.columns_button)
+        return bar
+
+    def _on_mode_toggled(self, button: Gtk.ToggleButton, key: str) -> None:
+        if not button.get_active() or key == self.mode:
+            return
+        self.mode = key
+        self.ctx.view_prefs.set_playlist_view_mode(int(self.playlist["id"]), key)
+        self._render()
 
     def _load(self) -> None:
         try:
@@ -236,24 +288,90 @@ class PlaylistItemsPage(Adw.NavigationPage):
 
     def _apply(self, items: list[dict]) -> bool:
         self.items = items
-        if not items:
+        self._render()
+        return False
+
+    def _render(self) -> None:
+        if not self.items:
             _error(
                 self.toolbar_view,
                 "Titel kommen über die Detailansicht hinzu.",
                 title="Playlist ist leer",
                 icon="view-list-symbolic",
             )
-            return False
+            return
+        if self._is_music():
+            self.count_label.set_label(f"{len(self.items)} Titel")
+        if self._is_music() and self.mode == "list":
+            self._render_list()
+            return
+        self.column_list = None
+        if self._is_music():
+            self.columns_button.set_sensitive(False)
+            self.columns_button.set_popover(None)
         grid = CardGrid(
             self.ctx.client,
-            "music" if self.playlist.get("kind") == "music" else "movies",
+            "music" if self._is_music() else "movies",
             on_item=self._open_item,
             on_toggle_watched=lambda it, w: self._background(lambda: self.ctx.client.set_watched(it["id"], w)),
             on_toggle_favorite=lambda it, f: self._background(lambda: self.ctx.client.set_favorite(it["id"], f)),
         )
-        grid.set_content([], items)
+        grid.set_content([], self.items)
         self.toolbar_view.set_content(grid)
-        return False
+
+    def _render_list(self) -> None:
+        """Dieselbe Tabelle wie in der Musikbibliothek, nur mit eigenem
+        Spalten-Kontext — eine Playlist darf andere Spalten und Breiten
+        haben als "Alle Titel"."""
+        from .music_page import _columns_popover, _track_columns
+
+        self.column_list = ColumnList(
+            self.ctx.view_prefs,
+            "playlistTracks",
+            _track_columns(self._track_actions, show_track_no=False, show_album=True),
+            self.items,
+            on_activate=lambda rows, index: self.ctx.music.play_queue(rows, index),
+        )
+        self.columns_button.set_sensitive(True)
+        self.columns_button.set_popover(_columns_popover(self.column_list))
+        self.toolbar_view.set_content(self.column_list)
+
+    def _track_actions(self, track: dict) -> Gtk.Widget:
+        from .music_page import _icon_button
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2, valign=Gtk.Align.CENTER)
+        box.append(_icon_button("media-playback-start-symbolic", "Ab hier abspielen", lambda: self._play_from(track)))
+        box.append(
+            _icon_button(
+                "list-add-symbolic",
+                "An die Warteschlange anhängen",
+                lambda: (self.ctx.music.append([track]), _toast(self, "An die Warteschlange angehängt."))[0],
+            )
+        )
+        fav = Gtk.ToggleButton(
+            icon_name="emblem-favorite-symbolic",
+            has_frame=False,
+            valign=Gtk.Align.CENTER,
+            active=bool(track.get("favorite")),
+            tooltip_text="Titel als Favorit",
+        )
+        fav.connect("toggled", self._on_track_favorite, track)
+        box.append(fav)
+        return box
+
+    def _play_from(self, track: dict) -> None:
+        rows = self.column_list.visible_rows() if self.column_list else self.items
+        index = next((i for i, row in enumerate(rows) if row is track), None)
+        if index is None:
+            rows, index = [track], 0
+        self.ctx.music.play_queue(rows, index)
+
+    def _on_track_favorite(self, button: Gtk.ToggleButton, track: dict) -> None:
+        state = button.get_active()
+        if state == bool(track.get("favorite")):
+            return  # nur das Wiederverwenden der Zeile, kein Klick
+        track["favorite"] = state
+        self._background(lambda: self.ctx.client.set_favorite(int(track["id"]), state))
 
     def _open_item(self, item: dict) -> None:
         from .detail_page import DetailPage

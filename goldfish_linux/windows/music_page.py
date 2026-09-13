@@ -23,16 +23,19 @@ Reihenfolge und Auswahl bleiben je Ansicht gemerkt.
 
 from __future__ import annotations
 
+import random
 import threading
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+gi.require_version("Pango", "1.0")
+from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
 from ..formatting import format_date, format_duration  # noqa: E402
+from ..widgets.card import _image_frame, ensure_card_css  # noqa: E402
 from ..widgets.column_list import ColumnList, ColumnSpec  # noqa: E402
 from ..widgets.grid import AlbumGrid  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
@@ -104,6 +107,42 @@ def _track_columns(actions, *, show_track_no: bool, show_album: bool) -> list[Co
     return specs
 
 
+def first_available_icon(*names: str) -> str:
+    """Erstes Symbol, das das Icon-Thema des Systems wirklich kennt.
+
+    Die Zielsysteme bringen verschiedene Themen mit (Adwaita, Yaru, Papirus,
+    Mint-X) und teilen sich nur einen Teil der Namen — ein fehlendes Symbol
+    erscheint als leere Fläche, nicht als Fehler. Deshalb eine Kette mit einem
+    sicheren letzten Glied."""
+    display = Gdk.Display.get_default()
+    if display is not None:
+        theme = Gtk.IconTheme.get_for_display(display)
+        for name in names:
+            if theme.has_icon(name):
+                return name
+    return names[-1]
+
+
+# "playlist-symbolic" gibt es in Yaru/Papirus/Ubuntu-Mono, "view-list-ordered"
+# in Adwaita — eines davon hat jedes hier vorkommende Thema.
+PLAYLIST_ICON = ("playlist-symbolic", "view-list-ordered-symbolic", "view-list-symbolic")
+
+
+def _is_audiobook(track: dict) -> bool:
+    """Hörbücher gehören nicht in die Zufallswiedergabe (Vorgabe vom
+    2026-09-05, seither auch auf dem Server so): ein Kapitel zwischen
+    Musikstücken ist nie gewollt. Dieselben drei Merkmale wie der Server —
+    Dateiformat .m4b, "Hörbuch"/"Audiobook" im Pfad oder Titel, oder ein
+    entsprechendes Genre-Tag."""
+    if (track.get("container") or "").lower() == "m4b":
+        return True
+    haystack = " ".join(
+        str(track.get(key) or "") for key in ("relPath", "title", "genre", "album", "artist")
+    ).lower()
+    haystack = haystack.replace("ö", "o").replace("ü", "u")
+    return "horbuch" in haystack or "audiobook" in haystack
+
+
 def _icon_button(icon: str, tooltip: str, on_click) -> Gtk.Button:
     button = Gtk.Button(icon_name=icon, has_frame=False, valign=Gtk.Align.CENTER, tooltip_text=tooltip)
     button.connect("clicked", lambda *_: on_click())
@@ -151,6 +190,7 @@ class MusicLibraryPage(Adw.NavigationPage):
         toolbar_view.add_top_bar(header)
 
         super().__init__(title=library["name"], tag=f"music-{library['id']}", child=toolbar_view)
+        ensure_card_css()  # für die Cover-Rundung (.gf-card-image) in den Suchtreffern
         self.ctx = ctx
         self.nav_view = nav_view
         self.library = library
@@ -169,6 +209,9 @@ class MusicLibraryPage(Adw.NavigationPage):
         # stand auch die laufende Wiedergabe scheinbar still.
         self.grid: AlbumGrid | None = None
         self.column_list: ColumnList | None = None
+        # Ob in der Tabelle gerade Titel oder Alben stehen — der Zufallsknopf
+        # mischt Titel, keine Alben.
+        self.list_shows_tracks = False
         self.all_tracks: list[dict] | None = None
         self.mode = self.ctx.view_prefs.music_view_mode(int(library["id"]))
 
@@ -176,10 +219,9 @@ class MusicLibraryPage(Adw.NavigationPage):
         self.favorites_only = bool(saved_filter.get("favorites"))
         self.genres: set[str] = set(saved_filter.get("genres") or [])
 
-        # Kein Freedesktop-Standardsymbol für "Playlist" — Emoji statt Icon,
-        # dieselbe Konvention wie überall sonst in dieser App (Kachel-Ecken,
-        # Seitenleiste), damit nichts von der Icon-Theme-Verfügbarkeit abhängt.
-        playlists = Gtk.Button(label="📋", tooltip_text="Musik-Playlists")
+        playlists = Gtk.Button(
+            icon_name=first_available_icon(*PLAYLIST_ICON), tooltip_text="Musik-Playlists"
+        )
         playlists.connect("clicked", lambda *_: self._open_playlists())
         header.pack_end(playlists)
 
@@ -220,6 +262,15 @@ class MusicLibraryPage(Adw.NavigationPage):
             modes.append(button)
             self.mode_buttons[key] = button
         bar.append(modes)
+
+        # Zufallswiedergabe gehört in JEDE Ansicht (Wunsch 2026-09-13) —
+        # deshalb in der Leiste und nicht in einer einzelnen Ansicht.
+        shuffle = Gtk.Button(
+            icon_name="media-playlist-shuffle-symbolic",
+            tooltip_text="Zufällig abspielen",
+        )
+        shuffle.connect("clicked", lambda *_: self._play_shuffle())
+        bar.append(shuffle)
 
         bar.append(Gtk.Box(hexpand=True))
 
@@ -475,6 +526,7 @@ class MusicLibraryPage(Adw.NavigationPage):
 
     def _render_album_list(self, albums: list[dict]) -> None:
         self.grid = None
+        self.list_shows_tracks = False
         self.column_list = ColumnList(
             self.ctx.view_prefs,
             "albums",
@@ -508,6 +560,7 @@ class MusicLibraryPage(Adw.NavigationPage):
             )
             return
         self.count_label.set_label(f"{len(tracks)} Titel")
+        self.list_shows_tracks = True
         self.column_list = ColumnList(
             self.ctx.view_prefs,
             "allTracks",
@@ -540,9 +593,12 @@ class MusicLibraryPage(Adw.NavigationPage):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         if albums:
             box.append(_heading(f"Alben · {len(albums)}"))
+            # Die Knopfreihe selbst bleibt wie sie ist (ausdrücklich so
+            # gewünscht): gleich breite Zellen über die Fensterbreite. Nur der
+            # INHALT jedes Treffers steht links — Cover, daneben der Text.
             flow = Gtk.FlowBox(
                 selection_mode=Gtk.SelectionMode.NONE,
-                max_children_per_line=6,
+                max_children_per_line=4,
                 row_spacing=6,
                 column_spacing=6,
                 margin_start=16,
@@ -550,15 +606,11 @@ class MusicLibraryPage(Adw.NavigationPage):
                 margin_bottom=6,
             )
             for album in albums[:48]:
-                label = album.get("album") or "Album"
-                if album.get("artist"):
-                    label = f"{label} · {album['artist']}"
-                button = Gtk.Button(label=label)
-                button.connect("clicked", lambda _b, a=album: self._open_album(a))
-                flow.append(button)
+                flow.append(self._album_chip(album))
             box.append(flow)
         if tracks:
             box.append(_heading(f"Titel · {len(tracks)}"))
+            self.list_shows_tracks = True
             self.column_list = ColumnList(
                 self.ctx.view_prefs,
                 "allTracks",
@@ -569,8 +621,80 @@ class MusicLibraryPage(Adw.NavigationPage):
             box.append(self.column_list)
         else:
             self.column_list = None
+            self.list_shows_tracks = False
         self._update_columns_button()
         self.toolbar_view.set_content(box)
+
+    def _album_chip(self, album: dict) -> Gtk.Widget:
+        """Ein Albentreffer: kleines Cover links, Titel und Künstler daneben,
+        alles linksbündig (Wunsch 2026-09-13)."""
+        # Der Knopf füllt seine Zelle, der Inhalt darin steht links.
+        button = Gtk.Button()
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10, halign=Gtk.Align.START, hexpand=True)
+
+        # Fester Bildrahmen statt eines nackten `Gtk.Picture` — siehe
+        # `_image_frame` in widgets/card.py: ein Bild meldet sonst eine
+        # Naturbreite nach seinem Seitenverhältnis und zieht die Zeile auf.
+        frame, cover = _image_frame(38, 38)
+        frame.set_valign(Gtk.Align.CENTER)
+        load_poster_async(
+            cover, self.ctx.client, self.ctx.client.album_cover_path(int(album["id"])), decode_width=76
+        )
+        row.append(frame)
+
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, halign=Gtk.Align.START)
+        title = Gtk.Label(label=album.get("album") or "Album", xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=28)
+        text.append(title)
+        if album.get("artist"):
+            artist = Gtk.Label(label=album["artist"], xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=28)
+            artist.add_css_class("dim-label")
+            artist.add_css_class("caption")
+            text.append(artist)
+        row.append(text)
+
+        button.set_child(row)
+        button.connect("clicked", lambda _b, a=album: self._open_album(a))
+        return button
+
+    # -- Zufallswiedergabe ----------------------------------------------
+
+    def _play_shuffle(self) -> None:
+        """Gemischt wird, was gerade gezeigt wird.
+
+        In einer Titelliste (Alle Titel, Suchtreffer) genau diese Titel — in
+        der Alben-Ansicht alle Titel der Bibliothek, gefiltert wie die Ansicht
+        selbst. Alben zu mischen ergäbe keine Warteschlange."""
+        if self.column_list is not None and self.list_shows_tracks:
+            self._start_shuffle(self.column_list.visible_rows())
+            return
+        if self.all_tracks is None:
+            # In der Alben-Ansicht sind die Titel noch nie geladen worden.
+            _toast(self, "Titel werden geladen …")
+            threading.Thread(target=self._load_tracks_then_shuffle, daemon=True).start()
+            return
+        self._start_shuffle(self._matching_tracks(self.all_tracks))
+
+    def _load_tracks_then_shuffle(self) -> None:
+        try:
+            tracks = self.ctx.client.items(self.library["id"], sort="title")
+        except GoldfishAPIError as exc:
+            GLib.idle_add(_toast, self, f"Titel ließen sich nicht laden: {exc}")
+            return
+
+        def apply() -> bool:
+            self.all_tracks = tracks
+            self._start_shuffle(self._matching_tracks(tracks))
+            return False
+
+        GLib.idle_add(apply)
+
+    def _start_shuffle(self, tracks: list[dict]) -> None:
+        pool = [t for t in tracks if not _is_audiobook(t)]
+        if not pool:
+            _toast(self, "Nichts zum Abspielen.")
+            return
+        random.shuffle(pool)
+        self.ctx.music.play_queue(pool, 0)
 
     # -- Aktionen in den Zeilen ------------------------------------------
 
