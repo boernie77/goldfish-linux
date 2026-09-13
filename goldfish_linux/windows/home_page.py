@@ -90,6 +90,15 @@ class HomePage(Adw.NavigationPage):
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=22, margin_top=16, margin_bottom=28)
         any_content = False
 
+        # Für den Serien-/Kanalname-Link (`_open_folder_from_item`): "Fortsetzen"/
+        # "Als nächstes" mischen Items ALLER Bibliotheken flach, jedes Item
+        # braucht trotzdem seine eigene, richtige `library`.
+        self._library_by_id: dict[int, dict] = {
+            lib["id"]: lib
+            for section in sections
+            if (lib := section.get("library")) and lib.get("id")
+        }
+
         # Bibliotheksübergreifend zusammenführen. Sortiert wird nach dem
         # letzten Abspielen bzw. dem Hinzufügen; `lastPlayedAt` liefert diese
         # Abfrage nicht immer mit, dann tritt `addedAt` an seine Stelle
@@ -197,6 +206,9 @@ class HomePage(Adw.NavigationPage):
                 # YouTube: in einer Reihe mit Filmpostern sähen 16:9-Kacheln
                 # wie ein Fehler aus. Die Form ist immer die des Posters.
                 aspect_kind="movies",
+                # User-Wunsch 2026-09-13: Serien-/Kanalname klickbar → zur
+                # Serien-/Kanalübersicht statt zum einzelnen Item.
+                on_open_folder=self._open_folder_from_item,
             )
             card.bind(item)
             card.set_size_request(CARD_WIDTH, -1)
@@ -216,6 +228,57 @@ class HomePage(Adw.NavigationPage):
 
         if library.get("id"):
             self.nav_view.push(BrowsePage(self.ctx, self.nav_view, library))
+
+    def _open_folder_from_item(self, item: dict) -> None:
+        """Serien-/Kanalname-Klick auf einer Home-Kachel (User-Wunsch
+        2026-09-13): springt zur Serien- bzw. Kanalübersicht statt zum
+        einzelnen Item. Der oberste Ordner von `relPath` ist bei Serien immer
+        die Serie und bei Privatvideos der Kanal (`CardWidget.bind()` zeigt
+        die Zeile nur genau dann an)."""
+        library = self._library_by_id.get(item.get("libraryId"))
+        rel = item.get("relPath") or ""
+        top_folder = rel.split("/", 1)[0] if "/" in rel else ""
+        if not library or not top_folder:
+            return
+
+        # Serien-Bibliothek: derselbe Zweig wie `BrowsePage._open_folder` beim
+        # normalen Browsing von der Wurzel aus (dort mit `not self.folder`
+        # abgesichert — hier immer erfüllt, Home kennt keine "aktuelle
+        # Ordner-Ebene"). Kein Root-Fetch nötig, der Top-Ordner IST die Serie.
+        if library.get("kind") == "tv" and self.ctx.view_prefs.season_view(library["id"], top_folder):
+            from .seasons_page import SeasonsPage
+
+            self.nav_view.push(SeasonsPage(self.ctx, self.nav_view, library, top_folder))
+            return
+
+        # Privatvideos (oder eine Serie ohne Staffelstruktur): ob der Kanal-
+        # Ordner selbst wieder Unterordner zeigt (drilldown) oder eine flache
+        # Videoliste, weiß nur der Server — anders als beim normalen Browsing
+        # (wo die Geschwister-Ordner-Kacheln der aktuellen Ebene schon geladen
+        # sind) kennt die Startseite das nicht, ein einmaliger Root-Fetch holt
+        # es nach.
+        threading.Thread(
+            target=self._resolve_folder_worker, args=(library, top_folder), daemon=True
+        ).start()
+
+    def _resolve_folder_worker(self, library: dict, folder: str) -> None:
+        drilldown = False
+        try:
+            tiles = self.ctx.client.folders(library["id"])
+            tile = next((t for t in tiles if t.get("name") == folder), None)
+            if tile:
+                drilldown = bool(tile.get("drilldown"))
+        except GoldfishAPIError:
+            pass  # Fällt auf die flache Ordneransicht zurück (drilldown=False)
+        GLib.idle_add(self._push_folder, library, folder, drilldown)
+
+    def _push_folder(self, library: dict, folder: str, drilldown: bool) -> bool:
+        from .browse_page import BrowsePage
+
+        self.nav_view.push(
+            BrowsePage(self.ctx, self.nav_view, library, folder=folder, drilldown=drilldown)
+        )
+        return False
 
     def _background(self, call) -> None:
         def worker() -> None:

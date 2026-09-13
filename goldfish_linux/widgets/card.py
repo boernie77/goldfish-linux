@@ -90,6 +90,11 @@ _CSS = b"""
   opacity: 0.6;
 }
 .gf-card-watched .gf-card-image { opacity: 0.55; }
+/* Serien-/Kanalname-Link auf der Startseite (User-Wunsch 2026-09-13):
+   optisch als Link erkennbar (Akzentfarbe, kein grau wie sonst
+   bei gf-card-sub). */
+.gf-card-link { opacity: 1; color: alpha(currentColor, 0.9); text-decoration: underline; }
+.gf-card-link:hover { color: @accent_color; }
 """
 
 _css_loaded = False
@@ -151,10 +156,17 @@ class CardWidget(Gtk.Box):
         on_toggle_favorite: Callable[[dict, bool], None] | None = None,
         scroller: Gtk.ScrolledWindow | None = None,
         aspect_kind: str | None = None,
+        on_open_folder: Callable[[dict], None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.client = client
         self.kind = kind
+        # Serien-/Kanalname klickbar (User-Wunsch 2026-09-13, nur Startseite):
+        # `None` (Default, jeder andere Aufrufer wie `CardGrid`/Bibliotheks-
+        # Browsing) lässt die neue Zeile unsichtbar — dort wäre "zur
+        # Serienübersicht springen" innerhalb der schon geöffneten Serie
+        # sinnlos bzw. verwirrend neben dem normalen Ordner-Browsing.
+        self.on_open_folder = on_open_folder
         # `aspect_kind` trennt die Form der Kachel von der Bibliotheksart:
         # auf der Startseite liegen Filme, Folgen und Privatvideos in einer
         # Reihe und sollen dort gleich groß sein — ein 16:9-Standbild in einem
@@ -247,6 +259,27 @@ class CardWidget(Gtk.Box):
 
         self.append(self.overlay)
 
+        # -- Serien-/Kanalname (nur wenn `on_open_folder` gesetzt) --
+        # Steht ÜBER dem Titel, analog zur Mac-App (dort ist der Seriennamen
+        # sogar die Hauptzeile bei Folgen). Immer erzeugt, aber standardmäßig
+        # unsichtbar — `bind()` zeigt sie nur, wenn `on_open_folder` gesetzt
+        # UND sich für dieses Item ein Ordnername ergibt (Serie oder Kanal).
+        self.folder_label = Gtk.Label(
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=self._frame_width,
+            visible=False,
+        )
+        self.folder_label.add_css_class("gf-card-sub")
+        if self.on_open_folder:
+            self.folder_label.add_css_class("gf-card-link")
+            self.folder_label.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+            folder_click = Gtk.GestureClick()
+            folder_click.connect("released", self._on_folder_clicked)
+            self.folder_label.add_controller(folder_click)
+        self.append(self.folder_label)
+
         # -- Textzeilen --
         # **Titel bewusst einzeilig mit Auslassung.** Ein umbrechendes Label
         # mit `lines=2` fordert bei vorgegebener Höhe die volle Textbreite an,
@@ -332,6 +365,21 @@ class CardWidget(Gtk.Box):
             sub_parts.append((item.get("container") or "").upper())
         self.sub_label.set_text(" · ".join(p for p in sub_parts if p))
 
+        # Serien-/Kanalname klickbar (User-Wunsch 2026-09-13, nur Startseite,
+        # siehe `on_open_folder`): der oberste Ordner ist bei Serien immer die
+        # Serie und bei Privatvideos der Kanal — dasselbe Segment, das oben
+        # schon als Fallback für `sub_label` diente, hier aber der TOP-Ordner
+        # (erstes Pfadsegment), nicht der direkte Elternordner (`rsplit`
+        # oben liefert bei tief verschachtelten Pfaden mehr als nur die Serie/
+        # den Kanal).
+        top_folder = rel.split("/", 1)[0] if "/" in rel else ""
+        if self.on_open_folder and top_folder and self.kind in ("tv", "private"):
+            self.folder_label.set_text(top_folder)
+            self.folder_label.set_tooltip_text(f"Zur Übersicht: {top_folder}")
+            self.folder_label.set_visible(True)
+        else:
+            self.folder_label.set_visible(False)
+
         rating = metadata.get("rating") or 0
         self._set_badge(self.rating_label, f"★ {rating:.1f}" if rating else "")
 
@@ -388,6 +436,10 @@ class CardWidget(Gtk.Box):
     def _on_clicked(self, *_args) -> None:
         if self.item and self.on_activate:
             self.on_activate(self.item)
+
+    def _on_folder_clicked(self, *_args) -> None:
+        if self.item and self.on_open_folder:
+            self.on_open_folder(self.item)
 
     def _on_watched_clicked(self, *_args) -> None:
         if not self.item:
