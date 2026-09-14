@@ -1,3 +1,15 @@
+goldfish-linux (0.1.39-1) unstable; urgency=medium
+
+  * App identifiziert sich jetzt eigens am Server (X-Goldfish-Client-Header,
+    wie die Mac/iOS-App). Ohne diesen Header erkannte der Server unsere App
+    nicht als solche und stufte sie im Aktivitäts-Protokoll fälschlich als
+    "Browser · Linux" ein — der eigene User-Agent ("Goldfish-Linux/…")
+    enthält zufällig die Teilzeichenkette "Linux", was die serverseitige
+    Browser-Erkennung in die Irre führte. Rein diagnostische Änderung, kein
+    sichtbarer Unterschied in der App selbst.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 10:40:00 +0200
+
 goldfish-linux (0.1.38-1) unstable; urgency=medium
 
   * Vorschaubilder ohne eigenes Cover (Privat-Bibliotheken, Serienfolgen ohne

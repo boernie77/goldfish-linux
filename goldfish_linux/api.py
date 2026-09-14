@@ -19,6 +19,8 @@ from urllib.parse import urljoin, urlparse, urlencode, urlunparse, parse_qsl
 import requests
 import urllib3.util.connection as _urllib3_connection
 
+from . import __version__
+
 # Manche selbstgehosteten Server (Heimnetz hinter Tunnel/Reverse-Proxy)
 # brauchen für den ALLERERSTEN Request nach einer Weile Inaktivität spürbar
 # länger (beobachtet: ~6s statt <0.3s bei Folge-Requests) — vermutlich ein
@@ -168,7 +170,17 @@ class GoldfishClient:
 
     def __init__(self, server_url: str = "", session_token: str = ""):
         self.session = requests.Session()
-        self.session.headers["User-Agent"] = "Goldfish-Linux/0.1"
+        self.session.headers["User-Agent"] = f"Goldfish-Linux/{__version__}"
+        # Server-eigener Header (identisches Muster wie GoldfishApple):
+        # `deviceLabel()` (internal/api/helpers.go) erkennt ohne diesen
+        # Header nur Browser-User-Agents und faellt sonst auf eine generische
+        # "Browser · <OS>"-Heuristik zurueck — unser eigener User-Agent
+        # ("Goldfish-Linux/…") enthaelt zufaellig die Teilzeichenkette
+        # "Linux" und wurde dadurch im Aktivitaets-Protokoll faelschlich als
+        # "Browser · Linux" angezeigt (Fehldiagnose 2026-09-14: eine
+        # Server-Session-Untersuchung hielt echte App-Aktivitaet zunaechst
+        # für einen Browser-Tab).
+        self.session.headers["X-Goldfish-Client"] = f"GoldfishLinux/{__version__}"
         self.base_url = ""
         self.session_token = ""
         if server_url:
