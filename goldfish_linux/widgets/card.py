@@ -108,23 +108,30 @@ _CSS = b"""
   color: alpha(#ffffff, 0.55);
 }
 .gf-toggle:hover { background-color: alpha(#000000, 0.85); }
-/* Gruen fuer "gesehen" (User-Wunsch 2026-09-14: "So erkennt man gar
-   nichts"). Vorher war der aktive Haken nur voll deckendes Weiss gegen
-   halbtransparentes Weiss im ungesehenen Zustand - auf einem hellen
-   Standbild praktisch derselbe Eindruck. Gruen ist auch neben dem roten
-   Favoriten-Herz eindeutig.
+/* Gruen fuer "gesehen" (User-Wunsch 2026-09-14). Die ganze FLAECHE wird
+   gruen, nicht nur der Haken - genau wie im Browser, wo
+   `.watched-toggle.is-on` auf rgba(34,197,94,.9) mit weissem Haken steht
+   (internal/webassets/web/style.css im Server-Repo). Ein nur eingefaerbter
+   Haken war auf einem hellen Standbild kaum von ungesehen zu unterscheiden.
+   Der :hover-Fall MUSS mit: `.gf-toggle:hover` weiter oben hat dieselbe
+   Spezifitaet und wuerde das Gruen beim Zeigen sonst wieder mit Schwarz
+   ueberschreiben.
    ACHTUNG: dieser Block ist Teil eines bytes-Literals, nur ASCII. */
-.gf-toggle-on { color: #57d16c; }
+.gf-toggle-on {
+  background-color: alpha(#22c55e, 0.9);
+  color: #ffffff;
+}
+.gf-toggle-on:hover { background-color: #22c55e; }
 .gf-toggle-fav-on { color: #ff6b6b; }
 /* Derselbe Zustand auf der Detailseite: dort ist es ein normaler
    Umschaltknopf, dessen eingedrueckter Zustand in libadwaita nur ein
    minimal dunklerer Grauton ist - als Zustandsanzeige unbrauchbar.
    Deshalb eine echte Flaeche statt nur einer Textfarbe. */
 .gf-watched-on {
-  background-color: #2ec27e;
+  background-color: #22c55e;
   color: #ffffff;
 }
-.gf-watched-on:hover { background-color: #33d17a; }
+.gf-watched-on:hover { background-color: #16a34a; }
 .gf-card-title {
   font-size: 0.92rem;
   font-weight: 500;

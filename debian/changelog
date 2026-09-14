@@ -1,3 +1,14 @@
+goldfish-linux (0.1.42-1) unstable; urgency=medium
+
+  * Der Knopf "Gesehen" färbt jetzt die ganze Fläche grün statt nur den Haken
+    — so wie im Browser, wo der eingeschaltete Zustand ein voll grün
+    gefüllter Kreis mit weißem Haken ist. Die Fassung 0.1.40 hatte auf der
+    Kachel nur die Symbolfarbe gewechselt, was auf einem hellen Standbild
+    weiterhin kaum zu erkennen war. Derselbe Grünton wie am Server
+    (#22c55e), auf Kachel und Detailseite einheitlich.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 15:17:14 +0200
+
 goldfish-linux (0.1.41-1) unstable; urgency=medium
 
   * Neuer Menüeintrag "Nach Aktualisierungen suchen": holt die neueste
