@@ -48,6 +48,11 @@ from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient, TrickplayCue  # noqa: E402
 from ..formatting import format_duration, format_resolution  # noqa: E402
 from ..subtitles import SubtitleTrack, parse_vtt  # noqa: E402
+from ..widgets.stats_popover import (  # noqa: E402
+    PlaybackStatsPopover,
+    format_ahead,
+    format_bitrate,
+)
 
 # Wie oft Position, Untertitel und Fortschritt aktualisiert werden. Viermal pro
 # Sekunde ist genug für einen flüssigen Balken und lässt Untertitel pünktlich
@@ -154,6 +159,14 @@ class PlayerWindow(Adw.Window):
         self._hide_bar_source: int | None = None
         self.media: Gtk.MediaFile | None = None
         self._media_handlers: list[int] = []
+        # Diagnose-Anzeige: letzter bekannter Stand der serverseitigen
+        # Umwandlung und wann er zuletzt geholt wurde. Der Abruf laeuft nur,
+        # solange das Aufklappfenster offen ist — er haelt die Sitzung am
+        # Leben (Touch), was beim Zuschauen erwuenscht, aber unnoetig ist,
+        # wenn niemand hinsieht.
+        self._server_position: float | None = None
+        self._server_done = False
+        self._last_progress_poll = 0.0
 
         # Umwandlungsmodus: Basis-URL ohne `start`, aktueller Zeitversatz und
         # ein pro Fenster stabiler Token. Der Token MUSS über die periodischen
@@ -188,6 +201,18 @@ class PlayerWindow(Adw.Window):
     def _build_ui(self, title: str) -> None:
         self.header = Adw.HeaderBar()
         self.header.set_title_widget(Adw.WindowTitle(title=title))
+
+        # Diagnose-Anzeige oben rechts (User-Wunsch 2026-09-14, Vorbild Plex).
+        # Bewusst ein Aufklappfenster am Knopf und kein Dialog: ein Dialog legt
+        # sich hinter das Wiedergabefenster und laesst die App eingefroren
+        # wirken (in 0.1.21 genau so passiert).
+        self.stats_popover = PlaybackStatsPopover(on_measure=self._measure_throughput)
+        self.stats_button = Gtk.MenuButton(
+            icon_name="dialog-information-symbolic",
+            popover=self.stats_popover,
+            tooltip_text="Wiedergabe-Informationen",
+        )
+        self.header.pack_end(self.stats_button)
 
         self.picture = Gtk.Picture(hexpand=True, vexpand=True)
         self.picture.set_content_fit(Gtk.ContentFit.CONTAIN)
@@ -530,6 +555,7 @@ class PlayerWindow(Adw.Window):
             self.subtitle_label.set_visible(bool(text))
 
         self._maybe_report_position(position, duration)
+        self._update_stats(position, duration)
         return True
 
     def _maybe_report_position(self, position: float, duration: float) -> None:
@@ -835,6 +861,139 @@ class PlayerWindow(Adw.Window):
         self._background(lambda: self.client.playback_stop(item_id, reason, position, duration))
         if position > 0:
             self._background(lambda: self.client.set_resume(item_id, position))
+
+    # -- Diagnose-Anzeige ------------------------------------------------
+
+    def _progress_params(self) -> dict:
+        """Die Parameter der LAUFENDEN Umwandlung, so wie der Server sie kennt.
+
+        Bewusst aus der tatsaechlich abgespielten URL abgeleitet und nicht aus
+        `self.profile`/`self.audio_index` zusammengebaut: der Server sucht die
+        Sitzung per exaktem Schluessel (Profil, Tonspur, Startsekunde,
+        Zeilensprung). Wer hier auch nur einen Wert anders rät als in der
+        Playlist-Anfrage, bekommt `noSession` zurueck — und saehe dauerhaft
+        "kein Vorlauf", ohne dass etwas kaputt waere.
+
+        `fresh`/`_t` gehoeren zum Neustart-Zwang und `session` zur
+        Anmeldung; beide sind nicht Teil des Sitzungsschluessels und wuerden
+        nur unnoetig mitgeschickt."""
+        from urllib.parse import parse_qsl, urlparse
+
+        params = dict(parse_qsl(urlparse(self._stream_base).query))
+        for drop in ("session", "fresh", "_t", "start"):
+            params.pop(drop, None)
+        params["start"] = f"{self._virtual_offset:.3f}"
+        return params
+
+    def _poll_server_progress(self) -> None:
+        """Holt den Stand der Umwandlung. Laeuft im Hintergrund-Thread."""
+        item_id = self.item_id
+        params = self._progress_params()
+        try:
+            data = self.client.transcode_progress(item_id, params)
+        except GoldfishAPIError:
+            return
+        if data.get("noSession"):
+            GLib.idle_add(self._apply_server_progress, None, False)
+            return
+        GLib.idle_add(
+            self._apply_server_progress,
+            float(data.get("positionSec") or 0.0),
+            bool(data.get("done")),
+        )
+
+    def _apply_server_progress(self, position: float | None, done: bool) -> bool:
+        self._server_position = position
+        self._server_done = done
+        return False
+
+    def _update_stats(self, position: float, duration: float) -> None:
+        """Fuellt das Aufklappfenster — nur, solange es offen ist.
+
+        Der Abruf beim Server haelt die Umwandlung am Leben (Touch) und kostet
+        eine Anfrage pro Sekunde; beides ist unerwuenscht, wenn niemand
+        hinsieht."""
+        if not self.stats_popover.get_visible():
+            return
+
+        mode = "Direkte Wiedergabe"
+        if self._is_transcode:
+            mode = "Umwandlung"
+            if self.profile and self.profile != "orig":
+                mode = f"Umwandlung ({self.profile})"
+        elif self.local_path:
+            mode = "Lokale Datei"
+        self.stats_popover.set_value("mode", mode)
+
+        ahead = None
+        if self._server_position is not None:
+            ahead = max(self._server_position - position, 0.0)
+        text, level = format_ahead(ahead, self._server_done, self._is_transcode)
+        self.stats_popover.set_value("ahead", text, level)
+
+        self.stats_popover.set_value(
+            "position",
+            f"{format_duration(position)} / {format_duration(duration)}" if duration > 0
+            else format_duration(position),
+        )
+        self.stats_popover.set_value("source", self._source_description())
+        self.stats_popover.set_value("delivered", self._delivered_description())
+        self.stats_popover.set_value("audio", self._audio_description())
+
+        now = time.monotonic()
+        if self._is_transcode and now - self._last_progress_poll >= 1.0:
+            self._last_progress_poll = now
+            self._background(self._poll_server_progress)
+
+    def _source_description(self) -> str:
+        """Was auf dem Server liegt — Auflösung, Codec, Bitrate der Quelle."""
+        item = self.item or {}
+        parts: list[str] = []
+        width, height = int(item.get("width") or 0), int(item.get("height") or 0)
+        if width and height:
+            parts.append(f"{width}×{height}")
+        for key in ("videoCodec", "container"):
+            value = item.get(key)
+            if value:
+                parts.append(str(value).upper())
+                break
+        kbps = int(item.get("bitrateKbps") or 0)
+        if kbps:
+            parts.append(format_bitrate(kbps * 1000))
+        return " · ".join(parts) or "—"
+
+    def _delivered_description(self) -> str:
+        """Was tatsaechlich ankommt — die einzige Zahl, die `Gtk.MediaFile`
+        ueber den Datenstrom preisgibt (ueber das Paintable)."""
+        media = self.media
+        if media is None:
+            return "—"
+        width, height = media.get_intrinsic_width(), media.get_intrinsic_height()
+        if not (width and height):
+            return "—"
+        text = f"{width}×{height}"
+        label = format_resolution(width, height)
+        return f"{text} ({label})" if label else text
+
+    def _audio_description(self) -> str:
+        if self.audio_index is None:
+            return "Standard (erste Spur)"
+        return f"Spur {self.audio_index}"
+
+    def _measure_throughput(self) -> None:
+        """Durchsatzmessung auf Knopfdruck, im Hintergrund."""
+        item_id = self.item_id
+
+        def worker() -> None:
+            try:
+                bits, read, elapsed = self.client.measure_throughput(item_id)
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self.stats_popover.measurement_done, str(exc))
+                return
+            text = f"{format_bitrate(bits)} ({read / (1 << 20):.0f} MB in {elapsed:.1f} s)"
+            GLib.idle_add(self.stats_popover.measurement_done, text)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _background(self, call) -> None:
         def worker() -> None:

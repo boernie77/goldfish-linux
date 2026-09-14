@@ -108,8 +108,23 @@ _CSS = b"""
   color: alpha(#ffffff, 0.55);
 }
 .gf-toggle:hover { background-color: alpha(#000000, 0.85); }
-.gf-toggle-on { color: #ffffff; }
+/* Gruen fuer "gesehen" (User-Wunsch 2026-09-14: "So erkennt man gar
+   nichts"). Vorher war der aktive Haken nur voll deckendes Weiss gegen
+   halbtransparentes Weiss im ungesehenen Zustand - auf einem hellen
+   Standbild praktisch derselbe Eindruck. Gruen ist auch neben dem roten
+   Favoriten-Herz eindeutig.
+   ACHTUNG: dieser Block ist Teil eines bytes-Literals, nur ASCII. */
+.gf-toggle-on { color: #57d16c; }
 .gf-toggle-fav-on { color: #ff6b6b; }
+/* Derselbe Zustand auf der Detailseite: dort ist es ein normaler
+   Umschaltknopf, dessen eingedrueckter Zustand in libadwaita nur ein
+   minimal dunklerer Grauton ist - als Zustandsanzeige unbrauchbar.
+   Deshalb eine echte Flaeche statt nur einer Textfarbe. */
+.gf-watched-on {
+  background-color: #2ec27e;
+  color: #ffffff;
+}
+.gf-watched-on:hover { background-color: #33d17a; }
 .gf-card-title {
   font-size: 0.92rem;
   font-weight: 500;

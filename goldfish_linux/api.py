@@ -361,6 +361,59 @@ class GoldfishClient:
         info = self.playback_info(item_id)
         return [PlaybackProfile.from_json(p) for p in (info.get("profiles") or [])]
 
+    def transcode_progress(self, item_id: int, params: dict) -> dict:
+        """Wie weit die serverseitige Umwandlung dieses Items schon ist.
+
+        `params` muss die Parameter der LAUFENDEN Umwandlung tragen
+        (`profile`, `audio`, `start`) — der Server sucht die Sitzung damit per
+        LookupSession und antwortet mit `noSession: true`, wenn nichts passt.
+        Er legt dabei bewusst NIE eine neue an: ein Abruf mit unpassenden
+        Parametern startet also keinen zweiten ffmpeg, der sich mit dem
+        laufenden um Grafikkarte und Rechenzeit streiten würde.
+
+        Erwünschte Nebenwirkung: der Abruf hält die Sitzung am Leben (der
+        Server ruft dabei `Touch()`) — dasselbe, was im Browser dafür sorgt,
+        dass eine pausierte Wiedergabe nicht nach einer halben Stunde
+        weggeräumt wird.
+
+        `positionSec` ist ABSOLUT (Startsekunde der Umwandlung plus das, was
+        ffmpeg seither erzeugt hat) — nicht relativ zum Anfang dieser
+        Umwandlung. Wer daraus einen Vorlauf rechnet, muss die Position des
+        Abspielers ebenfalls absolut nehmen, sonst ist das Ergebnis um den
+        Zeitversatz zu gross (genau dieser Fehler steckte bis 2026-09-13 im
+        Browser)."""
+        return self.get(f"/api/transcode/{item_id}/progress", params) or {}
+
+    def measure_throughput(self, item_id: int, byte_count: int = 4 << 20) -> tuple[float, int, float]:
+        """Misst die Übertragungsrate vom Server. Liefert (Bit/s, Bytes, Sekunden).
+
+        Holt den Anfang der Originaldatei per Bereichsabruf und stoppt die
+        Zeit. Bewusst eine Messung auf Knopfdruck statt einer Daueranzeige:
+        die tatsächliche Rate des Abspielers ist nicht auslesbar, weil
+        `Gtk.MediaFile` GStreamer vollständig kapselt — und eine Dauermessung
+        nebenher würde dem laufenden Stream Bandbreite wegnehmen, also genau
+        das Problem verschlimmern, das man gerade untersucht.
+
+        `/api/stream/{id}` statt `/api/download/{id}`: der Download-Endpunkt
+        schreibt seit Server-1.3.39 einen Protokoll-Eintrag, eine Messung
+        würde das Protokoll mit Schein-Downloads zumüllen."""
+        url = self._url(f"/api/stream/{item_id}")
+        headers = {"Range": f"bytes=0-{byte_count - 1}"}
+        started = time.monotonic()
+        read = 0
+        try:
+            with self.session.get(url, headers=headers, stream=True, timeout=30) as resp:
+                if resp.status_code >= 400:
+                    raise GoldfishAPIError(f"Messung fehlgeschlagen (HTTP {resp.status_code})")
+                for chunk in resp.iter_content(64 * 1024):
+                    read += len(chunk)
+                    if read >= byte_count:
+                        break
+        except requests.RequestException as exc:
+            raise GoldfishAPIError(f"Messung fehlgeschlagen: {exc}") from exc
+        elapsed = max(time.monotonic() - started, 1e-6)
+        return read * 8 / elapsed, read, elapsed
+
     def playback_start(self, item_id: int) -> None:
         try:
             self.post(f"/api/playback/{item_id}/start")

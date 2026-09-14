@@ -1,3 +1,26 @@
+goldfish-linux (0.1.40-1) unstable; urgency=medium
+
+  * Neuer Info-Knopf oben rechts im Wiedergabefenster (Vorbild: Plex'
+    Wiedergabe-Info). Zeigt live, was beim Abspielen wirklich passiert:
+    Modus (direkte Wiedergabe oder serverseitige Umwandlung inkl. Stufe),
+    Server-Vorlauf in Sekunden — farblich abgestuft, weil ein gegen null
+    laufender Vorlauf genau das ist, was gleich zum Stocken führt —,
+    Position, Auflösung und Codec der Quelle, die tatsächlich ausgelieferte
+    Auflösung, die Tonspur sowie eine Durchsatzmessung auf Knopfdruck.
+  * Der Puffer des Abspielers, ausgelassene Bilder und die laufende
+    Netzwerkrate fehlen bewusst: der Player benutzt "Gtk.MediaFile", das
+    GStreamer vollständig kapselt und ausser Position, Dauer und Auflösung
+    nichts preisgibt. Diese drei Werte gäbe es erst mit einem Austausch des
+    Abspielkerns gegen eine eigene GStreamer-Pipeline. Als Ersatz sagt der
+    Server-Vorlauf bei Umwandlung dasselbe aus, und die Netzwerkrate lässt
+    sich im selben Fenster messen.
+  * Der Knopf "Gesehen" ist im eingeschalteten Zustand jetzt grün. Vorher war
+    er auf der Detailseite nur "eingedrückt" (in libadwaita ein minimal
+    dunklerer Grauton) und auf der Kachel nur deckend statt halbtransparent
+    weiss — beides war als Zustandsanzeige praktisch nicht erkennbar.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 14:24:15 +0200
+
 goldfish-linux (0.1.39-1) unstable; urgency=medium
 
   * App identifiziert sich jetzt eigens am Server (X-Goldfish-Client-Header,

@@ -584,11 +584,19 @@ class DetailPage(Adw.NavigationPage):
     # -- Gesehen und Favorit ---------------------------------------------
 
     def _update_watched_label(self) -> None:
-        # Der Zustand steht jetzt in der Kurzhilfe, nicht in der Beschriftung —
-        # der Knopf selbst zeigt ein Symbol und ist eingedrückt, wenn gesehen.
+        # Zustand in der Kurzhilfe UND als Farbe: der eingedrückte Zustand
+        # eines libadwaita-Umschaltknopfs ist nur ein minimal dunklerer
+        # Grauton und als Anzeige unbrauchbar (User 2026-09-14: "So erkennt
+        # man gar nichts"). `gf-watched-on` kommt aus dem Stylesheet in
+        # widgets/card.py, das diese Seite ohnehin lädt.
+        watched = self.watched_toggle.get_active()
         self.watched_toggle.set_tooltip_text(
-            "Als ungesehen markieren" if self.watched_toggle.get_active() else "Als gesehen markieren"
+            "Als ungesehen markieren" if watched else "Als gesehen markieren"
         )
+        if watched:
+            self.watched_toggle.add_css_class("gf-watched-on")
+        else:
+            self.watched_toggle.remove_css_class("gf-watched-on")
 
     def _update_favorite_label(self) -> None:
         self.favorite_toggle.set_tooltip_text(
