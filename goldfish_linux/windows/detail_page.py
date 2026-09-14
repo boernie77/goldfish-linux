@@ -19,7 +19,9 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+gi.require_version("Gst", "1.0")
+gi.require_version("GstPbutils", "1.0")
+from gi.repository import Adw, GLib, Gst, GstPbutils, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError, PlaybackProfile  # noqa: E402
 from ..formatting import (  # noqa: E402
@@ -34,6 +36,19 @@ from ..widgets.card import ensure_card_css  # noqa: E402
 from ..widgets.cast import CastStrip  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
 from .player_window import close_player, open_player  # noqa: E402
+
+_gst_ready = False
+
+
+def _ensure_gst() -> None:
+    """Einmalige `Gst.init` — dieselbe Bibliothek/Technik wie beim Einlesen
+    lokaler Bibliotheken (siehe local_library.py), hier für die Auflösung
+    heruntergeladener Dateien genutzt (die Download-Registry speichert nur
+    die Dateigröße, keine Auflösung)."""
+    global _gst_ready
+    if not _gst_ready:
+        Gst.init(None)
+        _gst_ready = True
 
 
 def _icon_label(icon: str, text: str) -> Gtk.Box:
@@ -86,6 +101,13 @@ class DetailPage(Adw.NavigationPage):
         self._audio_streams: list[dict] = []
         self._subtitle_streams: list[dict] = []
         self._profiles: list[PlaybackProfile] = []
+        # User-Wunsch 2026-09-14: "wenn ein Video heruntergeladen worden ist,
+        # soll auf der Infoseite stehen, wie die Auflösung des Downloads ist,
+        # und die Größe" — die Chips oben (format_resolution/format_size)
+        # beschreiben die ORIGINALDATEI auf dem Server, ein Download kann seit
+        # "Optimierte Downloads" davon abweichen. Größe kommt sofort aus der
+        # Registry, Auflösung erst nach dem asynchronen Discoverer-Lauf.
+        self._download_resolution: str | None = None
 
         box.append(self._build_head())
         self.stream_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -98,6 +120,7 @@ class DetailPage(Adw.NavigationPage):
         self.download_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, valign=Gtk.Align.CENTER)
         box.append(self._build_buttons())
         self._refresh_download_ui()
+        self._probe_download_resolution()
 
         if metadata.get("id"):
             box.append(CastStrip(ctx.client, int(metadata["id"]), on_person=self._open_person))
@@ -172,6 +195,12 @@ class DetailPage(Adw.NavigationPage):
         rating = metadata.get("rating") or 0
         if rating:
             self.meta_row.append(_chip(f"★ {rating:.1f}"))
+
+        record = self.ctx.downloads.get_record(self.item_id)
+        if record:
+            parts = [p for p in (self._download_resolution, format_size(record.get("sizeBytes") or 0)) if p]
+            if parts:
+                self.meta_row.append(_chip("⬇ " + " · ".join(parts)))
 
     def _build_buttons(self) -> Gtk.Widget:
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.START)
@@ -447,8 +476,10 @@ class DetailPage(Adw.NavigationPage):
         self.item_id = int(variant["id"])
         # Poster und Titel gehören zum Titel, nicht zur Datei — nur die
         # dateibezogenen Kenndaten und der Download-Bereich ändern sich.
+        self._download_resolution = None
         self._fill_meta_row()
         self._refresh_download_ui()
+        self._probe_download_resolution()
 
     def _on_audio_changed(self, drop: Gtk.DropDown, _param) -> None:
         stream = self._audio_streams[drop.get_selected()]
@@ -709,7 +740,10 @@ class DetailPage(Adw.NavigationPage):
     def _on_download_done(self, item_id: int, _local_path: str) -> bool:
         if item_id != self.item_id:
             return False
+        self._download_resolution = None
         self._refresh_download_ui()
+        self._fill_meta_row()
+        self._probe_download_resolution()
         return False
 
     def _on_download_error(self, item_id: int, message: str) -> bool:
@@ -719,6 +753,42 @@ class DetailPage(Adw.NavigationPage):
         self._toast(f"Download fehlgeschlagen: {message}")
         return False
 
+    def _probe_download_resolution(self) -> None:
+        """Ermittelt die Auflösung der heruntergeladenen Datei per GStreamer-
+        Discoverer (dieselbe Technik wie beim Einlesen lokaler Bibliotheken,
+        siehe local_library.py `_inspect`) — die Registry kennt nur die
+        Dateigröße. Läuft im Hintergrund-Thread, `discover_uri` blockiert bis
+        zu einigen Sekunden."""
+        if self._download_resolution is not None:
+            return  # schon ermittelt (z.B. nach Versionswechsel zurück)
+        path = self.ctx.downloads.local_path(self.item_id)
+        if not path:
+            return
+        item_id = self.item_id
+
+        def worker() -> None:
+            _ensure_gst()
+            width = height = 0
+            try:
+                discoverer = GstPbutils.Discoverer.new(10 * Gst.SECOND)
+                info = discoverer.discover_uri(path.as_uri())
+                streams = info.get_video_streams()
+                if streams:
+                    width = streams[0].get_width()
+                    height = streams[0].get_height()
+            except GLib.Error:
+                pass  # unlesbare Datei: Chip zeigt dann nur die Größe
+            GLib.idle_add(self._apply_download_resolution, item_id, width, height)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_download_resolution(self, item_id: int, width: int, height: int) -> bool:
+        if item_id != self.item_id:
+            return False  # inzwischen Version gewechselt, Ergebnis verwerfen
+        self._download_resolution = format_resolution(width, height) if width and height else ""
+        self._fill_meta_row()
+        return False
+
     def _on_play_offline(self, *_args) -> None:
         path = self.ctx.downloads.local_path(self.item_id)
         if path:
@@ -726,7 +796,9 @@ class DetailPage(Adw.NavigationPage):
 
     def _on_delete_download(self, *_args) -> None:
         self.ctx.downloads.delete_download(self.item_id)
+        self._download_resolution = None
         self._refresh_download_ui()
+        self._fill_meta_row()
 
 
 # -- kleine Bausteine ---------------------------------------------------

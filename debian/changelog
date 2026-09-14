@@ -1,3 +1,16 @@
+goldfish-linux (0.1.46-1) unstable; urgency=medium
+
+  * Neue Plakette auf der Infoseite: bei einem heruntergeladenen Titel steht
+    jetzt zusätzlich "⬇ <Auflösung> · <Größe>" der tatsächlichen lokalen
+    Datei. Relevant, seit der Server beim Herunterladen eine kleinere
+    Qualitätsstufe erzeugen kann — die Datei entspricht dann nicht mehr den
+    Kenndaten der Originaldatei, die oben ohnehin schon stehen. Die Größe
+    kommt sofort aus der Download-Liste, die Auflösung wird im Hintergrund
+    mit GStreamer aus der Datei gelesen (dieselbe Technik wie beim Einlesen
+    lokaler Bibliotheken) und erscheint kurz danach.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 17:15:00 +0200
+
 goldfish-linux (0.1.45-1) unstable; urgency=medium
 
   * Im Aktivitätsprotokoll des Servers standen mehrere "Wiedergabe

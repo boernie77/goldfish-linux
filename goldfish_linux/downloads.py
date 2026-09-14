@@ -66,6 +66,15 @@ class DownloadManager:
             return Path(rec["path"])
         return None
 
+    def get_record(self, item_id: int) -> dict | None:
+        """Der rohe Registry-Eintrag (u.a. `sizeBytes`) — `None`, wenn nicht
+        heruntergeladen oder die Datei inzwischen fehlt. Für die Detailseite,
+        die daraus die Download-Kenndaten anzeigt."""
+        rec = self._registry.get(str(item_id))
+        if rec and Path(rec["path"]).exists():
+            return rec
+        return None
+
     def delete_download(self, item_id: int) -> None:
         rec = self._registry.pop(str(item_id), None)
         if rec:
