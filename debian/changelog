@@ -1,3 +1,26 @@
+goldfish-linux (0.1.43-1) unstable; urgency=medium
+
+  * Der Fortschrittsbalken im Wiedergabefenster blieb stehen, während Position
+    und Dauer weiterliefen — besonders auffällig beim Weiterschalten im
+    Zufallsmodus (gemeldet mit 0:25 von 40:50 bei 60 % Balken und 0:07 von
+    47:57 bei 27 %). Ursache: beim Spulen wird `_seeking` gesetzt, damit der
+    Griff nicht zurückspringt, und nur beim Loslassen wieder gelöscht. Bricht
+    GTK die Zieh-Geste ab — was beim Spulen in einer laufenden Umwandlung
+    passiert, weil der Sprung mitten im Ziehen das Medium austauscht — kommt
+    das Loslassen nie an, und die Zeitleiste wurde von da an nie mehr
+    nachgeführt. Jetzt dreifach abgesichert: die abgebrochene Geste zählt wie
+    ein Loslassen, jedes neue Medium beendet ein Spulen, und beim Umschalten
+    auf ein anderes Video wird zusätzlich die Zeitleiste auf den Anfang und
+    die neue Dauer gesetzt.
+  * Die Vorschaubilder erscheinen jetzt auch, wenn der Mauszeiger UNTER der
+    Zeitleiste steht, nicht nur darüber. Eine waagerechte Box richtet ihre
+    Kinder an der Basislinie aus, wodurch die Zeitleiste am oberen Rand der
+    Steuerleiste klebte: nachgemessen 46 px Leiste, 34 px Zeitleiste bei y=0,
+    also 0 px Trefferfläche oben und 12 px tote Zone unten. Die Zeitleiste
+    dehnt sich jetzt über die volle Höhe der Steuerleiste.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 16:09:47 +0200
+
 goldfish-linux (0.1.42-1) unstable; urgency=medium
 
   * Der Knopf "Gesehen" färbt jetzt die ganze Fläche grün statt nur den Haken

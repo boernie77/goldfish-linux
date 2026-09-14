@@ -297,13 +297,31 @@ class PlayerWindow(Adw.Window):
         # gleich dünn, unabhängig von der Widget-Höhe; nur die unsichtbare
         # Hover-/Klickfläche drumherum wird größer. Reine Höhenänderung, keine
         # Breitenänderung, verändert also nichts am Aussehen der Zeitleiste.
+        #
+        # `vexpand` + `valign=FILL` sind dabei entscheidend (User-Report
+        # 2026-09-14: "Hoverbereich ist nur über der Zeitleiste, nicht
+        # darunter"): eine waagerechte Gtk.Box richtet ihre Kinder an der
+        # BASISLINIE aus, die Zeitleiste klebte dadurch am oberen Rand.
+        # Nachgemessen: Leiste 46 px hoch, Zeitleiste 34 px bei y=0..34 —
+        # oben 0 px toter Raum, unten 12 px. Mit Dehnung füllt sie die
+        # Leistenhöhe und die Trefferfläche liegt symmetrisch um die Rille.
         self.scale.set_size_request(-1, 32)
+        self.scale.set_vexpand(True)
+        self.scale.set_valign(Gtk.Align.FILL)
         self.scale.connect("change-value", self._on_scale_change)
         # Während des Ziehens nicht aus dem Medium lesen, sonst springt der
         # Griff zurück, solange die Wiedergabe der neuen Position nachläuft.
         press = Gtk.GestureClick()
         press.connect("pressed", lambda *_: setattr(self, "_seeking", True))
         press.connect("released", lambda *_: setattr(self, "_seeking", False))
+        # "cancel" MUSS mit: bricht GTK die Geste ab, kommt "released" NIE.
+        # Genau das passiert beim Spulen in einer laufenden Umwandlung — der
+        # Sprung tauscht mitten im Ziehen das Medium aus. `_seeking` blieb
+        # dann für immer wahr, und weil `_tick` die Zeitleiste nur bei
+        # `not _seeking` nachführt, fror der Balken ein: die Beschriftungen
+        # liefen weiter, der Knopf blieb stehen (User-Report 2026-09-14, zwei
+        # Screenshots mit 0:25 von 40:50 bei 60 % und 0:07 von 47:57 bei 27 %).
+        press.connect("cancel", lambda *_: setattr(self, "_seeking", False))
         self.scale.add_controller(press)
 
         motion = Gtk.EventControllerMotion()
@@ -453,6 +471,10 @@ class PlayerWindow(Adw.Window):
         self._release_media()
 
         media = Gtk.MediaFile.new_for_file(Gio.File.new_for_uri(uri))
+        # Ein neues Medium beendet jedes laufende Spulen — unabhängig davon,
+        # ob die Geste sauber endete. Zweite Absicherung gegen den
+        # eingefrorenen Fortschrittsbalken (siehe "cancel" oben).
+        self._seeking = False
         self._virtual_offset = virtual_offset
         self.media = media
         self.picture.set_paintable(media)
@@ -812,6 +834,14 @@ class PlayerWindow(Adw.Window):
         self._virtual_offset = 0.0
         self._duration = float(self.item.get("durationSec") or 0)
         self._fresh_token = str(int(time.time() * 1000))
+        # Dritte Absicherung: beim Umschalten auf ein anderes Video zaehlt
+        # kein Spulen von vorhin mehr. Die Zeitleiste wird gleich mit auf den
+        # Anfang gesetzt, sonst zeigt sie bis zum naechsten Takt noch den
+        # Stand des vorherigen Titels.
+        self._seeking = False
+        adjustment = self.scale.get_adjustment()
+        adjustment.set_upper(self._duration if self._duration > 0 else 1)
+        adjustment.set_value(0)
 
         self.start_position = 0.0
         title = self._title_for(self.item, None)
