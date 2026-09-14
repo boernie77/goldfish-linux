@@ -298,16 +298,22 @@ class PlayerWindow(Adw.Window):
         # Hover-/Klickfläche drumherum wird größer. Reine Höhenänderung, keine
         # Breitenänderung, verändert also nichts am Aussehen der Zeitleiste.
         #
-        # `vexpand` + `valign=FILL` sind dabei entscheidend (User-Report
+        # Die Trefferfläche liegt SYMMETRISCH um die Rille (User-Report
         # 2026-09-14: "Hoverbereich ist nur über der Zeitleiste, nicht
-        # darunter"): eine waagerechte Gtk.Box richtet ihre Kinder an der
-        # BASISLINIE aus, die Zeitleiste klebte dadurch am oberen Rand.
-        # Nachgemessen: Leiste 46 px hoch, Zeitleiste 34 px bei y=0..34 —
-        # oben 0 px toter Raum, unten 12 px. Mit Dehnung füllt sie die
-        # Leistenhöhe und die Trefferfläche liegt symmetrisch um die Rille.
-        self.scale.set_size_request(-1, 32)
-        self.scale.set_vexpand(True)
-        self.scale.set_valign(Gtk.Align.FILL)
+        # darunter"). Eine waagerechte Gtk.Box richtet ihre Kinder an der
+        # BASISLINIE aus — die Zeitleiste klebte dadurch am oberen Rand der
+        # Steuerleiste: nachgemessen 46 px Leiste, 34 px Zeitleiste bei
+        # y=0..34, also 0 px Trefferfläche oben und 12 px tote Zone unten.
+        #
+        # **NIEMALS `set_vexpand(True)` dafür benutzen.** Dehnung propagiert in
+        # GTK4 nach oben: die Steuerleiste erbt sie vom Kind und nimmt dann in
+        # der senkrechten Box den ganzen Platz des VIDEOS ein. Genau das ist
+        # am 2026-09-14 passiert — die Leiste wuchs auf ein Vielfaches, das
+        # Bild schrumpfte auf einen Streifen. `valign=CENTER` zentriert die
+        # angeforderte Höhe stattdessen um die Rille, ohne das Layout
+        # anzufassen.
+        self.scale.set_size_request(-1, 44)
+        self.scale.set_valign(Gtk.Align.CENTER)
         self.scale.connect("change-value", self._on_scale_change)
         # Während des Ziehens nicht aus dem Medium lesen, sonst springt der
         # Griff zurück, solange die Wiedergabe der neuen Position nachläuft.
@@ -324,10 +330,12 @@ class PlayerWindow(Adw.Window):
         press.connect("cancel", lambda *_: setattr(self, "_seeking", False))
         self.scale.add_controller(press)
 
-        motion = Gtk.EventControllerMotion()
-        motion.connect("motion", self._on_scale_motion)
-        motion.connect("leave", lambda *_: self._hide_preview())
-        self.scale.add_controller(motion)
+        # Der Hover-Melder sitzt NICHT auf der Zeitleiste, sondern auf der
+        # ganzen Steuerleiste (siehe _on_bar_motion). Auf der Zeitleiste wäre
+        # die Trefferfläche zwangsläufig deren eigene Höhe — der Nutzer musste
+        # den Zeiger "ganz genau" auf die Rille setzen, und unterhalb kam gar
+        # nichts (User-Report 2026-09-14, zweimal). Über der Leiste hat man die
+        # volle Höhe zur Verfügung, ober- UND unterhalb der Rille.
         bar.append(self.scale)
 
         self.duration_label = Gtk.Label(label="0:00")
@@ -371,6 +379,13 @@ class PlayerWindow(Adw.Window):
         preview_box.append(self.preview_label)
         self.preview = Gtk.Popover(child=preview_box, autohide=False, has_arrow=True)
         self.preview.set_parent(self.scale)
+        # Hover über der GANZEN Leiste meldet Vorschaubilder (siehe
+        # _on_bar_motion). Muss hier stehen, nicht im Konstruktor: `bar` ist
+        # erst jetzt fertig aufgebaut.
+        bar_motion = Gtk.EventControllerMotion()
+        bar_motion.connect("motion", self._on_bar_motion)
+        bar_motion.connect("leave", lambda *_: self._hide_preview())
+        bar.add_controller(bar_motion)
         return bar
 
     def _wire_input(self) -> None:
@@ -700,6 +715,25 @@ class PlayerWindow(Adw.Window):
         self._sprite = loader.get_pixbuf()
         self._trickplay = cues
         return False
+
+    def _on_bar_motion(self, _controller, x: float, _y: float) -> None:
+        """Vorschaubild anzeigen, solange der Zeiger waagerecht über der
+        Zeitleiste steht — unabhängig davon, wie hoch er in der Steuerleiste
+        liegt.
+
+        Die x-Koordinate kommt relativ zur Steuerleiste und wird hier in die
+        Koordinaten der Zeitleiste umgerechnet; senkrecht wird bewusst NICHT
+        geprüft, das ist der ganze Zweck. Außerhalb des waagerechten Bereichs
+        (über den Knöpfen, der Zeitanzeige, dem Lautstärkeregler) verschwindet
+        das Vorschaubild wieder."""
+        ok, rect = self.scale.compute_bounds(self.bar)
+        if not ok:
+            return
+        left, width = rect.origin.x, rect.size.width
+        if width <= 0 or x < left or x > left + width:
+            self._hide_preview()
+            return
+        self._on_scale_motion(None, x - left, 0.0)
 
     def _on_scale_motion(self, _controller, x: float, _y: float) -> None:
         if not self._trickplay or self._sprite is None:

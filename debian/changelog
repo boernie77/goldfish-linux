@@ -1,3 +1,21 @@
+goldfish-linux (0.1.44-1) unstable; urgency=medium
+
+  * Rücknahme eines Fehlers aus 0.1.43: die Steuerleiste blähte sich auf ein
+    Vielfaches auf und quetschte das Videobild zusammen, das Vorschaubild
+    erschien klein am oberen Rand. Ursache war `vexpand` auf der Zeitleiste —
+    Dehnung wird in GTK4 nach oben weitergereicht, die Steuerleiste erbte sie
+    und nahm in der senkrechten Anordnung den Platz des Videos ein. Gemessen:
+    Videobereich jetzt wieder 578 px, Steuerleiste 44 px.
+  * Und der eigentliche Punkt, der in 0.1.43 nicht gelöst war: die
+    Vorschaubilder erscheinen jetzt wirklich auch UNTERHALB der Zeitleiste.
+    Der Hover-Melder saß auf der Zeitleiste selbst, seine Trefferfläche war
+    damit zwangsläufig auf deren Höhe begrenzt. Er sitzt jetzt auf der
+    gesamten Steuerleiste und rechnet die Position auf die Zeitleiste um —
+    senkrecht wird gar nicht mehr geprüft, waagerecht schon: über den Knöpfen,
+    der Zeitanzeige und dem Lautstärkeregler kommt weiterhin nichts.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 16:25:21 +0200
+
 goldfish-linux (0.1.43-1) unstable; urgency=medium
 
   * Der Fortschrittsbalken im Wiedergabefenster blieb stehen, während Position
