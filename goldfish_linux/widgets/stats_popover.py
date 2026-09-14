@@ -14,7 +14,7 @@ Bilder und die laufende Netzwerkrate. Der Player benutzt `Gtk.MediaFile`,
 das GStreamer vollständig kapselt: `Gtk.MediaStream` kennt ausschliesslich
 `timestamp`, `duration`, `seekable`, `playing`, `volume` und die Auflösung
 über das Paintable — keine Puffer-, Bild- oder Bitratenwerte, und an die
-Pipeline dahinter kommt man von aussen nicht heran. Diese drei Werte gäbe es
+Pipeline dahinter kommt man von außen nicht heran. Diese drei Werte gäbe es
 erst mit einem Umbau auf eine eigene GStreamer-Pipeline (`playbin3` + eigene
 Bus-Überwachung), also mit einem Austausch des kompletten Abspielkerns.
 Ersatz bis dahin: der Server-Vorlauf sagt bei serverseitiger Umwandlung
@@ -170,7 +170,7 @@ def format_ahead(seconds: float | None, done: bool, transcoding: bool) -> tuple[
         return "entfällt (direkte Wiedergabe)", None
     if seconds is None:
         # Der Stand kommt aus einem Abruf beim Server, der im Hintergrund
-        # laeuft — beim Aufklappen ist er noch nicht da. Ein "—" laese sich
+        # läuft — beim Aufklappen ist er noch nicht da. Ein "—" laese sich
         # nicht von "es gibt keinen Vorlauf" unterscheiden.
         return "wird ermittelt …", None
     if done:

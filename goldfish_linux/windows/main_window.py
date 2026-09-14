@@ -137,11 +137,16 @@ class MainWindow(Adw.ApplicationWindow):
         sidebar_header = Adw.HeaderBar()
         sidebar_header.set_title_widget(Adw.WindowTitle(title="Goldfish", subtitle=username))
 
-        menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
-        menu = Gio.Menu()
-        menu.append("Abmelden", "app.logout")
-        menu_button.set_menu_model(menu)
-        sidebar_header.pack_end(menu_button)
+        self.menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic")
+        self.menu = Gio.Menu()
+        # Position 0: der Eintrag wechselt seine Beschriftung, sobald eine
+        # neue Fassung bekannt ist (siehe set_update_available). Gio.Menu
+        # kennt kein Umbenennen — ein Eintrag wird entfernt und neu gesetzt,
+        # deshalb muss seine Position bekannt bleiben.
+        self.menu.append("Nach Aktualisierungen suchen", "app.check_update")
+        self.menu.append("Abmelden", "app.logout")
+        self.menu_button.set_menu_model(self.menu)
+        sidebar_header.pack_end(self.menu_button)
         sidebar_toolbar.add_top_bar(sidebar_header)
 
         self.sidebar_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
@@ -159,7 +164,7 @@ class MainWindow(Adw.ApplicationWindow):
         sidebar_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         sidebar_content.append(sidebar_scrolled)
 
-        version_label = Gtk.Label(
+        self.version_label = version_label = Gtk.Label(
             label=f"Goldfish Linux {__version__}",
             xalign=0,
             margin_top=6,
@@ -416,6 +421,23 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             page = BrowsePage(self.ctx, self.nav_view, row.library)
         self.nav_view.push(page)
+
+    def set_update_available(self, version: str) -> None:
+        """Meldet eine verfuegbare neue Fassung — im Menue und unter der
+        Seitenleiste, aber ohne Dialog.
+
+        Bewusst zurueckhaltend: die stille Suche laeuft kurz nach dem Start,
+        und ein Dialog, der ungefragt ueber der Bibliothek aufgeht, waere
+        genau die Sorte Unterbrechung, die man von einer Medien-App nicht
+        will. Wer den Hinweis sieht, klickt ihn an."""
+        self.menu.remove(0)
+        self.menu.insert(0, f"Aktualisierung auf {version} einspielen", "app.check_update")
+        # Der Menue-Knopf selbst bekommt die Akzentfarbe, sonst faende man den
+        # Hinweis nur, wenn man das Menue ohnehin oeffnet.
+        self.menu_button.add_css_class("suggested-action")
+        self.menu_button.set_tooltip_text(f"Aktualisierung auf {version} verfügbar")
+        self.version_label.set_label(f"Goldfish Linux {__version__} · {version} verfügbar")
+        self.version_label.remove_css_class("dim-label")
 
     def show_toast(self, message: str) -> bool:
         """Öffentlich, weil auch die Unterseiten (BrowsePage & Co.) darüber

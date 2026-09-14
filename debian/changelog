@@ -1,3 +1,25 @@
+goldfish-linux (0.1.41-1) unstable; urgency=medium
+
+  * Neuer Menüeintrag "Nach Aktualisierungen suchen": holt die neueste
+    Freigabe von GitHub, zeigt die Änderungen an und spielt das Paket nach
+    Bestätigung ein (über die Rechteabfrage von PolicyKit, wie jede andere
+    Paketinstallation). Bisher musste man jede neue Fassung von Hand auf
+    GitHub suchen und installieren.
+  * Kurz nach dem Start wird einmal still im Hintergrund geprüft, ob es etwas
+    Neues gibt. Wenn ja, benennt sich der Menüeintrag in "Aktualisierung auf
+    X einspielen" um, der Menüknopf wird hervorgehoben und unter der
+    Seitenleiste steht "0.1.41 · X verfügbar". Bewusst ohne Dialog: eine
+    Medien-App soll beim Start nicht dazwischenfunken. Schlägt die stille
+    Prüfung fehl (etwa ohne Netz), bleibt sie stumm.
+  * Sicherheit: die Adresse der GitHub-Schnittstelle steht fest im Programm,
+    und die Bezugsquelle des Pakets wird vor UND nach dem Umleiten gegen eine
+    Liste erlaubter Rechnernamen geprüft. Ein Paket von einer fremden Adresse
+    wird abgelehnt statt geladen. Eingespielt wird mit "apt-get install", weil
+    das fehlende Abhängigkeiten nachzieht — "dpkg -i" bräche mit halb
+    eingerichtetem Paket ab.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 14:33:11 +0200
+
 goldfish-linux (0.1.40-1) unstable; urgency=medium
 
   * Neuer Info-Knopf oben rechts im Wiedergabefenster (Vorbild: Plex'
