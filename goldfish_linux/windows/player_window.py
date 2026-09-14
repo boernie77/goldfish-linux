@@ -150,6 +150,13 @@ class PlayerWindow(Adw.Window):
         self.random_index = 0
 
         self._stop_reported = False
+        # Gegenstueck zu _stop_reported: der Server bekommt pro Titel GENAU
+        # EINEN "play"-Eintrag. Ohne das meldet jeder Sprung einen neuen
+        # Wiedergabe-Start — `_play_uri` laeuft bei laufender Umwandlung ja
+        # auch beim Spulen, weil dort eine neue Umwandlung ab der Zielsekunde
+        # beginnt. Im Protokoll standen dadurch fuenf "play" fuer dasselbe
+        # Video in derselben Sekunde (User-Report 2026-09-14).
+        self._start_reported = False
         self._seeking = False
         self._last_resume_sent = 0.0
         self._watched_marked = False
@@ -500,7 +507,8 @@ class PlayerWindow(Adw.Window):
         ]
         media.set_volume(self.volume.get_value())
         media.play()
-        if not self.direct_url and not self.local_path:
+        if not self.direct_url and not self.local_path and not self._start_reported:
+            self._start_reported = True
             self._background(lambda: self.client.playback_start(self.item_id))
         return False
 
@@ -858,6 +866,7 @@ class PlayerWindow(Adw.Window):
         # Datei (bzw. es wird vergeblich der Server gefragt).
         self.local_path = item.get("path") if item.get("local") else None
         self._stop_reported = False
+        self._start_reported = False
         self._watched_marked = False
         self._last_resume_sent = 0.0
         self._track = None

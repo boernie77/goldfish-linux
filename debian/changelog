@@ -1,3 +1,16 @@
+goldfish-linux (0.1.45-1) unstable; urgency=medium
+
+  * Im Aktivitätsprotokoll des Servers standen mehrere "Wiedergabe
+    gestartet"-Einträge für denselben Titel (gemeldet: fünf in derselben
+    Sekunde). Ursache: gemeldet wurde bei jedem Medienwechsel — und bei
+    laufender Umwandlung wechselt das Medium auch beim SPULEN, weil dort eine
+    neue Umwandlung ab der Zielsekunde beginnt. Jeder Sprung erzeugte so einen
+    zusätzlichen Eintrag. Jetzt gibt es pro Titel genau eine Meldung,
+    zurückgesetzt erst beim Umschalten auf ein anderes Video — analog zur
+    schon vorhandenen Logik für das Wiedergabe-Ende.
+
+ -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 16:40:39 +0200
+
 goldfish-linux (0.1.44-1) unstable; urgency=medium
 
   * Rücknahme eines Fehlers aus 0.1.43: die Steuerleiste blähte sich auf ein
