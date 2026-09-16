@@ -1,3 +1,17 @@
+goldfish-linux (0.1.47-1) unstable; urgency=medium
+
+  * Vollbild-Umschalter im Player repariert: der Fenstermanager wendet
+    fullscreen()/unfullscreen() asynchron an, der Code hat Kopfleiste/
+    Steuerleiste/Icon aber bisher SOFORT nach dem Aufruf umgeschaltet.
+    Dadurch verschwand die Kopfleiste (samt Schließen-Knopf) manchmal,
+    ohne dass das Fenster tatsächlich in den Vollbildmodus wechselte —
+    ein zweiter Klick ging dann vom falschen Zustand aus und blieb in
+    der Kopfleisten-losen Sackgasse hängen. Header/Leiste/Icon werden
+    jetzt erst über das "notify::fullscreened"-Signal aktualisiert,
+    sobald der Fenstermanager den neuen Zustand bestätigt hat.
+
+ -- Christian <boernie77@gmail.com>  Tue, 16 Sep 2026 12:00:00 +0200
+
 goldfish-linux (0.1.46-1) unstable; urgency=medium
 
   * Neue Plakette auf der Infoseite: bei einem heruntergeladenen Titel steht

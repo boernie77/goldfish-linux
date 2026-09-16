@@ -192,6 +192,16 @@ class PlayerWindow(Adw.Window):
         self._wire_input()
 
         self.connect("close-request", self._on_close_request)
+        # Der Fenstermanager wendet fullscreen()/unfullscreen() ASYNCHRON an —
+        # is_fullscreen() liefert direkt danach oft noch den ALTEN Zustand
+        # (User-Report 2026-09-16: Kopfleiste verschwand sofort, das Fenster
+        # blieb aber im Fenstermodus; ein zweiter Klick tat scheinbar nichts,
+        # weil toggle_fullscreen() erneut vom falschen Ausgangszustand ausging
+        # und wieder fullscreen() statt unfullscreen() rief — self-verstärkend
+        # blieb man in der Kopfleisten-losen Sackgasse hängen). Header/Leiste/
+        # Icon werden deshalb erst hier aktualisiert, sobald der WM den neuen
+        # Zustand tatsächlich bestätigt (notify::fullscreened, GTK 4.6+).
+        self.connect("notify::fullscreened", self._on_fullscreen_changed)
         GLib.timeout_add(_TICK_MS, self._tick)
 
         self._start_playback()
@@ -659,16 +669,24 @@ class PlayerWindow(Adw.Window):
             self.media.pause()
 
     def toggle_fullscreen(self) -> None:
+        # Nur die Anfrage an den Fenstermanager stellen — Header/Leiste/Icon
+        # werden erst in _on_fullscreen_changed() aktualisiert, sobald die
+        # Anfrage tatsächlich angewendet wurde (siehe Kommentar am
+        # notify::fullscreened-Connect im Konstruktor).
         if self.is_fullscreen():
             self.unfullscreen()
-            self.header.set_visible(True)
-            self.bar.set_visible(True)
-            self.fullscreen_button.set_icon_name("view-fullscreen-symbolic")
         else:
             self.fullscreen()
+
+    def _on_fullscreen_changed(self, *_args) -> None:
+        if self.is_fullscreen():
             self.header.set_visible(False)
             self.fullscreen_button.set_icon_name("view-restore-symbolic")
             self._show_bar_briefly()
+        else:
+            self.header.set_visible(True)
+            self.bar.set_visible(True)
+            self.fullscreen_button.set_icon_name("view-fullscreen-symbolic")
 
     def _show_bar_briefly(self) -> None:
         """Im Vollbild die Leiste zeigen und nach drei Sekunden Ruhe wieder
