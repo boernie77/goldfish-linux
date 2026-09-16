@@ -1129,7 +1129,19 @@ def open_player(ctx, item: dict, **kwargs) -> "PlayerWindow":
     Deshalb: vorher schließen, danach genau eines präsentieren."""
     close_player(ctx)
     window = PlayerWindow(ctx.application, ctx.client, item, **kwargs)
-    window.set_transient_for(ctx.window)
+    # KEIN set_transient_for(ctx.window) mehr (User-Report 2026-09-16: der
+    # Vollbild-Button tat rein GAR NICHTS, solange das Hauptfenster noch
+    # offen war — Kopfleiste blieb sichtbar, Fenstergröße änderte sich
+    # nicht. Funktionierte zuverlässig, sobald das Hauptfenster (und damit
+    # die transient-Beziehung) weg war). Viele Compositor/WM-Implementierungen
+    # (u. a. Cinnamon/Muffin, das der User nutzt) behandeln ein transientes
+    # Fenster wie einen Dialog und ignorieren Vollbild-Anfragen dafür, solange
+    # der Eltern-Toplevel noch existiert — das Wiedergabefenster ist aber ein
+    # vollwertiges, eigenständiges Fenster, kein Dialog. Dialoge, die AUS dem
+    # Player heraus geöffnet werden, hängen ohnehin nicht an dieser Beziehung:
+    # sie holen ihren Parent dynamisch über `ctx.dialog_parent()`
+    # (`application.get_active_window()`), nicht über eine feste
+    # transient_for-Kette zum Hauptfenster.
     window.connect("close-request", lambda *_: _forget_player(ctx, window))
     ctx.player_window = window
     window.present()

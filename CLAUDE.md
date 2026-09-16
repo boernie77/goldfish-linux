@@ -73,6 +73,7 @@ die Stellen, an denen diese App absichtlich von der Mac-App abweicht.
 | 0.1.37 | Warteschlangen-Fenster öffnet wieder (Wiederverwendung statt einer Zeile je Titel), Zufall zieht 200 Titel |
 | 0.1.38 | Echter Fix für unscharfe Kacheln ohne eigenes Cover (0.1.24 griff in der echten Bibliotheksansicht nie, siehe „Unscharfe Vorschaubilder" unten) |
 | 0.1.47 | Vollbild-Button im Player repariert — Header/Leiste/Icon reagierten synchron auf `fullscreen()`/`unfullscreen()`, der WM wendet das aber asynchron an. Fix über `notify::fullscreened`-Signal (User-Report 2026-09-16, **ungetestet auf echtem GTK** — diese Session lief auf macOS ohne GTK-Runtime, nur `py_compile`/`pyflakes` sauber) |
+| 0.1.48 | 0.1.47 reichte nicht — Vollbild tat gar nichts mehr, solange das Hauptfenster offen war, funktionierte aber sofort danach. Ursache: `open_player()` hängte das Wiedergabefenster per `set_transient_for(ctx.window)` ans Hauptfenster — der Compositor (Cinnamon/Muffin) behandelt transiente Fenster wie Dialoge und ignoriert Vollbild-Anfragen dafür. Fix: `set_transient_for()` entfernt (siehe unten). **Weiterhin ungetestet auf echtem GTK.** |
 
 Noch offen (Stand 0.1.17): die vollständige TMDB-Filmografie auf der
 Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die

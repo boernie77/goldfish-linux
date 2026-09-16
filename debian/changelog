@@ -1,3 +1,19 @@
+goldfish-linux (0.1.48-1) unstable; urgency=medium
+
+  * Vollbild-Button im Player repariert (der 0.1.47-Fix reichte nicht):
+    das Wiedergabefenster hing per set_transient_for() am Hauptfenster —
+    solange das Hauptfenster noch offen war, ignorierte der Fenstermanager
+    (u. a. Cinnamon/Muffin) die Vollbild-Anfrage komplett, weil ein
+    transientes Fenster wie ein Dialog behandelt wird. Erst nach dem
+    Schließen des Hauptfensters (und damit der transient-Beziehung)
+    funktionierte der Button. Fix: set_transient_for() entfernt — das
+    Wiedergabefenster ist ein eigenständiges Fenster, kein Dialog. Von
+    innerhalb des Players geöffnete Dialoge (Playlist hinzufügen etc.)
+    sind davon nicht betroffen, sie holen ihren Parent bereits dynamisch
+    über das gerade aktive Fenster.
+
+ -- Christian <boernie77@gmail.com>  Tue, 16 Sep 2026 13:30:00 +0200
+
 goldfish-linux (0.1.47-1) unstable; urgency=medium
 
   * Vollbild-Umschalter im Player repariert: der Fenstermanager wendet
