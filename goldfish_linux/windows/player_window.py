@@ -369,6 +369,13 @@ class PlayerWindow(Adw.Window):
 
         self.position_label = Gtk.Label(label="0:00")
         self.position_label.add_css_class("gf-player-time")
+        # Feste Zeichenbreite: sonst wird der Balken kürzer, sobald die
+        # Beschriftung mehr Zeichen braucht (0:05 → 1:23:45), und länger, wenn
+        # sie wieder kürzer wird — die Zeitleiste soll laut User-Vorgabe
+        # (2026-09-18) IMMER gleich lang bleiben. Breiteste denkbare Angabe
+        # (9:59:59) reservieren, ohne den Text selbst aufzublähen.
+        self.position_label.set_width_chars(7)
+        self.position_label.set_xalign(1.0)
         bar.append(self.position_label)
 
         self.scale = Gtk.Scale(
@@ -426,6 +433,9 @@ class PlayerWindow(Adw.Window):
 
         self.duration_label = Gtk.Label(label="0:00")
         self.duration_label.add_css_class("gf-player-time")
+        # Siehe position_label: feste Breite, damit die Zeitleiste ihre Länge
+        # nicht mit der Textlänge ändert.
+        self.duration_label.set_width_chars(7)
         bar.append(self.duration_label)
 
         # Welche Auflösung gerade wirklich läuft. Die Quelle ist das Medium
@@ -661,13 +671,28 @@ class PlayerWindow(Adw.Window):
         # Bei laufender Umwandlung zählt der Abspieler ab dem Anfang DIESER
         # Umwandlung — der Zeitversatz macht daraus die Stelle im Film.
         position = self._virtual_offset + media.get_timestamp() / 1_000_000
-        duration = self._duration or media.get_duration() / 1_000_000
+        # Gesamtlänge kommt AUSSCHLIESSLICH aus der Item-Dauer vom Server
+        # (siehe Dateikopf) — NIE aus dem laufenden Medium.
+        #
+        # 🔴 User-Report 2026-09-18: „wenn man in die Zeitleiste drückt, um an
+        # eine andere Stelle zu springen, dann wird die Zeitleiste kurz länger
+        # und dann wieder kürzer." Genau das verursachte der Rückfall auf
+        # `media.get_duration()`: ein wachsender HLS-Transcode meldet eine
+        # Dauer, die mit dem erzeugten Material wächst, und ein Sprung startet
+        # eine NEUE Umwandlung ab der Zielsekunde — deren Dauer war dann etwas
+        # völlig anderes als die des Films. Die Länge des Balkens (und damit die
+        # Position des Griffs) hing dadurch an einem Wert, der sich beim Springen
+        # änderte. Ist die Dauer unbekannt (0), bleibt die Zeitleiste
+        # unverändert, statt zu raten.
+        duration = self._duration
 
         if duration > 0:
             self.duration_label.set_label(format_duration(duration))
             if not self._seeking:
-                self.scale.get_adjustment().set_upper(duration)
-                self.scale.get_adjustment().set_value(min(position, duration))
+                adjustment = self.scale.get_adjustment()
+                if adjustment.get_upper() != duration:
+                    adjustment.set_upper(duration)
+                adjustment.set_value(min(position, duration))
         self.position_label.set_label(format_duration(position))
         self.play_button.set_icon_name(
             "media-playback-pause-symbolic" if media.get_playing() else "media-playback-start-symbolic"
@@ -720,7 +745,9 @@ class PlayerWindow(Adw.Window):
         Zielsekunde gestartet — derselbe Weg wie im Browser."""
         if self.media is None:
             return
-        duration = self._duration or self.media.get_duration() / 1_000_000
+        # Wie in _tick: die Dauer des Films kommt aus dem Item, nicht aus dem
+        # gerade laufenden (ggf. wachsenden) Transcode.
+        duration = self._duration
         target = max(0.0, absolute_seconds)
         if duration > 0:
             target = min(target, max(0.0, duration - 1))
@@ -1261,8 +1288,13 @@ class PlayerWindow(Adw.Window):
             return
         self._stop_reported = True
         media = self.media
-        position = (media.get_timestamp() / 1_000_000) if media else 0.0
-        duration = (media.get_duration() / 1_000_000) if media and media.get_duration() > 0 else 0.0
+        # Position ABSOLUT im Film: bei laufender Umwandlung zählt das Medium ab
+        # dem Start DIESER Umwandlung (`_virtual_offset`), sonst landete nach
+        # einem Sprung die Position der Sitzung statt der Stelle im Film im
+        # Resume-Punkt. Dauer wie überall aus dem Item (der wachsende Transcode
+        # meldet eine unbrauchbare Dauer) — siehe _tick.
+        position = (self._virtual_offset + media.get_timestamp() / 1_000_000) if media else 0.0
+        duration = self._duration
         item_id = self.item_id
         self._background(lambda: self.client.playback_stop(item_id, reason, position, duration))
         if position > 0:
