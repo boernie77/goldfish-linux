@@ -73,6 +73,15 @@ _RESUME_EVERY_S = 10
 # Browser.
 _WATCHED_AT = 0.9
 
+# Wie lange nach dem Start eines Mediums ein Datenstromfehler als
+# ANLAUF-Problem gilt und automatisch wiederholt wird (siehe _on_media_error).
+# 3 s ist zugleich das Sperrfenster des Servers nach einem gemeldeten
+# Wiedergabe-Ende (er beantwortet eine Anfrage darin mit 503) — wer sofort
+# erneut abspielt, läuft genau hinein.
+_EARLY_ERROR_WINDOW_SEC = 8.0
+_EARLY_ERROR_RETRY_DELAY_MS = 3200
+_EARLY_ERROR_MAX_RETRIES = 2
+
 # Bedenkzeit des Hinweises "Nächste Folge automatisch starten" am Ende einer
 # Serienfolge. Zehn Sekunden wie in den anderen Goldfish-Clients: lang genug,
 # um die Fernbedienung/Maus zu greifen, kurz genug, um nicht zu warten.
@@ -175,6 +184,10 @@ class PlayerWindow(Adw.Window):
         self._refresh_autoplay_pref()
 
         self._stop_reported = False
+        # Automatische Wiederholung bei Anlauf-Fehlern (siehe _on_media_error).
+        self._media_started_at = 0.0
+        self._early_error_retries = 0
+        self._last_uri: str | None = None
         # Gegenstueck zu _stop_reported: der Server bekommt pro Titel GENAU
         # EINEN "play"-Eintrag. Ohne das meldet jeder Sprung einen neuen
         # Wiedergabe-Start — `_play_uri` laeuft bei laufender Umwandlung ja
@@ -599,6 +612,8 @@ class PlayerWindow(Adw.Window):
         # eingefrorenen Fortschrittsbalken (siehe "cancel" oben).
         self._seeking = False
         self._virtual_offset = virtual_offset
+        self._media_started_at = time.monotonic()
+        self._last_uri = uri
         self.media = media
         self.picture.set_paintable(media)
         self._media_handlers = [
@@ -648,6 +663,8 @@ class PlayerWindow(Adw.Window):
             return
         self.busy.stop()
         self.busy.set_visible(False)
+        # Laufender Stream: die Anlauf-Wiederholung ist aus dem Schneider.
+        self._early_error_retries = 0
         # Bei Umwandlung ist die Startstelle schon in der URL enthalten; bei
         # direkter Wiedergabe wird sie hier gesetzt, sobald das Medium bereit
         # ist (vorher lehnt es den Sprung ab).
@@ -1289,10 +1306,47 @@ class PlayerWindow(Adw.Window):
         error = media.get_error()
         if error is None:
             return
+        # Anlauf-Fehler automatisch wiederholen (User-Report 2026-09-18: „Zeile
+        # springt nicht mehr, aber ich bekomme jetzt ständig diesen Fehler").
+        # GStreamer bricht bei JEDER nicht-2xx-Antwort des Stream-Servers sofort
+        # mit „Internal data stream error" ab und versucht es NICHT selbst
+        # erneut — anders als AVPlayer/ExoPlayer. Trifft ein Start ins
+        # 3-Sekunden-Sperrfenster des Servers (er beantwortet eine Anfrage kurz
+        # nach einem gemeldeten Wiedergabe-Ende mit 503), war die Wiedergabe
+        # damit tot, obwohl ein zweiter Versuch Sekunden später problemlos
+        # läuft. Der Mac-Client macht das seit demselben Tag genauso.
+        if (
+            self._early_error_retries < _EARLY_ERROR_MAX_RETRIES
+            and time.monotonic() - self._media_started_at < _EARLY_ERROR_WINDOW_SEC
+        ):
+            self._early_error_retries += 1
+            # Neue Kennung, damit der Server die Umwandlung sicher neu aufsetzt
+            # (die alte _t-Kennung könnte schon verbraucht sein).
+            self._fresh_token = str(int(time.time() * 1000))
+            uri = self._stream_uri(self._virtual_offset) if self._is_transcode else (self._last_uri or "")
+            if uri:
+                GLib.timeout_add(_EARLY_ERROR_RETRY_DELAY_MS, self._retry_playback, uri)
+                # Sichtbares Zeichen: der Ladekreis dreht wieder. Bewusst KEIN
+                # Hinweistext — das Playerfenster hat keine Toast-Fläche, und
+                # eine Fehlermeldung wäre hier falsch (es wird ja erneut
+                # versucht). Auch der Server bekommt in diesem Fall KEINE
+                # Fehlermeldung, nur wenn beide Versuche scheitern.
+                self.busy.set_visible(True)
+                self.busy.start()
+                return
         if not self.direct_url and not self.local_path:
             item_id = self.item_id
             self._background(lambda: self.client.playback_error(item_id, error.message))
         self._show_load_error(error.message)
+
+    def _retry_playback(self, uri: str) -> bool:
+        """Zweiter Anlauf nach einem Fehler direkt nach dem Start (siehe oben).
+
+        `False` als Rückgabewert, damit der GLib-Zeitgeber nicht erneut feuert."""
+        if self.media is not None and self.media.is_prepared() and self._last_uri != uri:
+            return False        # inzwischen läuft etwas anderes — nichts tun
+        GLib.idle_add(self._play_uri, uri, self._virtual_offset)
+        return False
 
     def _on_close_request(self, *_args) -> bool:
         # Erst den Hinweis auf die nächste Folge stilllegen: sein Countdown

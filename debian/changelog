@@ -1,4 +1,22 @@
-goldfish-linux (0.1.53-1) unstable; urgency=medium
+goldfish-linux (0.1.54-1) unstable; urgency=medium
+
+  * Wiedergabe startet nicht mehr mit "Wiedergabe fehlgeschlagen" ins Leere:
+    GStreamer bricht bei jeder Nicht-2xx-Antwort des Servers sofort mit
+    "Internal data stream error" ab und versucht es nicht selbst erneut.
+    Trifft ein Start ins 3-Sekunden-Sperrfenster des Servers (er antwortet
+    direkt nach einem gemeldeten Wiedergabe-Ende mit 503), war die Wiedergabe
+    tot, obwohl ein zweiter Versuch Sekunden später problemlos laeuft. Der
+    Player wiederholt einen Fehler in den ersten 8 Sekunden jetzt zweimal
+    (3,2 s Abstand) und meldet erst dann etwas — Fehlerbericht an den Server
+    nur beim endgueltigen Scheitern.
+  * Updatefenster zeigt nur noch die Highlights: kurze Stichpunkte, mittig,
+    ohne Fliesstext und ohne die Anleitung zum Selber-Installieren.
+  * Gesehen-/Favoriten-Haken verschwindet auf der Kachel, sobald er in der
+    Infokarte entfernt wird.
+
+ -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 14:05:00 +0200
+
+goldfish-linux (0.1.54-1) unstable; urgency=medium
 
   * Zeitleiste springt beim Spulen nicht mehr (User-Report 2026-09-18, zweimal:
     "die Leiste springt"). Ursache war NICHT die Dauer, sondern die

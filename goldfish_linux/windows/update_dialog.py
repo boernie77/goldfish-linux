@@ -6,6 +6,7 @@ sonst um den ganzen Ablauf wachsen wuerde). Hier steht nur die Bedienung.
 
 from __future__ import annotations
 
+import re
 import threading
 from pathlib import Path
 
@@ -18,12 +19,18 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 from .. import __version__  # noqa: E402
 from ..updater import Release, UpdateError, download, install  # noqa: E402
 
-# Die Freigabe-Notizen von GitHub können lang sein; im Dialog reicht der
-# Anfang, alles Weitere steht auf der Freigabe-Seite.
-_NOTES_LIMIT = 4000
-# Höhe des scrollbaren Neuerungs-Bereichs. Feste Höhe: der Kopf darüber soll
-# stehen bleiben, egal wie lang die Notizen sind.
-_NOTES_HEIGHT = 260
+# Kurzfassung im Dialog (User-Vorgabe 2026-09-18: „nicht die ganze Geschichte
+# erzählt werden, sondern nur kurz die Highlights — kurz und prägnant, mittig
+# als Stichpunkte"). Höchstens so viele Punkte, jeder so kurz.
+_HIGHLIGHT_MAX = 5
+_HIGHLIGHT_MAX_CHARS = 110
+
+# Klammerzusätze, die nur Herkunft/Datum nennen (siehe _strip_internal_notes):
+# Wörter wie „User-Report"/„User-Vorgabe" oder ein Datum in der Klammer.
+_INTERNAL_PAREN = re.compile(
+    r"\([^()]*(?:User-Report|User-Vorgabe|User-Wunsch|CLAUDE|siehe |"
+    r"\d{4}-\d{2}-\d{2})[^()]*\)"
+)
 
 
 def _clean_notes(notes: str) -> str:
@@ -72,19 +79,79 @@ def _clean_notes(notes: str) -> str:
     return cleaned or "Keine Beschreibung hinterlegt."
 
 
+def _strip_internal_notes(text: str) -> str:
+    """Interne Klammerzusätze entfernen — sie gehören nicht in eine Kurzfassung.
+
+    Die Änderungsberichte dieses Projekts nennen in Klammern gern Herkunft und
+    Datum („(User-Report 2026-09-18, zweimal: …)", „(User-Vorgabe …)",
+    „(siehe CLAUDE.md …)"). Für den Nutzer ist das Ballast — und die erste
+    Fassung dieser Kürzung schnitt mitten hinein, weil sie nur nach Zeichen
+    zählte. Ein regulärer Ausdruck trifft die Klammer als Ganzes, auch
+    verschachtelte Nebensätze darin bleiben unangetastet.
+    """
+    cleaned = _INTERNAL_PAREN.sub("", text or "")
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([.,;:!?])", r"\1", cleaned)
+    return cleaned.strip()
+
+
+def _highlights(notes: str) -> list[str]:
+    """Kurzfassung der Neuerungen: Stichpunkte, je der erste Satz.
+
+    User-Vorgabe 2026-09-18: im Aktualisierungs-Dialog nicht „die ganze
+    Geschichte", sondern kurz und prägnant die Highlights, mittig als
+    Stichpunkte.
+
+    ⚠ Zuerst werden mehrzeilige Stichpunkte ZUSAMMENGEFÜGT: der Änderungsbericht
+    ist auf ~76 Zeichen umbrochen, ein Punkt besteht also aus mehreren Zeilen.
+    Nur die erste Zeile zu nehmen lieferte Fragmente mitten in einer Klammer
+    („… (User-Report 2026-09-18, zweimal:") — genau das war in der ersten
+    Fassung dieses Kürzens zu sehen.
+    """
+    cleaned = _clean_notes(notes)
+
+    # Logische Stichpunkte bilden: eine Zeile mit Aufzählungszeichen beginnt
+    # einen Punkt, jede folgende Zeile ohne Aufzählungszeichen gehört dazu.
+    bullets: list[str] = []
+    for line in cleaned.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("- ", "* ", "• ")):
+            bullets.append(stripped)
+        elif bullets:
+            bullets[-1] += " " + stripped
+
+    out: list[str] = []
+    for bullet in bullets:
+        text = _strip_internal_notes(bullet.lstrip("-*• ").strip())
+        # Der erste Satz trägt die Aussage; Aufzählungen ohne Punkt bleiben ganz.
+        cut = text.find(". ")
+        if cut > 0:
+            text = text[: cut + 1]
+        text = text.rstrip(". ")
+        if len(text) > _HIGHLIGHT_MAX_CHARS:
+            text = text[:_HIGHLIGHT_MAX_CHARS].rsplit(" ", 1)[0] + " …"
+        if text:
+            out.append(text)
+        if len(out) >= _HIGHLIGHT_MAX:
+            break
+
+    if out:
+        return out
+    first = _strip_internal_notes(cleaned).split(". ")[0].strip().rstrip(".")
+    return [first[: _HIGHLIGHT_MAX_CHARS * 2]] if first else ["Fehlerbehebungen und Verbesserungen."]
+
+
 def offer_update(parent: Gtk.Window, release: Release) -> None:
     """Fragt, ob die neue Fassung eingespielt werden soll.
 
     Aufbau (User-Vorgabe 2026-09-18): Die Zeile mit der installierten und der
-    verfügbaren Fassung steht FEST oben und scrollt nicht mit — vorher stand
-    sie im Fließtext der Notizen und wanderte beim Scrollen weg („die Zeile
-    springt"). Darunter folgt nur noch der Neuerungs-Text in einem eigenen
-    scrollbaren Bereich.
+    verfügbaren Fassung steht FEST oben — vorher stand sie im Fließtext der
+    Notizen und wanderte beim Scrollen weg („die Zeile springt"). Darunter
+    stehen nur noch wenige, mittige Stichpunkte zu den Neuerungen (siehe
+    `_highlights`), kein Fließtext.
     """
-    notes = _clean_notes(release.notes)
-    if len(notes) > _NOTES_LIMIT:
-        notes = notes[:_NOTES_LIMIT].rstrip() + " …"
-
     size = f"  ({release.size / (1 << 20):.1f} MB)" if release.size else ""
 
     # Kopf: fest, nicht scrollbar.
@@ -96,18 +163,23 @@ def offer_update(parent: Gtk.Window, release: Release) -> None:
     head.append(installed)
     head.append(available)
 
-    # Neuerungen: eigener scrollbarer Bereich unter dem festen Kopf.
-    notes_view = Gtk.Label(label=notes, xalign=0, wrap=True, selectable=True,
-                           margin_top=6, margin_bottom=6, margin_start=6, margin_end=12)
-    scroller = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
-    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    scroller.set_size_request(-1, _NOTES_HEIGHT)
-    scroller.set_child(notes_view)
-
+    # Neuerungen: kurze Stichpunkte, mittig. Kein Fließtext, kein Scrollbereich
+    # (max. `_HIGHLIGHT_MAX` kurze Zeilen) — der Kopf darüber bleibt dadurch
+    # automatisch an seinem Platz.
     content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
     content.append(head)
     content.append(Gtk.Separator())
-    content.append(scroller)
+    for point in _highlights(release.notes):
+        bullet = Gtk.Label(
+            label=f"•  {point}",
+            wrap=True,
+            justify=Gtk.Justification.CENTER,
+            halign=Gtk.Align.CENTER,
+            max_width_chars=52,
+            margin_top=2,
+            margin_bottom=2,
+        )
+        content.append(bullet)
 
     dialog = Adw.MessageDialog(
         transient_for=parent,
