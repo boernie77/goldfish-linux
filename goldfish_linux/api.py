@@ -354,6 +354,26 @@ class GoldfishClient:
         das ab und verhält sich dann wie ohne nächste Folge."""
         return self.get(f"/api/items/{item_id}/next-episode") or {}
 
+    def playback_preferences(self) -> dict:
+        """Wiedergabe-Einstellungen des angemeldeten KONTOS.
+
+        `GET /api/playback/preferences` (Server seit v1.4.13) →
+        `{"autoplayNext": bool}`. Bewusst serverseitig und pro Konto: dieselbe
+        Einstellung gilt damit auch in Browser, Apple-, Android- und
+        Fire-TV-App. Der lokale Merker (`ViewPrefs.autoplay_next`) ist nur die
+        Kopie für den Offline-Fall — er wird beim Öffnen der Einstellungen und
+        des Players daraus gespiegelt.
+        """
+        return self.get("/api/playback/preferences") or {}
+
+    def set_playback_preferences(self, autoplay_next: bool) -> None:
+        """`PUT /api/playback/preferences` — schreibt den Pro-Konto-Schalter.
+
+        Nur `autoplayNext` existiert derzeit; der Body ist bewusst ein
+        Teil-Update, damit weitere Wiedergabe-Schalter denselben Endpoint
+        nutzen können, ohne diesen Aufruf zu ändern."""
+        self.put("/api/playback/preferences", {"autoplayNext": bool(autoplay_next)})
+
     # -- Wiedergabe -----------------------------------------------------
 
     def playback_info(self, item_id: int, mode: str = "auto", profile: str = "orig") -> dict:

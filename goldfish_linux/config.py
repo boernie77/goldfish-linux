@@ -174,9 +174,13 @@ class ViewPrefs:
     def autoplay_next(self) -> bool:
         """Ob am Ende einer Serienfolge die nächste Folge angeboten wird.
 
-        Standard: AUS. Die Option ist bewusst rein lokal (Gerät) und nicht
-        serverseitig — wie `colorScheme` betrifft sie das Verhalten DIESES
-        Geräts, und der Server kennt keine solche Einstellung.
+        Standard: AUS. Der Wert hängt am KONTO und liegt auf dem Server
+        (`GET/PUT /api/playback/preferences`, seit Server v1.4.13) — was im
+        Browser eingestellt wird, gilt auch hier. Diese Datei hält nur die
+        lokale KOPIE: der Wiedergabe-Ende-Handler liest sie synchron, und
+        ohne Netz gilt der zuletzt bekannte Wert statt "aus". Geschrieben
+        wird sie von der Einstellungsseite (beim Laden aus dem Server) und
+        beim Öffnen des Players (Spiegelung).
         """
         return bool(self._data.get("autoplayNext", False))
 

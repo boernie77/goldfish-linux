@@ -1,8 +1,10 @@
-goldfish-linux (0.1.49-1) unstable; urgency=medium
+goldfish-linux (0.1.50-1) unstable; urgency=medium
 
   * Neue Option "Nächste Folge automatisch starten" (Einstellungen ->
-    Wiedergabe, Standard aus, rein lokal in view_prefs.json gemerkt). Läuft
-    eine Serienfolge aus, erscheint im Player ein Hinweis mit
+    Wiedergabe, Standard aus). Die Einstellung hängt am KONTO auf dem Server
+    (GET/PUT /api/playback/preferences) und gilt damit auch in den anderen
+    Apps; view_prefs.json hält nur die lokale Kopie für den Offline-Fall.
+    Läuft eine Serienfolge aus, erscheint im Player ein Hinweis mit
     10-Sekunden-Countdown und den Knöpfen "Jetzt abspielen" und "Abbrechen";
     Countdown oder Knopf starten die nächste Folge derselben Serie im
     gleichen Fenster — im selben Auflösungsprofil und mit derselben Tonspur

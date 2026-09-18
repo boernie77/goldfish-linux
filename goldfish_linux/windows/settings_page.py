@@ -233,16 +233,63 @@ class SettingsPage(Adw.NavigationPage):
             title="Nächste Folge automatisch starten",
             subtitle=(
                 "Am Ende einer Serienfolge wird die nächste Folge angeboten — "
-                "mit 10 Sekunden Bedenkzeit, in der gewählten Auflösung"
+                "mit 10 Sekunden Bedenkzeit, in der gewählten Auflösung. "
+                "Gilt für dein Konto, also auch in den anderen Apps."
             ),
             active=self.ctx.view_prefs.autoplay_next(),
         )
-        self.autoplay_switch.connect(
-            "notify::active",
-            lambda row, _p: self.ctx.view_prefs.set_autoplay_next(row.get_active()),
-        )
+        # Der Wert liegt auf dem Server (Pro Konto, siehe api.playback_preferences),
+        # die lokale Ansichts-Einstellung ist nur die Kopie. Beim Aufbau deshalb
+        # einmal vom Server laden; der Merker zeigt bis dahin den letzten
+        # bekannten Wert (offline korrekt statt "aus").
+        self._autoplay_syncing = False
+        self.autoplay_switch.connect("notify::active", self._on_autoplay_toggled)
         group.add(self.autoplay_switch)
+        threading.Thread(target=self._load_autoplay_pref, daemon=True).start()
         return group
+
+    def _load_autoplay_pref(self) -> None:
+        """Serverwert des Kontos holen und lokalen Merker + Schalter angleichen."""
+        try:
+            prefs = self.ctx.client.playback_preferences()
+        except Exception as exc:  # breit: die Seite darf daran nie hängen bleiben
+            GLib.idle_add(self._toast, f"Wiedergabe-Einstellung nicht geladen: {exc}")
+            return
+        if "autoplayNext" not in prefs:
+            return
+        value = bool(prefs.get("autoplayNext"))
+        self.ctx.view_prefs.set_autoplay_next(value)
+        GLib.idle_add(self._apply_autoplay_switch, value)
+
+    def _apply_autoplay_switch(self, value: bool) -> bool:
+        """Schalter ohne Rückschreiben setzen (er ist die Anzeige des Serverwerts)."""
+        self._autoplay_syncing = True
+        try:
+            self.autoplay_switch.set_active(bool(value))
+        finally:
+            self._autoplay_syncing = False
+        return False
+
+    def _on_autoplay_toggled(self, row, _pspec) -> None:
+        if getattr(self, "_autoplay_syncing", False):
+            return
+        value = row.get_active()
+        # Sofort lokal merken: der Ende-Handler im Player liest den Merker, und
+        # ein Netzwerkfehler darf die Option nicht stillschweigend wirkungslos
+        # machen.
+        self.ctx.view_prefs.set_autoplay_next(value)
+
+        def worker() -> None:
+            try:
+                self.ctx.client.set_playback_preferences(autoplay_next=value)
+            except Exception as exc:
+                # Bewusst NICHT zurückdrehen: der Benutzer hat es gerade
+                # umgestellt, der lokale Merker wirkt. Nur sagen, dass es
+                # (noch) nicht am Konto steht — beim nächsten Öffnen zieht
+                # `_load_autoplay_pref` den Serverwert wieder heran.
+                GLib.idle_add(self._toast, f"Am Konto nicht gespeichert: {exc}")
+
+        threading.Thread(target=worker, daemon=True).start()
 
     # -- Anzeige ---------------------------------------------------------
 
@@ -328,10 +375,15 @@ class HomePrefsPage(Adw.NavigationPage):
             home = self.ctx.client.home_preferences()
             nav = self.ctx.client.nav_preferences()
         except GoldfishAPIError as exc:
+            # ⚠ Die Meldung VOR dem Lambda binden: `exc` ist nach dem
+            # except-Block gelöscht, ein Lambda, das ihn erst beim Aufruf
+            # auswertet, wirft dann NameError statt den Fehler zu zeigen
+            # (pyflakes meldet das seit Langem als "undefined name 'exc'").
+            message = str(exc)
             GLib.idle_add(
                 lambda: (
                     self.toolbar_view.set_content(
-                        Adw.StatusPage(icon_name="dialog-error-symbolic", title="Fehler", description=str(exc))
+                        Adw.StatusPage(icon_name="dialog-error-symbolic", title="Fehler", description=message)
                     ),
                     False,
                 )[1]

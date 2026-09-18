@@ -168,6 +168,11 @@ class PlayerWindow(Adw.Window):
         # reicht die Instanz durch; fehlt sie (Treiber-Skripte, Tests), gilt
         # schlicht "aus" — genau das bisherige Verhalten.
         self.view_prefs = view_prefs
+        # Die Wiedergabe-Einstellung hängt am Konto und kann auf einem anderen
+        # Gerät (Browser/Handy) umgestellt worden sein — beim Öffnen einmal
+        # spiegeln. Im Hintergrund, damit der Start nie darauf wartet; der
+        # Ende-Handler liest weiterhin den lokalen Merker.
+        self._refresh_autoplay_pref()
 
         self._stop_reported = False
         # Gegenstueck zu _stop_reported: der Server bekommt pro Titel GENAU
@@ -936,6 +941,24 @@ class PlayerWindow(Adw.Window):
     # "Abbrechen" schaltet NICHT still weiter und schließt das Fenster nicht:
     # der Titel bleibt am Ende stehen, der Benutzer kann selbst schließen oder
     # mit ⏭ blättern. Das ist die gewünschte Abgrenzung — „nichts weiter".
+
+    def _refresh_autoplay_pref(self) -> None:
+        """Spiegelt `autoplayNext` des Kontos in den lokalen Merker.
+
+        Fehler werden geschluckt: ohne Netz gilt der zuletzt bekannte Wert
+        (bzw. "aus"), genau wie bisheriges Verhalten."""
+        if self.view_prefs is None:
+            return
+
+        def worker() -> None:
+            try:
+                prefs = self.client.playback_preferences()
+            except Exception:
+                return
+            if "autoplayNext" in prefs:
+                self.view_prefs.set_autoplay_next(bool(prefs.get("autoplayNext")))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _maybe_offer_next_episode(self) -> bool:
         """Hinweis zeigen, wenn die Option an ist und ein Nachfolger derselben
