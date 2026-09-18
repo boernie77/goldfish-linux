@@ -1,4 +1,16 @@
-goldfish-linux (0.1.54-1) unstable; urgency=medium
+goldfish-linux (0.1.55-1) unstable; urgency=medium
+
+  * Eine Kachel pro Film, auch wenn derselbe Film in mehreren Aufloesungen
+    vorliegt. Bisher stand jede Datei als eigene Kachel im Raster (gemessen in
+    der Serien-Bibliothek: 18789 Dateien -> 565 doppelte Kacheln). Gebuendelt
+    wird ueber metadataId, Repraesentant ist die hoehere Aufloesung; wer die
+    Varianten getrennt sehen will, kann sie im Detail-Dialog weiterhin als
+    eigene Kacheln trennen. Gilt fuer Bibliotheken, Ordner, Suche, Personen-
+    und Playlist-Ansicht; Musik bleibt unveraendert.
+
+ -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 14:35:00 +0200
+
+goldfish-linux (0.1.55-1) unstable; urgency=medium
 
   * Wiedergabe startet nicht mehr mit "Wiedergabe fehlgeschlagen" ins Leere:
     GStreamer bricht bei jeder Nicht-2xx-Antwort des Servers sofort mit

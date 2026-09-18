@@ -17,6 +17,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..variants import group_variants  # noqa: E402
 from ..widgets.card import SimpleCard, card_flow  # noqa: E402
 from ..widgets.column_list import ColumnList  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
@@ -295,6 +296,12 @@ class PlaylistItemsPage(Adw.NavigationPage):
         GLib.idle_add(self._apply, items)
 
     def _apply(self, items: list[dict]) -> bool:
+        # Wie im Browser: eine Kachel pro Film, auch wenn eine Auflösung doppelt
+        # in der Playlist liegt (siehe ..variants). Musik bleibt unangetastet —
+        # dort gibt es keine Auflösungs-Varianten, und ein Titel darf nicht mit
+        # einem anderen verschmelzen.
+        if not self._is_music():
+            items = group_variants(items)
         self.items = items
         self._render()
         return False

@@ -25,6 +25,7 @@ from ..api import GoldfishAPIError  # noqa: E402
 from ..formatting import format_count  # noqa: E402
 from ..widgets.alpha_sidebar import AlphaSidebar, first_letter  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
+from ..variants import group_variants  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
 from .detail_page import DetailPage  # noqa: E402
 
@@ -173,6 +174,12 @@ class BrowsePage(Adw.NavigationPage):
                 on_toggle_watched=self._toggle_watched,
                 on_toggle_favorite=self._toggle_favorite,
             )
+        # Varianten bündeln: derselbe Film in mehreren Auflösungen ist mehrere
+        # Items mit gleicher metadataId — im Raster darf davon nur EINE Kachel
+        # stehen (Browser `groupVariants`, User-Report 2026-09-18). Das passiert
+        # VOR allem anderen, damit Anzahl-Zeile, Buchstabenfilter und Raster
+        # dieselbe Liste sehen.
+        items = group_variants(items)
         self.shown_items = items
         self.all_folders = folders
         self.all_items = items

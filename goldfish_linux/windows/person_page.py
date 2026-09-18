@@ -22,6 +22,7 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Adw, GLib, Gtk, Pango  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..variants import group_variants  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
 
@@ -86,6 +87,9 @@ class PersonPage(Adw.NavigationPage):
             on_toggle_watched=lambda it, w: self._state_call(lambda: self.ctx.client.set_watched(it["id"], w)),
             on_toggle_favorite=lambda it, f: self._state_call(lambda: self.ctx.client.set_favorite(it["id"], f)),
         )
+        # Eine Kachel pro Film, auch wenn mehrere Auflösungen vorhanden sind
+        # (Browser `groupVariants`) — siehe ..variants.
+        items = group_variants(items)
         self.shown_items = items
         grid.set_content([], items)
         outer.append(grid)
