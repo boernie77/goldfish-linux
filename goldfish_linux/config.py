@@ -171,6 +171,19 @@ class ViewPrefs:
         self._data["alphaSidebar"] = enabled
         self._save()
 
+    def autoplay_next(self) -> bool:
+        """Ob am Ende einer Serienfolge die nächste Folge angeboten wird.
+
+        Standard: AUS. Die Option ist bewusst rein lokal (Gerät) und nicht
+        serverseitig — wie `colorScheme` betrifft sie das Verhalten DIESES
+        Geräts, und der Server kennt keine solche Einstellung.
+        """
+        return bool(self._data.get("autoplayNext", False))
+
+    def set_autoplay_next(self, enabled: bool) -> None:
+        self._data["autoplayNext"] = bool(enabled)
+        self._save()
+
     def local_in_sidebar(self, key: str) -> bool:
         """Ob eine eigene Bibliothek (Datenträger oder Sammlung) in der
         Seitenleiste erscheint. Standard: ja.

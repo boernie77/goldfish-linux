@@ -338,6 +338,22 @@ class GoldfishClient:
     def item(self, item_id: int) -> dict:
         return self.get(f"/api/items/{item_id}") or {}
 
+    def next_episode(self, item_id: int) -> dict:
+        """Nächste Folge zu einer Serienfolge — der Server entscheidet sie.
+
+        Antwort (Server seit v1.4.15): `{"next": <Item>, "nextTitle": "…"}`,
+        bei der letzten Folge `{"next": None, "nextTitle": ""}`.
+
+        `nextTitle` ist der **Anzeige-Titel aus TMDB** — das ist der Grund für
+        den eigenen Endpoint: der `title` eines Episoden-Items ist der
+        DATEINAME ("S01E02.mkv"), nicht der Folgentitel. Die Oberfläche soll
+        `nextTitle` zuerst nehmen und nur ersatzweise auf
+        `next.metadata.title`/`next.title` zurückfallen.
+
+        Ein älterer Server kennt den Endpoint nicht (404); der Aufrufer fängt
+        das ab und verhält sich dann wie ohne nächste Folge."""
+        return self.get(f"/api/items/{item_id}/next-episode") or {}
+
     # -- Wiedergabe -----------------------------------------------------
 
     def playback_info(self, item_id: int, mode: str = "auto", profile: str = "orig") -> dict:

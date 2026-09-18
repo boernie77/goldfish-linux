@@ -32,6 +32,7 @@ class SettingsPage(Adw.NavigationPage):
         page = Adw.PreferencesPage()
         page.add(self._account_group())
         page.add(self._sync_group())
+        page.add(self._playback_group())
         page.add(self._display_group())
         toolbar_view.set_content(page)
 
@@ -222,6 +223,26 @@ class SettingsPage(Adw.NavigationPage):
         self.sync_placeholder.set_subtitle("")
         threading.Thread(target=self._load_links, daemon=True).start()
         return False
+
+    # -- Wiedergabe --------------------------------------------------------
+
+    def _playback_group(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup(title="Wiedergabe")
+
+        self.autoplay_switch = Adw.SwitchRow(
+            title="Nächste Folge automatisch starten",
+            subtitle=(
+                "Am Ende einer Serienfolge wird die nächste Folge angeboten — "
+                "mit 10 Sekunden Bedenkzeit, in der gewählten Auflösung"
+            ),
+            active=self.ctx.view_prefs.autoplay_next(),
+        )
+        self.autoplay_switch.connect(
+            "notify::active",
+            lambda row, _p: self.ctx.view_prefs.set_autoplay_next(row.get_active()),
+        )
+        group.add(self.autoplay_switch)
+        return group
 
     # -- Anzeige ---------------------------------------------------------
 

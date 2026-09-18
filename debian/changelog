@@ -1,3 +1,24 @@
+goldfish-linux (0.1.49-1) unstable; urgency=medium
+
+  * Neue Option "Nächste Folge automatisch starten" (Einstellungen ->
+    Wiedergabe, Standard aus, rein lokal in view_prefs.json gemerkt). Läuft
+    eine Serienfolge aus, erscheint im Player ein Hinweis mit
+    10-Sekunden-Countdown und den Knöpfen "Jetzt abspielen" und "Abbrechen";
+    Countdown oder Knopf starten die nächste Folge derselben Serie im
+    gleichen Fenster — im selben Auflösungsprofil und mit derselben Tonspur
+    wie die vorige Folge (beides bleibt beim Umschalten erhalten). Abbrechen
+    tut nichts weiter, das Fenster bleibt am Ende stehen. Letzte Folge,
+    Nicht-Serien und Zufallsmodus bleiben ohne Hinweis; bei ausgeschalteter
+    Option ist das Verhalten exakt wie bisher. Die Serien-Erkennung ist
+    bewusst von der Warteschlange getrennt: sie nutzt deren nächsten Eintrag
+    nur, wenn er zur selben Serie gehört, und fragt sonst den neuen
+    Server-Endpoint GET /api/items/{id}/next-episode (ab Server v1.4.15) —
+    dessen nextTitle ist der TMDB-Folgentitel; angezeigt wird nach der Kette
+    nextTitle -> metadata.title -> title -> "Nächste Folge", damit im Hinweis
+    nie der Dateiname steht.
+
+ -- Christian <boernie77@gmail.com>  Fri, 18 Sep 2026 11:32:00 +0200
+
 goldfish-linux (0.1.48-1) unstable; urgency=medium
 
   * Vollbild-Button im Player repariert (der 0.1.47-Fix reichte nicht):

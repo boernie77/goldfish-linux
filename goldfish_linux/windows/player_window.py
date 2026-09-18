@@ -73,6 +73,11 @@ _RESUME_EVERY_S = 10
 # Browser.
 _WATCHED_AT = 0.9
 
+# Bedenkzeit des Hinweises "Nächste Folge automatisch starten" am Ende einer
+# Serienfolge. Zehn Sekunden wie in den anderen Goldfish-Clients: lang genug,
+# um die Fernbedienung/Maus zu greifen, kurz genug, um nicht zu warten.
+_AUTOPLAY_SECONDS = 10
+
 _CSS = b"""
 .gf-subtitle {
   background-color: alpha(#000000, 0.62);
@@ -91,6 +96,15 @@ _CSS = b"""
   font-size: 0.9rem;
 }
 .gf-player-bar button { color: #ffffff; }
+.gf-autoplay {
+  background-color: alpha(#000000, 0.72);
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+.gf-autoplay label {
+  color: #ffffff;
+  font-size: 1.05rem;
+}
 """
 
 _css_loaded = False
@@ -125,6 +139,7 @@ class PlayerWindow(Adw.Window):
         direct_url: str | None = None,
         window_title: str | None = None,
         random_fetch=None,
+        view_prefs=None,
     ):
         _ensure_css()
         title = self._title_for(item, window_title)
@@ -148,6 +163,11 @@ class PlayerWindow(Adw.Window):
         self.random_fetch = random_fetch
         self.random_history: list[dict] = [item] if random_fetch else []
         self.random_index = 0
+        # Nur zum Lesen der lokalen Ansichts-Einstellungen (`autoplayNext`),
+        # also der Option "Nächste Folge automatisch starten". `open_player`
+        # reicht die Instanz durch; fehlt sie (Treiber-Skripte, Tests), gilt
+        # schlicht "aus" — genau das bisherige Verhalten.
+        self.view_prefs = view_prefs
 
         self._stop_reported = False
         # Gegenstueck zu _stop_reported: der Server bekommt pro Titel GENAU
@@ -186,6 +206,16 @@ class PlayerWindow(Adw.Window):
         self._fresh_token = str(int(time.time() * 1000))
         # Dauer laut Server — bei HLS die einzige verlässliche Quelle.
         self._duration = float(item.get("durationSec") or 0)
+
+        # Zustand des Hinweises "Nächste Folge automatisch starten" (siehe
+        # _maybe_offer_next_episode). `_autoplay_token` steigt bei JEDEM
+        # Wechsel des Mediums und beim Schließen; eine im Hintergrund laufende
+        # Serien-Abfrage erkennt daran, dass ihr Ergebnis nicht mehr gilt.
+        self._autoplay_item: dict | None = None
+        self._autoplay_title = ""
+        self._autoplay_remaining = 0
+        self._autoplay_source: int | None = None
+        self._autoplay_token = 0
 
         self.set_default_size(1100, 680)
         self._build_ui(title)
@@ -254,6 +284,7 @@ class PlayerWindow(Adw.Window):
         self.overlay = Gtk.Overlay(child=self.picture)
         self.overlay.add_overlay(self.subtitle_label)
         self.overlay.add_overlay(self.busy)
+        self.overlay.add_overlay(self._build_autoplay_overlay())
 
         self.bar = self._build_bar()
 
@@ -267,6 +298,39 @@ class PlayerWindow(Adw.Window):
         self.set_content(toolbar_view)
         # Erst nach dem Einhängen drehen lassen, sonst fehlt die Frame-Clock.
         self.busy.start()
+
+    def _build_autoplay_overlay(self) -> Gtk.Widget:
+        """Hinweis "Nächste Folge" — unsichtbar, bis er gebraucht wird.
+
+        Liegt IM selben Gtk.Overlay wie Untertitel und Ladekreisel, also über
+        dem Bild und unter der Steuerleiste. Bewusst kein Dialog (siehe die
+        Notiz an `open_player`: ein Dialog hinter dem Wiedergabefenster hat
+        schon einmal "die App hängt" ausgelöst) und bewusst kein zweites
+        Fenster — die nächste Folge läuft im GLEICHEN Fenster weiter."""
+        box = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.END,
+            margin_bottom=24,
+            visible=False,
+        )
+        box.add_css_class("gf-autoplay")
+        self.autoplay_label = Gtk.Label(justify=Gtk.Justification.CENTER, wrap=True, max_width_chars=46)
+        box.append(self.autoplay_label)
+
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.CENTER)
+        play_now = Gtk.Button(label="Jetzt abspielen")
+        play_now.add_css_class("suggested-action")
+        play_now.connect("clicked", lambda *_: self._start_next_episode_now())
+        cancel = Gtk.Button(label="Abbrechen")
+        cancel.connect("clicked", lambda *_: self._dismiss_autoplay_overlay())
+        buttons.append(play_now)
+        buttons.append(cancel)
+        box.append(buttons)
+
+        self.autoplay_box = box
+        return box
 
     def _build_bar(self) -> Gtk.Widget:
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -793,6 +857,18 @@ class PlayerWindow(Adw.Window):
         if media is not self.media or not media.get_ended():
             return
         self._report_stop("ended")
+        # Vorrang für die Serien-Option (siehe den Kommentarblock unten). Sie
+        # kann die Entscheidung auch erst im Hintergrund treffen — dann hält
+        # sie den Rest selbst nach.
+        if self._maybe_offer_next_episode():
+            return
+        self._finish_without_episode()
+
+    def _finish_without_episode(self) -> None:
+        """Das bisherige Verhalten am Titelende: in der Warteschlange weiter,
+        und wenn es dort nichts mehr gibt, schließt sich das Fenster. Steht
+        hier als eigener Schritt, weil es AUCH nach einer Server-Abfrage
+        nachgeholt werden muss („es gibt doch keine nächste Folge")."""
         if not self._play_next():
             self.close()
 
@@ -808,6 +884,213 @@ class PlayerWindow(Adw.Window):
         self.queue_index += 1
         self._switch_to(self.queue[self.queue_index])
         return True
+
+    # -- "Nächste Folge automatisch starten" (Serien) ---------------------
+    #
+    # **Getrennt von der Warteschlange, und bewusst VOR ihr.** Die
+    # Warteschlange (`self.queue`/`_play_next`) ist ein anderer Begriff: sie
+    # ist die Liste, die der Aufrufer mitgegeben hat — die Folgen EINER
+    # Staffel aus `SeasonEpisodesPage`, die Titel einer Playlist, der
+    # Zufallsverlauf — und sie schaltet am Titelende ohne Nachfrage weiter.
+    # Die neue Option dagegen gilt NUR für Serienfolgen und schiebt vor das
+    # Weiterschalten einen Hinweis mit Bedenkzeit. Würde man stattdessen "die
+    # Warteschlange fragt nach", bekäme auch eine Playlist aus Filmen und der
+    # Zufallsmodus den Hinweis, und der gehört dort nicht hin.
+    #
+    # Die Option greift genau dann, wenn der laufende Titel eine Serienfolge
+    # ist UND ein Nachfolger DERSELBEN Serie feststeht:
+    #
+    #   * Steht in der Warteschlange ein weiterer Titel DERSELBEN Serie an,
+    #     wird er übernommen (die Warteschlange behält die Hoheit — nur das
+    #     Weiterschalten bekommt die Bedenkzeit davor). Ist der nächste Titel
+    #     eine andere Serie oder ein Film, bleibt es bei `_play_next()`.
+    #   * Sonst — kein Eintrag mehr übrig oder gar keine Warteschlange (Folge
+    #     direkt von der Startseite gestartet) — fragt das Fenster den Server:
+    #     `GET /api/items/{id}/next-episode` (Server ab v1.4.15) antwortet mit
+    #     der nächsten Folge UND ihrem Anzeige-Titel. Das läuft im
+    #     Hintergrund; ein Fehler (auch 404 auf einem älteren Server) bedeutet
+    #     nur "keine nächste Folge".
+    #   * Lässt sich kein Nachfolger finden (letzte Folge, keine Serie),
+    #     passiert genau das Bisherige: `_finish_without_episode()`, also
+    #     Warteschlange weiter oder Fenster zu. Kein Hinweis, kein Fehler.
+    #
+    # **Der angezeigte Titel kommt NICHT aus dem Dateinamen.** Der `title`
+    # eines Episoden-Items ist der Dateiname ("S01E02.mkv"); angezeigt wird
+    # nach der Kette `nextTitle` (TMDB, vom Server) → `metadata.title` →
+    # `title` → "Nächste Folge" (siehe `_next_episode_title`). Beim
+    # Warteschlangen-Weg gibt es kein `nextTitle` — dort ist die Folge aber
+    # schon geladen, und `metadata.title` IST der TMDB-Folgentitel.
+    #
+    # **Staffelgrenze:** der Warteschlangen-Weg bleibt in der laufenden
+    # Staffel — sie kennt nur die Folgen, aus denen gestartet wurde. Nur wenn
+    # sie nichts mehr hergibt, entscheidet der Server, und der darf die
+    # nächste Staffel mitnehmen. Beides ist gewollt: die Warteschlange hält
+    # sich an das, was der Benutzer vor sich hatte, der Server füllt danach
+    # die Lücke.
+    #
+    # Die Auflösung muss dabei nicht extra übertragen oder gemerkt werden:
+    # `_switch_to` lässt `self.profile` (und `self.audio_index`) unangetastet.
+    # Die nächste Folge läuft also im selben Profil wie die vorige — genau die
+    # "zuletzt gewählte Auflösung".
+    #
+    # "Abbrechen" schaltet NICHT still weiter und schließt das Fenster nicht:
+    # der Titel bleibt am Ende stehen, der Benutzer kann selbst schließen oder
+    # mit ⏭ blättern. Das ist die gewünschte Abgrenzung — „nichts weiter".
+
+    def _maybe_offer_next_episode(self) -> bool:
+        """Hinweis zeigen, wenn die Option an ist und ein Nachfolger derselben
+        Serie feststeht. True heißt: der Hinweis übernimmt — der Aufrufer darf
+        jetzt weder weiterschalten noch schließen."""
+        if self.view_prefs is None or not self.view_prefs.autoplay_next():
+            return False
+        # Der Zufallsmodus ist nie eine Serie — dort bleibt alles wie bisher.
+        if self.random_fetch is not None:
+            return False
+        queued = self._queued_next_episode()
+        if queued is not None:
+            self._show_autoplay_overlay(queued)
+            return True
+        # Kein Serien-Nachfolger in der Warteschlange. Steht dort trotzdem
+        # noch ein Titel an, ist er ein anderer — dann geht die Warteschlange
+        # wie bisher vor.
+        if self._has_queued_successor() or not self._is_episode(self.item):
+            return False
+        self._autoplay_token += 1
+        token = self._autoplay_token
+        threading.Thread(target=self._lookup_next_episode, args=(self.item, token), daemon=True).start()
+        return True
+
+    def _has_queued_successor(self) -> bool:
+        return self.queue_index + 1 < len(self.queue)
+
+    def _queued_next_episode(self) -> dict | None:
+        """Der nächste Warteschlangen-Titel, sofern er eine Folge DERSELBEN
+        Serie ist — sonst None."""
+        if not self._has_queued_successor():
+            return None
+        candidate = self.queue[self.queue_index + 1]
+        if not isinstance(candidate, dict) or candidate.get("id") is None:
+            return None
+        return candidate if self._same_series(self.item, candidate) else None
+
+    def _lookup_next_episode(self, item: dict, token: int) -> None:
+        """Hintergrund-Abfrage der nächsten Folge. NIE im Hauptfaden
+        (Netzzugriff) und nie mit einer Ausnahme nach außen: was hier schief
+        geht, gilt als "keine nächste Folge"."""
+        next_item: dict | None = None
+        next_title = ""
+        try:
+            data = self.client.next_episode(int(item["id"]))
+            candidate = data.get("next")
+            if isinstance(candidate, dict) and candidate.get("id") is not None:
+                next_item = candidate
+                next_title = str(data.get("nextTitle") or "")
+        except (GoldfishAPIError, KeyError, ValueError, TypeError):
+            next_item = None
+        GLib.idle_add(self._after_next_episode_lookup, next_item, next_title, token)
+
+    def _after_next_episode_lookup(self, item: dict | None, title: str, token: int) -> bool:
+        if token != self._autoplay_token:
+            return False  # inzwischen weitergeschaltet oder Fenster geschlossen
+        if item is None:
+            self._finish_without_episode()
+            return False
+        self._show_autoplay_overlay(item, title)
+        return False
+
+    def _show_autoplay_overlay(self, item: dict, title: str = "") -> None:
+        self._autoplay_item = item
+        self._autoplay_title = self._next_episode_title(item, title)
+        self._autoplay_remaining = _AUTOPLAY_SECONDS
+        self._update_autoplay_label()
+        self.autoplay_box.set_visible(True)
+        if self._autoplay_source is None:
+            self._autoplay_source = GLib.timeout_add(1000, self._autoplay_tick)
+
+    @staticmethod
+    def _next_episode_title(item: dict, server_title: str = "") -> str:
+        """Anzeige-Titel der nächsten Folge, in dieser Reihenfolge:
+        `nextTitle` des Servers (TMDB-Folgentitel, seit Server v1.4.15),
+        `metadata.title`, Item-`title`, zuletzt „Nächste Folge".
+
+        **Der Item-`title` steht ABSICHTLICH hinten**: bei einer Serienfolge
+        ist das der Dateiname ("S01E02.mkv") — im Hinweis wäre das eine
+        Zumutung. Nur wenn der Server weder Titel noch Metadaten liefert,
+        bleibt er als letzter Anhaltspunkt."""
+        if server_title:
+            return server_title
+        metadata = item.get("metadata") or {}
+        return metadata.get("title") or item.get("title") or "Nächste Folge"
+
+    def _update_autoplay_label(self) -> None:
+        self.autoplay_label.set_text(
+            f"Nächste Folge in {self._autoplay_remaining} s\n{self._autoplay_title}"
+        )
+
+    def _autoplay_tick(self) -> bool:
+        self._autoplay_remaining -= 1
+        if self._autoplay_remaining <= 0:
+            # Erst den Quellenzeiger räumen: `_dismiss_autoplay_overlay` würde
+            # sonst versuchen, eine bereits abgelaufene Quelle zu entfernen.
+            self._autoplay_source = None
+            self._start_next_episode_now()
+            return False
+        self._update_autoplay_label()
+        return True
+
+    def _start_next_episode_now(self) -> None:
+        """Countdown abgelaufen oder „Jetzt abspielen": im GLEICHEN Fenster
+        auf die nächste Folge umstellen. `_switch_to` behält Profil und
+        Tonspur — die Auflösung wandert also mit."""
+        item = self._autoplay_item
+        self._dismiss_autoplay_overlay()
+        if item is None:
+            return
+        # Kam die Folge aus der Warteschlange, rückt deren Zeiger mit — sonst
+        # zeigte ⏭ anschließend denselben Titel noch einmal an.
+        if self._has_queued_successor():
+            following = self.queue[self.queue_index + 1]
+            queued_id = following.get("id") if isinstance(following, dict) else None
+            if queued_id is not None and int(queued_id) == int(item["id"]):
+                self.queue_index += 1
+        self._switch_to(item)
+
+    def _dismiss_autoplay_overlay(self) -> None:
+        if self._autoplay_source is not None:
+            GLib.source_remove(self._autoplay_source)
+            self._autoplay_source = None
+        self._autoplay_item = None
+        self._autoplay_title = ""
+        self.autoplay_box.set_visible(False)
+
+    @staticmethod
+    def _is_episode(item: dict) -> bool:
+        """Serienfolge heißt: Staffel UND Folge in den Metadaten — dieselbe
+        Kennzeichnung wie das S/E-Abzeichen in `widgets/card.py`. Auf der
+        Item-Ebene steht nur `episodeEnd`, das reicht nicht als Merkmal."""
+        metadata = item.get("metadata") or {}
+        return bool(metadata.get("season")) and bool(metadata.get("episode"))
+
+    @staticmethod
+    def _series_folder(item: dict) -> str:
+        """Der Serienordner — der oberste Ordner von `relPath`, genau wie in
+        `widgets/card.py` und `home_page.py`. Darüber adressiert der Server
+        die Staffel-Struktur (`/api/libraries/{id}/seasons?folder=…`)."""
+        rel = item.get("relPath") or ""
+        return rel.split("/", 1)[0] if "/" in rel else ""
+
+    def _same_series(self, first: dict, second: dict) -> bool:
+        if not self._is_episode(first) or not self._is_episode(second):
+            return False
+        first_meta = first.get("metadata") or {}
+        second_meta = second.get("metadata") or {}
+        first_parent, second_parent = first_meta.get("parentId"), second_meta.get("parentId")
+        if first_parent is not None and second_parent is not None:
+            return str(first_parent) == str(second_parent)
+        # Ohne parentId bleibt der Serienordner als gemeinsamer Anker. Ein
+        # leerer Ordner heißt: lieber nicht raten.
+        folder = self._series_folder(first)
+        return bool(folder) and folder == self._series_folder(second)
 
     # -- Blättern ---------------------------------------------------------
 
@@ -875,6 +1158,11 @@ class PlayerWindow(Adw.Window):
         """Im selben Fenster auf ein anderes Video umstellen. Die Vorwahl von
         Qualität und Tonspur gilt weiter; Untertitel und Vorschaubilder
         gehören zum einzelnen Titel und werden neu geladen."""
+        # Ein offener Hinweis auf die nächste Folge gehört zum ALTEN Titel:
+        # beim Wechsel (auch beim manuellen Blättern mit ⏮/⏭) ist er erledigt,
+        # und eine noch laufende Serien-Abfrage wird damit ungültig.
+        self._autoplay_token += 1
+        self._dismiss_autoplay_overlay()
         self._report_stop("closed")
         self._release_media()
         self.item = item
@@ -933,6 +1221,10 @@ class PlayerWindow(Adw.Window):
         self._show_load_error(error.message)
 
     def _on_close_request(self, *_args) -> bool:
+        # Erst den Hinweis auf die nächste Folge stilllegen: sein Countdown
+        # darf nach dem Schließen nicht mehr auslösen.
+        self._autoplay_token += 1
+        self._dismiss_autoplay_overlay()
         self._report_stop("closed")
         self._release_media()
         if self._hide_bar_source is not None:
@@ -1128,6 +1420,10 @@ def open_player(ctx, item: dict, **kwargs) -> "PlayerWindow":
 
     Deshalb: vorher schließen, danach genau eines präsentieren."""
     close_player(ctx)
+    # Die lokalen Ansichts-Einstellungen mitgeben — der Player braucht daraus
+    # nur `autoplayNext` ("Nächste Folge automatisch starten"). Fehlt die
+    # Instanz, gilt die Option als aus.
+    kwargs.setdefault("view_prefs", getattr(ctx, "view_prefs", None))
     window = PlayerWindow(ctx.application, ctx.client, item, **kwargs)
     # KEIN set_transient_for(ctx.window) mehr (User-Report 2026-09-16: der
     # Vollbild-Button tat rein GAR NICHTS, solange das Hauptfenster noch
