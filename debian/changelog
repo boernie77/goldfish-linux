@@ -1,4 +1,19 @@
-goldfish-linux (0.1.51-1) unstable; urgency=medium
+goldfish-linux (0.1.52-1) unstable; urgency=medium
+
+  * Updatefenster aufgeräumt (User-Vorgabe 2026-09-18): Die Zeile mit der
+    installierten und der verfügbaren Fassung steht jetzt FEST oben und
+    scrollt nicht mehr mit (vorher stand sie im Fließtext der Freigabe-Notizen
+    und wanderte beim Scrollen weg). Der Installations-Abschnitt der
+    GitHub-Notizen ("## Installation" mit curl-/apt-Befehlen) wird nicht mehr
+    angezeigt — die App spielt das Paket selbst ein. Darunter stehen die
+    Neuerungen in einem eigenen scrollbaren Bereich.
+  * Versionszeile unter der Seitenleiste kann ihre Breite nicht mehr ändern
+    (einzeilig, mit Auslassung), damit sie beim Erscheinen des
+    Aktualisierungs-Hinweises nicht springt.
+
+ -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 13:05:00 +0200
+
+goldfish-linux (0.1.52-1) unstable; urgency=medium
 
   * Neue Option "Nächste Folge automatisch starten" (Einstellungen ->
     Wiedergabe, Standard aus). Die Einstellung hängt am KONTO auf dem Server

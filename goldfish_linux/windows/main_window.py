@@ -11,7 +11,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 from .. import __version__  # noqa: E402
 from ..api import GoldfishAPIError, GoldfishClient  # noqa: E402
@@ -164,6 +164,12 @@ class MainWindow(Adw.ApplicationWindow):
         sidebar_content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         sidebar_content.append(sidebar_scrolled)
 
+        # Feste, einzeilige Breite mit Auslassung: `set_update_available`
+        # ersetzt den Text durch „Goldfish Linux 0.1.51 · 0.1.52 verfügbar".
+        # Ohne Begrenzung wächst die natürliche Breite des Labels, die
+        # Seitenleiste wird breiter und die ganze Zeile verschiebt sich
+        # (User-Report 2026-09-18: „die Zeile springt"). Der vollständige Text
+        # steht im Tooltip, damit nichts verloren geht.
         self.version_label = version_label = Gtk.Label(
             label=f"Goldfish Linux {__version__}",
             xalign=0,
@@ -171,6 +177,9 @@ class MainWindow(Adw.ApplicationWindow):
             margin_bottom=6,
             margin_start=12,
             margin_end=12,
+            single_line_mode=True,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=24,
         )
         version_label.add_css_class("dim-label")
         version_label.add_css_class("caption")
@@ -436,7 +445,11 @@ class MainWindow(Adw.ApplicationWindow):
         # Hinweis nur, wenn man das Menue ohnehin oeffnet.
         self.menu_button.add_css_class("suggested-action")
         self.menu_button.set_tooltip_text(f"Aktualisierung auf {version} verfügbar")
-        self.version_label.set_label(f"Goldfish Linux {__version__} · {version} verfügbar")
+        text = f"Goldfish Linux {__version__} · {version} verfügbar"
+        self.version_label.set_label(text)
+        # Vollständiger Text im Tooltip — die Zeile selbst bleibt in ihrer
+        # Breite fest (siehe Kommentar am Label).
+        self.version_label.set_tooltip_text(text)
         self.version_label.remove_css_class("dim-label")
 
     def show_toast(self, message: str) -> bool:

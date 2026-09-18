@@ -20,21 +20,101 @@ from ..updater import Release, UpdateError, download, install  # noqa: E402
 
 # Die Freigabe-Notizen von GitHub können lang sein; im Dialog reicht der
 # Anfang, alles Weitere steht auf der Freigabe-Seite.
-_NOTES_LIMIT = 1200
+_NOTES_LIMIT = 4000
+# Höhe des scrollbaren Neuerungs-Bereichs. Feste Höhe: der Kopf darüber soll
+# stehen bleiben, egal wie lang die Notizen sind.
+_NOTES_HEIGHT = 260
+
+
+def _clean_notes(notes: str) -> str:
+    """Freigabe-Notizen für den Dialog aufbereiten.
+
+    Zwei Dinge passieren hier (User-Vorgabe 2026-09-18):
+
+    1. **Der Installations-Abschnitt fliegt raus.** Die GitHub-Notizen
+       beginnen mit „## Installation" samt curl-/apt-Befehlen — die App spielt
+       das Paket aber SELBST ein, die Anleitung zum Selber-Installieren ist an
+       dieser Stelle nur Ballast. Behalten wird alles ab der Überschrift
+       „Neu in dieser Version"; fehlt sie (ältere Freigaben), wird nur ein
+       führender Installations-Abschnitt entfernt.
+    2. **Markdown-Reste weg**: „## " vor Überschriften und Code-Zäune, damit
+       der Text als Fließtext lesbar bleibt.
+    """
+    text = notes or ""
+    marker = "Neu in dieser Version"
+    idx = text.find(marker)
+    if idx >= 0:
+        # Über die Überschrift hinaus bis zum Zeilenende springen.
+        nl = text.find("\n", idx)
+        text = text[nl + 1:] if nl >= 0 else ""
+
+    out: list[str] = []
+    skipping = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        is_heading = stripped.startswith("#")
+        if is_heading and "installation" in stripped.lower():
+            # Installations-Block aus: bis zur nächsten Überschrift überspringen.
+            skipping = True
+            continue
+        if skipping:
+            if is_heading:
+                skipping = False
+            else:
+                continue
+        if stripped.startswith("```"):
+            continue  # Code-Zaun ohne Inhalt für einen Fließtext-Dialog
+        if is_heading:
+            out.append(stripped.lstrip("#").strip().upper())
+        else:
+            out.append(line.rstrip())
+    cleaned = "\n".join(out).strip()
+    return cleaned or "Keine Beschreibung hinterlegt."
 
 
 def offer_update(parent: Gtk.Window, release: Release) -> None:
-    """Fragt, ob die neue Fassung eingespielt werden soll."""
-    notes = release.notes or "Keine Beschreibung hinterlegt."
+    """Fragt, ob die neue Fassung eingespielt werden soll.
+
+    Aufbau (User-Vorgabe 2026-09-18): Die Zeile mit der installierten und der
+    verfügbaren Fassung steht FEST oben und scrollt nicht mit — vorher stand
+    sie im Fließtext der Notizen und wanderte beim Scrollen weg („die Zeile
+    springt"). Darunter folgt nur noch der Neuerungs-Text in einem eigenen
+    scrollbaren Bereich.
+    """
+    notes = _clean_notes(release.notes)
     if len(notes) > _NOTES_LIMIT:
         notes = notes[:_NOTES_LIMIT].rstrip() + " …"
 
-    size = f" ({release.size / (1 << 20):.1f} MB)" if release.size else ""
+    size = f"  ({release.size / (1 << 20):.1f} MB)" if release.size else ""
+
+    # Kopf: fest, nicht scrollbar.
+    head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    installed = Gtk.Label(label=f"Installiert: {__version__}", xalign=0)
+    installed.add_css_class("dim-label")
+    available = Gtk.Label(label=f"Verfügbar: {release.version}{size}", xalign=0)
+    available.add_css_class("heading")
+    head.append(installed)
+    head.append(available)
+
+    # Neuerungen: eigener scrollbarer Bereich unter dem festen Kopf.
+    notes_view = Gtk.Label(label=notes, xalign=0, wrap=True, selectable=True,
+                           margin_top=6, margin_bottom=6, margin_start=6, margin_end=12)
+    scroller = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+    scroller.set_size_request(-1, _NOTES_HEIGHT)
+    scroller.set_child(notes_view)
+
+    content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    content.append(head)
+    content.append(Gtk.Separator())
+    content.append(scroller)
+
     dialog = Adw.MessageDialog(
         transient_for=parent,
         heading=f"Aktualisierung auf {release.version}",
-        body=f"Installiert ist {__version__}.{size}\n\n{notes}",
+        body=None,
     )
+    dialog.set_extra_child(content)
     dialog.add_response("cancel", "Später")
     dialog.add_response("install", "Herunterladen und einspielen")
     dialog.set_response_appearance("install", Adw.ResponseAppearance.SUGGESTED)
