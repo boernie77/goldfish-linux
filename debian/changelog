@@ -1,4 +1,4 @@
-goldfish-linux (0.1.50-1) unstable; urgency=medium
+goldfish-linux (0.1.51-1) unstable; urgency=medium
 
   * Neue Option "Nächste Folge automatisch starten" (Einstellungen ->
     Wiedergabe, Standard aus). Die Einstellung hängt am KONTO auf dem Server
