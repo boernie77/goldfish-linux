@@ -442,8 +442,20 @@ class PlayerWindow(Adw.Window):
         # selbst (`get_intrinsic_width/height` der Paintable-Schnittstelle) —
         # bei einer serverseitigen Umwandlung steht dort die heruntergerechnete
         # Größe, nicht die der Datei. Genau das will man wissen.
-        self.res_label = Gtk.Label(visible=False)
+        # ⚠ IMMER sichtbar und mit fester Zeichenbreite — das ist der Grund,
+        # warum „die Leiste beim Spulen kurz länger und dann wieder kürzer"
+        # wurde (User-Report 2026-09-18, zweimal): ein Sprung tauscht bei
+        # laufender Umwandlung das Medium aus, das neue meldet seine Größe
+        # erst, wenn es vorbereitet ist. Solange war die Anzeige leer und wurde
+        # AUSGEBLENDET (`set_visible(False)`) — die Zeitleiste daneben hat
+        # `hexpand` und nahm den frei gewordenen Platz ein, der Balken wurde
+        # also länger und mit der eintreffenden Auflösung wieder kürzer.
+        # Mit fester Breite und ohne Ausblenden bleibt das Layout konstant.
+        self.res_label = Gtk.Label(visible=True)
         self.res_label.add_css_class("gf-player-time")
+        self.res_label.set_width_chars(6)   # "1080p" + Reserve
+        self.res_label.set_xalign(0.5)
+        self.res_label.set_single_line_mode(True)
         bar.append(self.res_label)
 
         self.volume = Gtk.VolumeButton()
@@ -653,9 +665,14 @@ class PlayerWindow(Adw.Window):
         if (width, height) == getattr(self, "_last_res", None):
             return
         self._last_res = (width, height)
-        label = format_resolution(width, height) if width and height else ""
+        if not width or not height:
+            # Neues Medium noch nicht vorbereitet (z. B. mitten im Sprung):
+            # Anzeige unverändert lassen. Sie zu leeren würde die Zeitleiste
+            # verbreitern und gleich darauf wieder verschmälern — genau das
+            # „Springen" aus dem User-Report.
+            return
+        label = format_resolution(width, height)
         self.res_label.set_text(label)
-        self.res_label.set_visible(bool(label))
         if label:
             mode = "Umwandlung" if self._is_transcode else "Direkte Wiedergabe"
             if self._is_transcode and self.profile and self.profile != "orig":
@@ -1148,8 +1165,15 @@ class PlayerWindow(Adw.Window):
         """Vor/Zurück nur zeigen, wenn es etwas zu blättern gibt."""
         random_mode = self.random_fetch is not None
         has_queue = len(self.queue) > 1
-        self.prev_button.set_visible(random_mode or has_queue)
-        self.next_button.set_visible(random_mode or has_queue)
+        # ⚠ Nicht ausblenden, sondern durchsichtig + nicht anklickbar machen:
+        # `set_visible(False)` nimmt den Knöpfen ihren Platz, die Zeitleiste
+        # davor hat `hexpand` und wird dadurch breiter — dieselbe Ursache wie
+        # bei der Auflösungs-Anzeige (User-Report 2026-09-18: „die Leiste
+        # springt"). So bleibt die Steuerleiste in jeder Situation gleich breit.
+        available = random_mode or has_queue
+        for button in (self.prev_button, self.next_button):
+            button.set_opacity(1.0 if available else 0.0)
+            button.set_can_target(available)
         if random_mode:
             self.prev_button.set_tooltip_text("Vorheriges Zufallsvideo")
             self.next_button.set_tooltip_text("Nächstes Zufallsvideo")

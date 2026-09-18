@@ -476,6 +476,24 @@ class CardWidget(Gtk.Box):
         label.set_text(text)
         label.set_visible(bool(text))
 
+    def set_watched(self, watched: bool) -> None:
+        """Gesehen-Status von außen setzen (Info-Karte) — Kachel sofort nachziehen.
+
+        Ändert NICHTS am Modell/den Daten des Rasters, nur diese Kachel: ein
+        Modellwechsel in einem sichtbaren Raster ist in dieser App eine bekannte
+        Fehlerquelle (siehe CLAUDE.md „Ein Modellwechsel in einem SICHTBAREN
+        Raster … ist nicht still"). Der Zustand wird zusätzlich im Item-Dict
+        hinterlegt, damit ein erneutes Binden (Scrollen) ihn mitbringt."""
+        if self.item is not None:
+            self.item["watched"] = bool(watched)
+        self._apply_watched(bool(watched))
+
+    def set_favorite(self, favorite: bool) -> None:
+        """Favoriten-Status von außen setzen — siehe `set_watched`."""
+        if self.item is not None:
+            self.item["favorite"] = bool(favorite)
+        self._apply_favorite(bool(favorite))
+
     def _apply_watched(self, watched: bool) -> None:
         self.watched_btn.set_tooltip_text("Als ungesehen markieren" if watched else "Als gesehen markieren")
         if watched:

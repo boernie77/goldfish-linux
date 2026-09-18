@@ -88,6 +88,16 @@ class AppContext:
         # Es gibt immer nur EIN Wiedergabefenster; hier steht das aktuelle
         # (siehe `windows.player_window.open_player`).
         self.player_window = None
+        # Meldungen über Item-Zustände („gesehen"/„Favorit"), die NICHT auf der
+        # Kachel selbst entstanden sind — etwa in der Info-Karte. Ohne diese
+        # Meldung blieb der grüne Haken auf der Kachel stehen, obwohl er in der
+        # Info-Karte gerade entfernt wurde (User-Report 2026-09-18). Die Raster
+        # hören mit und ziehen ihre bereits gebauten Kacheln nach.
+        #
+        # Schwache Referenzen: die Seiten/Raster leben im Navigationsstapel und
+        # werden ersetzt; eine starke Liste würde jede besuchte Seite für immer
+        # festhalten.
+        self._item_state_listeners: list = []
 
     def dialog_parent(self):
         """Das Fenster, über dem ein Dialog erscheinen soll: das gerade aktive,
@@ -104,6 +114,29 @@ class AppContext:
             return self.library_kinds.get(int(library_id), "")
         except (TypeError, ValueError):
             return ""
+
+
+    def add_item_state_listener(self, callback) -> None:
+        """Ein Raster meldet sich an, um Zustandsänderungen mitzubekommen.
+
+        `callback(item_id, watched, favorite)`; `None` heißt „nicht geändert"."""
+        import weakref
+
+        self._item_state_listeners.append(weakref.ref(callback))
+
+    def notify_item_state(self, item_id: int, watched=None, favorite=None) -> None:
+        """Meldet allen angemeldeten Rastern eine Zustandsänderung dieses Items."""
+        alive = []
+        for ref in self._item_state_listeners:
+            callback = ref()
+            if callback is None:
+                continue          # Seite ist weg — Eintrag ausräumen
+            alive.append(ref)
+            try:
+                callback(item_id, watched, favorite)
+            except Exception:     # noqa: BLE001 — eine Anzeige darf nie stören
+                continue
+        self._item_state_listeners = alive
 
 
 class MainWindow(Adw.ApplicationWindow):

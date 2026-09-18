@@ -1,4 +1,24 @@
-goldfish-linux (0.1.52-1) unstable; urgency=medium
+goldfish-linux (0.1.53-1) unstable; urgency=medium
+
+  * Zeitleiste springt beim Spulen nicht mehr (User-Report 2026-09-18, zweimal:
+    "die Leiste springt"). Ursache war NICHT die Dauer, sondern die
+    Auflösungs-Anzeige in der Steuerleiste: ein Sprung tauscht bei laufender
+    Umwandlung das Medium aus, das neue meldet seine Größe erst nach dem
+    Vorbereiten — solange war die Anzeige leer und wurde AUSGEBLENDET, wodurch
+    die Zeitleiste daneben (hexpand) den frei werdenden Platz einnahm und
+    gleich darauf wieder abgab. Die Anzeige ist jetzt immer sichtbar, hat eine
+    feste Zeichenbreite und wird bei unbekannter Größe unverändert gelassen.
+    Dieselbe Ursache hatte das Ein-/Ausblenden der Vor/Zurück-Knöpfe: die
+    reservieren ihren Platz jetzt (durchsichtig statt ausgeblendet).
+  * Gesehen-/Favoriten-Zustand: nimmt man den Haken in der Infokarte weg, ist
+    er auch auf der Kachel sofort weg (vorher blieb er dort stehen). Die
+    Infokarte meldet die Änderung an die Ansichten, die das betroffene Item
+    zeigen; diese ziehen die gebundene Kachel nach — ohne das Rastermodell
+    anzufassen.
+
+ -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 13:35:00 +0200
+
+goldfish-linux (0.1.53-1) unstable; urgency=medium
 
   * Updatefenster aufgeräumt (User-Vorgabe 2026-09-18): Die Zeile mit der
     installierten und der verfügbaren Fassung steht jetzt FEST oben und

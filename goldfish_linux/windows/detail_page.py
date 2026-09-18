@@ -638,12 +638,17 @@ class DetailPage(Adw.NavigationPage):
         watched = button.get_active()
         self._update_watched_label()
         self.item["watched"] = watched
+        # Die Kachel in der Liste muss mitgehen: sie zeigt den Haken sonst
+        # weiter an, obwohl er hier gerade entfernt wurde (User-Report
+        # 2026-09-18).
+        self.ctx.notify_item_state(self.item_id, watched=watched)
         self._state_call(lambda: self.ctx.client.set_watched(self.item_id, watched), "Gesehen-Status")
 
     def _on_favorite_toggled(self, button: Gtk.ToggleButton) -> None:
         favorite = button.get_active()
         self._update_favorite_label()
         self.item["favorite"] = favorite
+        self.ctx.notify_item_state(self.item_id, favorite=favorite)
         self._state_call(lambda: self.ctx.client.set_favorite(self.item_id, favorite), "Favorit")
 
     def _state_call(self, call, label: str) -> None:

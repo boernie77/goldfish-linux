@@ -58,6 +58,7 @@ class BrowsePage(Adw.NavigationPage):
         self.drilldown = drilldown
         self.toolbar_view = toolbar_view
         self.grid: CardGrid | None = None
+        self.ctx.add_item_state_listener(self._on_item_state_changed)
         self.content_box: Gtk.Box | None = None
         self.alpha: AlphaSidebar | None = None
         self.all_folders: list[dict] = []
@@ -270,6 +271,14 @@ class BrowsePage(Adw.NavigationPage):
         self._update_count()
 
     # -- Kachel-Abzeichen ------------------------------------------------
+
+    def _on_item_state_changed(self, item_id: int, watched=None, favorite=None) -> None:
+        """Zustand wurde woanders umgeschaltet (Info-Karte) — Kachel nachziehen.
+
+        Ohne das blieb der grüne Haken auf der Kachel stehen, obwohl er in der
+        Info-Karte gerade entfernt wurde (User-Report 2026-09-18)."""
+        if self.grid is not None:
+            self.grid.apply_item_state(item_id, watched=watched, favorite=favorite)
 
     def _toggle_watched(self, item: dict, watched: bool) -> None:
         """Die Kachel hat ihren Zustand schon selbst umgeschaltet; hier wird er

@@ -66,6 +66,12 @@ class CardGrid(Gtk.ScrolledWindow):
         self.on_folder = on_folder
         self.on_toggle_watched = on_toggle_watched
         self.on_toggle_favorite = on_toggle_favorite
+        # Welche Kachel zeigt gerade welches Item? Damit lässt sich der
+        # Gesehen-/Favoriten-Zustand einer EINZELNEN Kachel nachziehen, wenn er
+        # woanders geändert wurde (Info-Karte) — ohne das Modell anzufassen
+        # (Modellwechsel in einem sichtbaren Raster sind in dieser App eine
+        # bekannte Fehlerquelle, siehe CLAUDE.md).
+        self._card_by_item_id: dict[int, object] = {}
 
         self.store = Gio.ListStore.new(GridRow)
         # Kein Auswahlmodell im Wortsinn: die Kacheln reagieren selbst auf
@@ -115,6 +121,31 @@ class CardGrid(Gtk.ScrolledWindow):
         if adj is not None:
             adj.set_value(0)
 
+    def apply_item_state(self, item_id: int, watched=None, favorite=None) -> None:
+        """Zustand EINES Items in dieser Ansicht nachziehen.
+
+        Gerufen, wenn „gesehen"/„Favorit" außerhalb der Kachel umgeschaltet
+        wurde (Info-Karte). Aktualisiert die gerade gebundene Kachel und — über
+        dieselben Dicts, die das Modell hält — auch den Datenstand, damit ein
+        späteres Neubinden (Scrollen) den neuen Zustand mitbringt.
+        """
+        for row in self.store:
+            if row.is_folder:
+                continue
+            if row.payload.get("id") != item_id:
+                continue
+            if watched is not None:
+                row.payload["watched"] = bool(watched)
+            if favorite is not None:
+                row.payload["favorite"] = bool(favorite)
+        card = self._card_by_item_id.get(item_id)
+        if card is None:
+            return
+        if watched is not None:
+            card.set_watched(bool(watched))
+        if favorite is not None:
+            card.set_favorite(bool(favorite))
+
     # -- Factory ---------------------------------------------------------
 
     def _on_setup(self, _factory, list_item: Gtk.ListItem) -> None:
@@ -154,13 +185,25 @@ class CardGrid(Gtk.ScrolledWindow):
             stack.get_child_by_name("folder").bind(row.payload)
         else:
             stack.set_visible_child_name("item")
-            stack.get_child_by_name("item").bind(row.payload)
+            card = stack.get_child_by_name("item")
+            card.bind(row.payload)
+            item_id = row.payload.get("id")
+            if item_id is not None:
+                self._card_by_item_id[item_id] = card
 
     def _on_unbind(self, _factory, list_item: Gtk.ListItem) -> None:
         # Wichtig beim Recycling: ein noch laufender Poster-Request wird hier
         # entwertet, damit er nicht in der nächsten Belegung landet.
         stack: Gtk.Stack = list_item.get_child()
-        stack.get_child_by_name("item").unbind()
+        card = stack.get_child_by_name("item")
+        row = list_item.get_item()
+        if row is not None and not row.is_folder:
+            item_id = row.payload.get("id")
+            # Nur ausräumen, wenn wirklich DIESE Kachel eingetragen ist — beim
+            # Recycling kann inzwischen schon die nächste Bindung stehen.
+            if self._card_by_item_id.get(item_id) is card:
+                self._card_by_item_id.pop(item_id, None)
+        card.unbind()
         stack.get_child_by_name("folder").unbind()
 
     # -- Klicks weiterreichen --------------------------------------------
