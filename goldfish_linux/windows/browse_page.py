@@ -305,7 +305,17 @@ class BrowsePage(Adw.NavigationPage):
             "buckets": sorted(f.buckets),
             "genres": sorted(f.genres),
         }
-        known_ids = {it.get("id") for it in self.shown_items}
+        # shown_items ist bereits gruppiert (group_variants) — Geschwister-
+        # Varianten stecken in item["_variants"], nicht als eigene Einträge
+        # in shown_items. Ohne die Variants mit einzubeziehen, rutschen
+        # Geschwister-IDs eines bereits gezeigten Mehrfach-Varianten-Treffers
+        # am Dedup-Filter vorbei und erzeugen eine zweite Kachel desselben
+        # Films (QM-Review FTS5-Fuzzy-Suche, 2026-09-19).
+        known_ids = {
+            v.get("id")
+            for it in self.shown_items
+            for v in (it.get("_variants") or [it])
+        }
 
         def worker() -> None:
             try:
