@@ -121,6 +121,16 @@ class CardGrid(Gtk.ScrolledWindow):
         if adj is not None:
             adj.set_value(0)
 
+    def append_items(self, items: list[dict]) -> None:
+        """Hängt weitere Video-Kacheln ans Ende an, ohne den restlichen
+        Rasterinhalt zu ersetzen (z. B. Fuzzy-Zusatztreffer nachladen) — die
+        Scrollposition bleibt dabei unverändert, anders als bei
+        `set_content()`."""
+        if not items:
+            return
+        rows = [GridRow(i, False) for i in items]
+        self.store.splice(self.store.get_n_items(), 0, rows)
+
     def apply_item_state(self, item_id: int, watched=None, favorite=None) -> None:
         """Zustand EINES Items in dieser Ansicht nachziehen.
 

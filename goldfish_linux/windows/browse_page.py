@@ -73,6 +73,13 @@ class BrowsePage(Adw.NavigationPage):
         self.search_entry = search_entry
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_text = ""
+        # Fuzzy-Zusatztreffer (FTS5-Präfixsuche, `searchMode=fuzzy`): der
+        # Server meldet ihre Anzahl über den `X-Fuzzy-Extra-Count`-Header zum
+        # normalen (Ganze-Wörter-)Suchergebnis dazu. Erst auf Klick nachladen
+        # statt immer beide Modi anzufragen — die meisten Suchen brauchen sie
+        # nicht.
+        self.fuzzy_button: Gtk.Button | None = None
+        self._fuzzy_extra_count = 0
         # Ein Film liegt fast immer in seinem eigenen Release-Ordner —
         # Ordnerkacheln wären dort sinnlos (siehe `_load_worker`).
         self._always_flat = (library.get("kind") or "") == "movies"
@@ -132,9 +139,16 @@ class BrowsePage(Adw.NavigationPage):
         status = Adw.StatusPage(icon_name="dialog-error-symbolic", title="Fehler", description=message)
         self.toolbar_view.set_content(status)
 
-    def _show_results(self, folders: list[dict], items: list[dict], stats: dict | None = None) -> None:
+    def _show_results(
+        self,
+        folders: list[dict],
+        items: list[dict],
+        stats: dict | None = None,
+        fuzzy_extra_count: int = 0,
+    ) -> None:
         if stats:
             self.stats = stats
+        self._fuzzy_extra_count = fuzzy_extra_count
         if not folders and not items:
             # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
             # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
@@ -158,6 +172,7 @@ class BrowsePage(Adw.NavigationPage):
             self.content_box = None
             self.count_label = None
             self.alpha = None
+            self.fuzzy_button = None
             self.shown_items = []
             self.toolbar_view.set_content(status)
             return
@@ -197,10 +212,16 @@ class BrowsePage(Adw.NavigationPage):
             self.count_label = Gtk.Label(xalign=0, margin_start=16, margin_top=8, margin_end=16)
             self.count_label.add_css_class("dim-label")
             self.count_label.add_css_class("caption")
+            self.fuzzy_button = Gtk.Button(
+                halign=Gtk.Align.CENTER, margin_top=8, margin_bottom=12, visible=False
+            )
+            self.fuzzy_button.connect("clicked", self._on_fuzzy_button_clicked)
             self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
             self.content_box.append(self.count_label)
             self.content_box.append(grid_row)
+            self.content_box.append(self.fuzzy_button)
         self._update_count()
+        self._update_fuzzy_button()
         if self.toolbar_view.get_content() is not self.content_box:
             self.toolbar_view.set_content(self.content_box)
 
@@ -251,6 +272,65 @@ class BrowsePage(Adw.NavigationPage):
                 parts.append(f"{format_count(shown_folders)} Ordner")
             parts.append(f"{format_count(shown_items)} {noun}")
             self.count_label.set_text(" · ".join(parts))
+
+    def _update_fuzzy_button(self) -> None:
+        """Zeigt/versteckt den "N weitere Treffer"-Knopf unter dem Raster.
+
+        Nur bei aktiver Textsuche sinnvoll — Filter allein kennen keinen
+        Fuzzy-Modus."""
+        if self.fuzzy_button is None:
+            return
+        if self.search_text and self._fuzzy_extra_count > 0:
+            noun = "weiterer Treffer" if self._fuzzy_extra_count == 1 else "weitere Treffer"
+            self.fuzzy_button.set_label(f"{format_count(self._fuzzy_extra_count)} {noun} anzeigen")
+            self.fuzzy_button.set_sensitive(True)
+            self.fuzzy_button.set_visible(True)
+        else:
+            self.fuzzy_button.set_visible(False)
+
+    def _on_fuzzy_button_clicked(self, button: Gtk.Button) -> None:
+        """Lädt zusätzlich per `searchMode=fuzzy` (FTS5-Präfixsuche statt nur
+        ganzer Wörter) und hängt die neuen Treffer ans bestehende Raster an,
+        statt die Suche komplett neu zu laden — Scrollposition und bereits
+        gebundene Kacheln bleiben so erhalten."""
+        button.set_sensitive(False)
+        search = self.search_text
+        lib_id = self.library["id"]
+        f = self.filters
+        common = {
+            "sort": f.sort,
+            "sort_dir": f.sort_dir,
+            "watched": f.watched,
+            "favorite": "yes" if f.favorites_only else "",
+            "buckets": sorted(f.buckets),
+            "genres": sorted(f.genres),
+        }
+        known_ids = {it.get("id") for it in self.shown_items}
+
+        def worker() -> None:
+            try:
+                fuzzy_items, _ = self.ctx.client.get_items_with_fuzzy_count(
+                    lib_id, folder=self.folder, search=search, search_mode="fuzzy", **common
+                )
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._toast, f"Weitere Treffer konnten nicht geladen werden: {exc}")
+                GLib.idle_add(button.set_sensitive, True)
+                return
+            new_items = [it for it in fuzzy_items if it.get("id") not in known_ids]
+            new_items = group_variants(new_items)
+            GLib.idle_add(self._apply_fuzzy_extra, new_items)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_fuzzy_extra(self, new_items: list[dict]) -> bool:
+        self.all_items = self.all_items + new_items
+        self.shown_items = self.shown_items + new_items
+        if self.grid is not None:
+            self.grid.append_items(new_items)
+        self._fuzzy_extra_count = 0
+        self._update_count()
+        self._update_fuzzy_button()
+        return False
 
     def grid_folder_count(self) -> list[dict]:
         """Die aktuell gezeigten Ordnerkacheln (nach Buchstabenfilter)."""
@@ -523,10 +603,13 @@ class BrowsePage(Adw.NavigationPage):
             except Exception:  # noqa: BLE001 — eine fehlende Zahl ist kein Grund,
                 # die ganze Ansicht scheitern zu lassen
                 stats = {}
+        fuzzy_extra_count = 0
         try:
             if search:
                 folders = []
-                items = client.items(lib_id, folder=self.folder, search=search, **common)
+                items, fuzzy_extra_count = client.get_items_with_fuzzy_count(
+                    lib_id, folder=self.folder, search=search, **common
+                )
             elif f.is_flat or f.favorites_only or self._always_flat:
                 folders = []
                 items = client.items(lib_id, folder=self.folder, **common)
@@ -557,7 +640,7 @@ class BrowsePage(Adw.NavigationPage):
             return
         if seq != self._load_seq:
             return  # ein neuerer Lauf ist unterwegs
-        GLib.idle_add(self._show_results, folders, items, stats)
+        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count)
 
 
 def _folder_label(folder: dict) -> str:

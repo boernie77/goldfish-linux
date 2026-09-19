@@ -204,6 +204,7 @@ class GoldfishClient:
         return urljoin(self.base_url + "/", path.lstrip("/"))
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
+        return_headers = kwargs.pop("return_headers", False)
         url = self._url(path)
         timeout = kwargs.pop("timeout", DEFAULT_TIMEOUT)
         resp = None
@@ -233,14 +234,30 @@ class GoldfishClient:
                 pass
             raise GoldfishAPIError(message, status=resp.status_code)
         if not resp.content:
-            return None
-        try:
-            return resp.json()
-        except ValueError:
-            return resp.content
+            data = None
+        else:
+            try:
+                data = resp.json()
+            except ValueError:
+                data = resp.content
+        if return_headers:
+            return data, resp.headers
+        return data
 
     def get(self, path: str, params: dict | None = None, timeout: float | None = None) -> Any:
         kwargs: dict = {"params": params}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        return self._request("GET", path, **kwargs)
+
+    def get_with_headers(
+        self, path: str, params: dict | None = None, timeout: float | None = None
+    ) -> tuple[Any, Any]:
+        """Wie `get()`, gibt zusätzlich die Response-Header zurück — für
+        `get()` selbst nicht nötig (alle ~80 bisherigen Aufrufer wollen nur
+        den JSON-Körper), aber z. B. für `X-Fuzzy-Extra-Count` bei der
+        Fuzzy-Suche (`get_items_with_fuzzy_count`)."""
+        kwargs: dict = {"params": params, "return_headers": True}
         if timeout is not None:
             kwargs["timeout"] = timeout
         return self._request("GET", path, **kwargs)
@@ -312,6 +329,25 @@ class GoldfishClient:
 
         `person_id` ist eine TMDB-Personen-ID und macht die Liste
         bibliotheksübergreifend — alles, worin diese Person mitspielt."""
+        params = self._items_params(
+            library_id, folder, search, sort, sort_dir, watched, favorite, buckets, genres, person_id, match
+        )
+        return self.get("/api/items", params) or []
+
+    @staticmethod
+    def _items_params(
+        library_id: int | None,
+        folder: str,
+        search: str,
+        sort: str,
+        sort_dir: str,
+        watched: str,
+        favorite: str,
+        buckets: list[str] | None,
+        genres: list[str] | None,
+        person_id: int | None,
+        match: str,
+    ) -> dict[str, Any]:
         params: dict[str, Any] = {"sort": sort}
         if library_id:
             params["libraryId"] = str(library_id)
@@ -333,7 +369,42 @@ class GoldfishClient:
             params["personId"] = str(person_id)
         if match:
             params["match"] = match
-        return self.get("/api/items", params) or []
+        return params
+
+    def get_items_with_fuzzy_count(
+        self,
+        library_id: int | None = None,
+        folder: str = "",
+        search: str = "",
+        sort: str = "title",
+        sort_dir: str = "",
+        watched: str = "",
+        favorite: str = "",
+        buckets: list[str] | None = None,
+        genres: list[str] | None = None,
+        person_id: int | None = None,
+        match: str = "",
+        search_mode: str = "",
+    ) -> tuple[list[dict], int]:
+        """Wie `items()`, aber mit optionalem `searchMode=fuzzy` (Server-
+        seitige FTS5-Präfixsuche statt nur ganzer Wörter) und dem
+        zusätzlichen `X-Fuzzy-Extra-Count`-Header aus der Antwort — die
+        Anzahl Treffer, die NUR der Fuzzy-Modus findet.
+
+        Eigene Methode statt `items()` selbst umzubauen: `items()` hat rund
+        80 Aufrufer, die alle nur die Liste wollen und über den generischen
+        `get()`-Helfer laufen, der keine Header durchreicht."""
+        params = self._items_params(
+            library_id, folder, search, sort, sort_dir, watched, favorite, buckets, genres, person_id, match
+        )
+        if search_mode:
+            params["searchMode"] = search_mode
+        data, headers = self.get_with_headers("/api/items", params)
+        try:
+            fuzzy_extra_count = int(headers.get("X-Fuzzy-Extra-Count") or 0)
+        except (TypeError, ValueError):
+            fuzzy_extra_count = 0
+        return data or [], fuzzy_extra_count
 
     def item(self, item_id: int) -> dict:
         return self.get(f"/api/items/{item_id}") or {}
