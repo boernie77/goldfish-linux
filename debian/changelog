@@ -1,3 +1,10 @@
+goldfish-linux (0.1.59-1) unstable; urgency=medium
+
+  * Faelschlich in 0.1.58 hinzugefuegte absteigende Episoden-Sortierung in
+    der Serien-Sammelkachel des Schauspieler-Filters wieder entfernt - das
+    hatte der Nutzer nie verlangt (Missverstaendnis auf Assistant-Seite).
+    Reihenfolge ist wieder wie zuvor (aufsteigend nach Staffel/Folge).
+
 goldfish-linux (0.1.58-1) unstable; urgency=medium
 
   * Filme-Sektion im Person-Filter hatte keine eigene Ueberschrift (nur

@@ -140,17 +140,6 @@ class PersonPage(Adw.NavigationPage):
             outer.append(h)
             flow = card_flow()
             for show in shows.values():
-                # User-Wunsch 2026-09-20: "die aktuelleren Folgen, also die wo
-                # man gerade schaut, links sein, also am Anfang, nicht rechts
-                # am Ende" — Folgen absteigend nach Staffel/Folge sortieren,
-                # bevor sie in die Sammelkachel-Detailliste wandern.
-                show["episodes"].sort(
-                    key=lambda ep: (
-                        (ep.get("metadata") or {}).get("season") or 0,
-                        (ep.get("metadata") or {}).get("episode") or 0,
-                    ),
-                    reverse=True,
-                )
                 count = len(show["episodes"])
                 image_path = (
                     f"/api/poster/metadata/{show['showMetaId']}"
