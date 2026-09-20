@@ -626,6 +626,33 @@ class GoldfishClient:
         data = self.get(f"/api/libraries/{library_id}/genres") or {}
         return data.get("genres") or []
 
+    def search_people(
+        self, term: str, library_id: int | None = None, folder: str = ""
+    ) -> list[dict]:
+        """Schauspielersuche für die aufgegliederte Trefferanzeige (Server
+        1.4.22, `GET /api/search/people`) — seit dieser Version matcht
+        `/api/items?search=` NUR NOCH den Titel, Besetzungstreffer kommen
+        ausschließlich von hier.
+
+        `library_id`/`folder` scopen die Personensuche exakt wie `items()`
+        das für den Bereich tut, in dem gerade gesucht wird. Ein Begriff unter
+        drei Zeichen liefert serverseitig ohnehin eine leere Liste — das wird
+        hier gespiegelt, um den unnötigen Aufruf gar nicht erst zu stellen.
+
+        Antwortform je Treffer: `{id, tmdbId, name, profilePath}` —
+        `profilePath` ist ein roher TMDB-Pfad wie `/abc123.jpg` und muss über
+        `tmdb_image_url()` zur vollen Adresse werden, genau wie beim
+        Besetzungs-Portrait auf der Detailseite."""
+        term = term.strip()
+        if len(term) < 3:
+            return []
+        params: dict[str, Any] = {"q": term}
+        if library_id:
+            params["libraryId"] = str(library_id)
+        if folder:
+            params["folder"] = folder
+        return self.get("/api/search/people", params) or []
+
     def home(self) -> dict:
         """Startseiten-Streifen: `{sections: [{library, continue, nextUp,
         recent}], showContinue, showNextUp}` — bereits serverseitig nach der

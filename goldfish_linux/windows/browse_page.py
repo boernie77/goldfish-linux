@@ -27,6 +27,7 @@ from ..widgets.alpha_sidebar import AlphaSidebar, first_letter  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..variants import group_variants  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
+from ..widgets.people_row import PeopleSearchRow  # noqa: E402
 from .detail_page import DetailPage  # noqa: E402
 
 
@@ -61,6 +62,8 @@ class BrowsePage(Adw.NavigationPage):
         self.grid: CardGrid | None = None
         self.ctx.add_item_state_listener(self._on_item_state_changed)
         self.content_box: Gtk.Box | None = None
+        self.people_container: Gtk.Box | None = None
+        self.people_row: Gtk.Widget | None = None
         self.alpha: AlphaSidebar | None = None
         self.all_folders: list[dict] = []
         self.all_items: list[dict] = []
@@ -145,10 +148,12 @@ class BrowsePage(Adw.NavigationPage):
         items: list[dict],
         stats: dict | None = None,
         fuzzy_extra_count: int = 0,
+        people: list[dict] | None = None,
     ) -> None:
         if stats:
             self.stats = stats
         self._fuzzy_extra_count = fuzzy_extra_count
+        people = people or []
         if not folders and not items:
             # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
             # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
@@ -170,6 +175,8 @@ class BrowsePage(Adw.NavigationPage):
             status.set_vexpand(True)
             self.grid = None
             self.content_box = None
+            self.people_container = None
+            self.people_row = None
             self.count_label = None
             self.alpha = None
             self.fuzzy_button = None
@@ -216,14 +223,52 @@ class BrowsePage(Adw.NavigationPage):
                 halign=Gtk.Align.CENTER, margin_top=8, margin_bottom=12, visible=False
             )
             self.fuzzy_button.connect("clicked", self._on_fuzzy_button_clicked)
+            # Schauspieler-Reihe (aufgegliederte Trefferanzeige, Server 1.4.22)
+            # steht als erstes Kind — sichtbar nur, wenn eine Suche welche
+            # findet (browser cards.js: appendSearchResultCards).
+            self.people_container = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                margin_start=16,
+                margin_end=16,
+                margin_top=12,
+                visible=False,
+            )
             self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            self.content_box.append(self.people_container)
             self.content_box.append(self.count_label)
             self.content_box.append(grid_row)
             self.content_box.append(self.fuzzy_button)
+        self._update_people_row(people)
         self._update_count()
         self._update_fuzzy_button()
         if self.toolbar_view.get_content() is not self.content_box:
             self.toolbar_view.set_content(self.content_box)
+
+    def _update_people_row(self, people: list[dict]) -> None:
+        """Baut die Schauspieler-Reihe neu — nur bei aktiver Suche mit
+        mindestens einem Treffer sichtbar (dieselbe Regel wie im Browser)."""
+        if self.people_container is None:
+            return
+        if self.people_row is not None:
+            self.people_container.remove(self.people_row)
+            self.people_row = None
+        if self.search_text and people:
+            self.people_row = PeopleSearchRow(self.ctx.client, people, on_person=self._open_person)
+            self.people_container.append(self.people_row)
+            self.people_container.set_visible(True)
+        else:
+            self.people_container.set_visible(False)
+
+    def _open_person(self, person: dict) -> None:
+        """Klick auf eine Schauspieler-Karte der Suchergebnisse öffnet dieselbe
+        Personen-Ansicht wie ein Klick auf ein Besetzungsportrait in der
+        Detailseite (`DetailPage._open_person`, `SeasonsPage._open_person`)."""
+        tmdb_id = person.get("tmdbId")
+        if not tmdb_id:
+            return
+        from .person_page import PersonPage
+
+        self.nav_view.push(PersonPage(self.ctx, self.nav_view, int(tmdb_id), person.get("name") or ""))
 
     def _update_count(self) -> None:
         """Die Zeile über dem Raster: wie viel hier drin ist.
@@ -565,9 +610,13 @@ class BrowsePage(Adw.NavigationPage):
            anfühlte. Der Browser macht es ebenso (`grid.js`: `flatView =
            state.flatView || lib.kind === "movies" || isShuffle`).
         1. **Suche**: nie Ordnerkacheln. Der Ordner bleibt als Bereich gesetzt,
-           in der Wurzel sucht sie damit über die ganze Bibliothek. Der Server
-           durchsucht dabei auch Besetzungsnamen, Künstler und Album — dafür ist
-           hier nichts zu tun.
+           in der Wurzel sucht sie damit über die ganze Bibliothek. Seit
+           Server 1.4.22 durchsucht `/api/items?search=` NUR NOCH den Titel
+           (FTS5-Wortmatch) — Besetzungstreffer kommen NICHT mehr aus diesem
+           Aufruf, sondern separat aus `GET /api/search/people` (siehe unten,
+           `_load_people`) und stehen als eigene Reihe über dem Raster
+           (aufgegliederte Trefferanzeige, wie im Browser `cards.js`
+           `appendSearchResultCards`).
         2. **Flache Sortierung** (`FilterState.is_flat`, z. B. Hinzugefügt oder
            Laufzeit) ODER **nur Favoriten**: ebenfalls ohne Ordnerkacheln, die
            Struktur wird bewusst übergangen. In der Wurzel geht der
@@ -650,7 +699,18 @@ class BrowsePage(Adw.NavigationPage):
             return
         if seq != self._load_seq:
             return  # ein neuerer Lauf ist unterwegs
-        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count)
+        people: list[dict] = []
+        if search:
+            # Eigener Aufruf statt Teil des try/except oben: ein Fehler bei
+            # der Personensuche darf die eigentliche Trefferliste nicht mit
+            # zu Fall bringen — die Reihe bleibt dann einfach leer.
+            try:
+                people = client.search_people(search, library_id=lib_id, folder=self.folder)
+            except GoldfishAPIError:
+                people = []
+        if seq != self._load_seq:
+            return
+        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people)
 
 
 def _folder_label(folder: dict) -> str:

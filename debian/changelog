@@ -1,3 +1,18 @@
+goldfish-linux (0.1.56-1) unstable; urgency=medium
+
+  * Aufgegliederte Trefferanzeige (Server 1.4.22): "/api/items?search=" matcht
+    seit dieser Server-Version nur noch den Titel, Besetzungstreffer sind aus
+    diesem Endpunkt entfernt worden. Neue Schauspieler-Reihe ueber dem
+    Treffer-Raster (waagerecht scrollbare Portrait-Karten mit Name und
+    "Schauspieler"-Beschriftung, sichtbar ab drei Zeichen Suchbegriff) holt
+    diese Treffer separat von "GET /api/search/people", genau auf den
+    Bibliotheks-/Ordner-Bereich der laufenden Suche beschraenkt. Klick auf
+    eine Karte oeffnet dieselbe Personen-Ansicht wie ein Klick auf ein
+    Besetzungsportrait der Detailseite. Client hatte nie eigene
+    Besetzungs-Suchlogik, es war also nichts zu entfernen.
+
+ -- Christian <christian@byboernie.de>  Sun, 20 Sep 2026 00:00:00 +0200
+
 goldfish-linux (0.1.55-1) unstable; urgency=medium
 
   * Eine Kachel pro Film, auch wenn derselbe Film in mehreren Aufloesungen
