@@ -23,6 +23,7 @@ from gi.repository import Adw, GLib, Gtk, Pango  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
 from ..variants import group_variants  # noqa: E402
+from ..widgets.card import SimpleCard, card_flow  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
 
@@ -77,24 +78,113 @@ class PersonPage(Adw.NavigationPage):
         if details.get("name"):
             self.set_title(details["name"])
 
+        # User-Report 2026-09-20: "die Treffer in den Serien zeigen nicht die
+        # Serie, sondern wieder die einzelnen Folgen. Es soll so sein, dass
+        # nur die Serie gezeigt wird, und auf der Kachel steht, in wievielen
+        # Folgen er enthalten ist." Gleiche Regel wie im Browser
+        # (grid.js renderPersonFilterBranch): Filme normal, Episoden pro Show
+        # (Parent-Show-metadataId, sonst libraryId+Ordner als Fallback-Schlüssel
+        # für unmatched Serien) zu EINER Sammelkachel mit Folgenzahl.
+        movies = [it for it in items if (it.get("metadata") or {}).get("tmdbType") == "movie"]
+        episodes = [it for it in items if (it.get("metadata") or {}).get("tmdbType") == "episode"]
+
+        shows: dict[object, dict] = {}
+        for ep in episodes:
+            rel = ep.get("relPath") or ""
+            folder = rel.split("/", 1)[0] if "/" in rel else ""
+            show_meta_id = (ep.get("metadata") or {}).get("parentId") or 0
+            key = show_meta_id or f"{ep.get('libraryId')}|{folder}"
+            entry = shows.get(key)
+            if entry is None:
+                entry = {
+                    "folder": folder,
+                    "libraryId": ep.get("libraryId"),
+                    "showMetaId": show_meta_id,
+                    "fallbackThumbId": ep.get("id"),
+                    "episodes": [],
+                }
+                shows[key] = entry
+            entry["episodes"].append(ep)
+
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         outer.append(self._build_header(details))
 
+        # Eine Kachel pro Film, auch wenn mehrere Auflösungen vorhanden sind
+        # (Browser `groupVariants`) — siehe ..variants.
+        movies = group_variants(movies)
+        self.shown_items = movies
+
+        if movies:
+            grid = CardGrid(
+                self.ctx.client,
+                "movies",
+                on_item=self._open_detail,
+                on_toggle_watched=lambda it, w: self._state_call(lambda: self.ctx.client.set_watched(it["id"], w)),
+                on_toggle_favorite=lambda it, f: self._state_call(lambda: self.ctx.client.set_favorite(it["id"], f)),
+            )
+            grid.set_content([], movies)
+            outer.append(grid)
+
+        if shows:
+            h = Gtk.Label(label="📺 Serien", xalign=0, margin_start=16, margin_top=12)
+            h.add_css_class("title-3")
+            outer.append(h)
+            flow = card_flow()
+            for show in shows.values():
+                count = len(show["episodes"])
+                image_path = (
+                    f"/api/poster/metadata/{show['showMetaId']}"
+                    if show["showMetaId"]
+                    else f"/api/thumb/{show['fallbackThumbId']}"
+                )
+                flow.insert(
+                    SimpleCard(
+                        self.ctx.client,
+                        image_path,
+                        title=show["folder"] or "Serie",
+                        subtitle=f"{count} Folge{'n' if count != 1 else ''}",
+                        on_click=lambda s=show: self._open_show_episodes(s),
+                    ),
+                    -1,
+                )
+            outer.append(flow)
+
+        if not movies and not shows:
+            outer.append(
+                Adw.StatusPage(icon_name="emblem-photos-symbolic", title="Nichts gefunden", description="")
+            )
+
+        scrolled = Gtk.ScrolledWindow(vexpand=True)
+        scrolled.set_child(outer)
+        self.toolbar_view.set_content(scrolled)
+        return False
+
+    def _open_show_episodes(self, show: dict) -> None:
+        """Klick auf eine Serien-Sammelkachel: zeigt NUR die Folgen dieser
+        Serie, in denen die Person mitspielt (gleiche Bedienung wie im
+        Browser — kein voller Serien-Ordner, keine erneute Server-Anfrage
+        nötig, die Episoden liegen schon vor)."""
+        episodes = group_variants(show["episodes"])
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(Adw.HeaderBar())
+        page = Adw.NavigationPage(
+            title=show["folder"] or "Serie", tag=f"person-show-{show['showMetaId']}", child=toolbar_view
+        )
         grid = CardGrid(
             self.ctx.client,
-            "movies",  # bibliotheksübergreifend: Posterformat ist die sinnvolle Vorgabe
-            on_item=self._open_detail,
+            "tv",
+            on_item=lambda it: self._open_episode_detail(it, episodes),
             on_toggle_watched=lambda it, w: self._state_call(lambda: self.ctx.client.set_watched(it["id"], w)),
             on_toggle_favorite=lambda it, f: self._state_call(lambda: self.ctx.client.set_favorite(it["id"], f)),
         )
-        # Eine Kachel pro Film, auch wenn mehrere Auflösungen vorhanden sind
-        # (Browser `groupVariants`) — siehe ..variants.
-        items = group_variants(items)
-        self.shown_items = items
-        grid.set_content([], items)
-        outer.append(grid)
-        self.toolbar_view.set_content(outer)
-        return False
+        grid.set_content([], episodes)
+        toolbar_view.set_content(grid)
+        self.nav_view.push(page)
+
+    def _open_episode_detail(self, item: dict, queue: list[dict]) -> None:
+        from .detail_page import DetailPage
+
+        self.nav_view.push(DetailPage(self.ctx, self.nav_view, item, queue=queue))
 
     def _build_header(self, details: dict) -> Gtk.Widget:
         box = Gtk.Box(

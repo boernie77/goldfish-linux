@@ -143,6 +143,21 @@ class DetailPage(Adw.NavigationPage):
         row.append(self.picture)
 
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, hexpand=True)
+        # Serienname klickbar machen, wenn es sich um eine Episode handelt
+        # (User-Wunsch 2026-09-20: "der Serienname muss klickbar sein und zur
+        # Staffelübersicht der Serie führen", überall in Goldfish gleich).
+        metadata = self.item.get("metadata") or {}
+        rel = self.item.get("relPath") or ""
+        show_folder = rel.split("/", 1)[0] if "/" in rel else ""
+        if metadata.get("tmdbType") == "episode" and show_folder:
+            show_link = Gtk.LinkButton(
+                uri="#",
+                label=show_folder,
+                halign=Gtk.Align.START,
+            )
+            show_link.set_has_frame(False)
+            show_link.connect("activate-link", self._on_show_link_clicked)
+            text.append(show_link)
         title_label = Gtk.Label(
             label=metadata.get("title") or self.item.get("title") or "Unbenannt",
             xalign=0,
@@ -611,6 +626,18 @@ class DetailPage(Adw.NavigationPage):
         if not tmdb_id:
             return
         self.nav_view.push(PersonPage(self.ctx, self.nav_view, int(tmdb_id), member.get("name") or ""))
+
+    def _on_show_link_clicked(self, _button: Gtk.LinkButton) -> bool:
+        """Serienname im Titel angeklickt: zur Staffelübersicht dieser Serie
+        springen (gleiche Bedienung wie im Browser, `data-show-link`)."""
+        from .seasons_page import SeasonsPage
+
+        rel = self.item.get("relPath") or ""
+        show_folder = rel.split("/", 1)[0] if "/" in rel else ""
+        if show_folder:
+            library = {"id": self.item.get("libraryId"), "name": show_folder}
+            self.nav_view.push(SeasonsPage(self.ctx, self.nav_view, library, show_folder))
+        return True  # verhindert, dass GTK versucht, die "#"-URI zu öffnen
 
     # -- Gesehen und Favorit ---------------------------------------------
 
