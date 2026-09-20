@@ -114,7 +114,16 @@ class PersonPage(Adw.NavigationPage):
         movies = group_variants(movies)
         self.shown_items = movies
 
+        # User-Wunsch 2026-09-20: "Es sollen immer alle Treffer von Filmen und
+        # Serien aufgezeigt werden, aber Kategorisiert. Also Erst Filme (mit
+        # Überschrift) und dann extra Bereich mit Überschrift Serien." — vorher
+        # fehlte die Filme-Überschrift (nur Serien hatte eine), was auf
+        # iOS/FireTV zum Report führte, Filme/Serien seien vermischt. Beide
+        # Sektionen jetzt gleichwertig mit eigener Überschrift.
         if movies:
+            h = Gtk.Label(label=f"🎬 Filme · {len(movies)}", xalign=0, margin_start=16, margin_top=12)
+            h.add_css_class("title-3")
+            outer.append(h)
             grid = CardGrid(
                 self.ctx.client,
                 "movies",
@@ -126,11 +135,22 @@ class PersonPage(Adw.NavigationPage):
             outer.append(grid)
 
         if shows:
-            h = Gtk.Label(label="📺 Serien", xalign=0, margin_start=16, margin_top=12)
+            h = Gtk.Label(label=f"📺 Serien · {len(shows)}", xalign=0, margin_start=16, margin_top=12)
             h.add_css_class("title-3")
             outer.append(h)
             flow = card_flow()
             for show in shows.values():
+                # User-Wunsch 2026-09-20: "die aktuelleren Folgen, also die wo
+                # man gerade schaut, links sein, also am Anfang, nicht rechts
+                # am Ende" — Folgen absteigend nach Staffel/Folge sortieren,
+                # bevor sie in die Sammelkachel-Detailliste wandern.
+                show["episodes"].sort(
+                    key=lambda ep: (
+                        (ep.get("metadata") or {}).get("season") or 0,
+                        (ep.get("metadata") or {}).get("episode") or 0,
+                    ),
+                    reverse=True,
+                )
                 count = len(show["episodes"])
                 image_path = (
                     f"/api/poster/metadata/{show['showMetaId']}"
@@ -148,6 +168,7 @@ class PersonPage(Adw.NavigationPage):
                     -1,
                 )
             outer.append(flow)
+
 
         if not movies and not shows:
             outer.append(

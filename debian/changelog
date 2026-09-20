@@ -1,3 +1,11 @@
+goldfish-linux (0.1.58-1) unstable; urgency=medium
+
+  * Filme-Sektion im Person-Filter hatte keine eigene Ueberschrift (nur
+    Serien hatte eine) - jetzt haben beide Sektionen eine gleichwertige
+    Ueberschrift mit Treffer-Zaehler.
+  * Folgen innerhalb einer Serien-Sammelkachel sind jetzt nach Staffel/Folge
+    absteigend sortiert, die neueste Folge steht zuerst.
+
 goldfish-linux (0.1.57-1) unstable; urgency=medium
 
   * Person-Filter gruppiert Serien-Treffer jetzt zu einer Sammelkachel pro
