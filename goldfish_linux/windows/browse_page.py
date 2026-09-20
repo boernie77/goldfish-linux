@@ -27,6 +27,7 @@ from ..widgets.alpha_sidebar import AlphaSidebar, first_letter  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
 from ..variants import group_variants  # noqa: E402
 from ..widgets.grid import CardGrid  # noqa: E402
+from ..widgets.people_row import PeopleSearchRow  # noqa: E402
 from .detail_page import DetailPage  # noqa: E402
 
 
@@ -61,6 +62,8 @@ class BrowsePage(Adw.NavigationPage):
         self.grid: CardGrid | None = None
         self.ctx.add_item_state_listener(self._on_item_state_changed)
         self.content_box: Gtk.Box | None = None
+        self.people_container: Gtk.Box | None = None
+        self.people_row: Gtk.Widget | None = None
         self.alpha: AlphaSidebar | None = None
         self.all_folders: list[dict] = []
         self.all_items: list[dict] = []
@@ -73,6 +76,13 @@ class BrowsePage(Adw.NavigationPage):
         self.search_entry = search_entry
         self.search_entry.connect("search-changed", self._on_search_changed)
         self.search_text = ""
+        # Fuzzy-Zusatztreffer (FTS5-Präfixsuche, `searchMode=fuzzy`): der
+        # Server meldet ihre Anzahl über den `X-Fuzzy-Extra-Count`-Header zum
+        # normalen (Ganze-Wörter-)Suchergebnis dazu. Erst auf Klick nachladen
+        # statt immer beide Modi anzufragen — die meisten Suchen brauchen sie
+        # nicht.
+        self.fuzzy_button: Gtk.Button | None = None
+        self._fuzzy_extra_count = 0
         # Ein Film liegt fast immer in seinem eigenen Release-Ordner —
         # Ordnerkacheln wären dort sinnlos (siehe `_load_worker`).
         self._always_flat = (library.get("kind") or "") == "movies"
@@ -132,9 +142,18 @@ class BrowsePage(Adw.NavigationPage):
         status = Adw.StatusPage(icon_name="dialog-error-symbolic", title="Fehler", description=message)
         self.toolbar_view.set_content(status)
 
-    def _show_results(self, folders: list[dict], items: list[dict], stats: dict | None = None) -> None:
+    def _show_results(
+        self,
+        folders: list[dict],
+        items: list[dict],
+        stats: dict | None = None,
+        fuzzy_extra_count: int = 0,
+        people: list[dict] | None = None,
+    ) -> None:
         if stats:
             self.stats = stats
+        self._fuzzy_extra_count = fuzzy_extra_count
+        people = people or []
         if not folders and not items:
             # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
             # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
@@ -156,8 +175,11 @@ class BrowsePage(Adw.NavigationPage):
             status.set_vexpand(True)
             self.grid = None
             self.content_box = None
+            self.people_container = None
+            self.people_row = None
             self.count_label = None
             self.alpha = None
+            self.fuzzy_button = None
             self.shown_items = []
             self.toolbar_view.set_content(status)
             return
@@ -197,12 +219,56 @@ class BrowsePage(Adw.NavigationPage):
             self.count_label = Gtk.Label(xalign=0, margin_start=16, margin_top=8, margin_end=16)
             self.count_label.add_css_class("dim-label")
             self.count_label.add_css_class("caption")
+            self.fuzzy_button = Gtk.Button(
+                halign=Gtk.Align.CENTER, margin_top=8, margin_bottom=12, visible=False
+            )
+            self.fuzzy_button.connect("clicked", self._on_fuzzy_button_clicked)
+            # Schauspieler-Reihe (aufgegliederte Trefferanzeige, Server 1.4.22)
+            # steht als erstes Kind — sichtbar nur, wenn eine Suche welche
+            # findet (browser cards.js: appendSearchResultCards).
+            self.people_container = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                margin_start=16,
+                margin_end=16,
+                margin_top=12,
+                visible=False,
+            )
             self.content_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            self.content_box.append(self.people_container)
             self.content_box.append(self.count_label)
             self.content_box.append(grid_row)
+            self.content_box.append(self.fuzzy_button)
+        self._update_people_row(people)
         self._update_count()
+        self._update_fuzzy_button()
         if self.toolbar_view.get_content() is not self.content_box:
             self.toolbar_view.set_content(self.content_box)
+
+    def _update_people_row(self, people: list[dict]) -> None:
+        """Baut die Schauspieler-Reihe neu — nur bei aktiver Suche mit
+        mindestens einem Treffer sichtbar (dieselbe Regel wie im Browser)."""
+        if self.people_container is None:
+            return
+        if self.people_row is not None:
+            self.people_container.remove(self.people_row)
+            self.people_row = None
+        if self.search_text and people:
+            self.people_row = PeopleSearchRow(self.ctx.client, people, on_person=self._open_person)
+            self.people_container.append(self.people_row)
+            self.people_container.set_visible(True)
+        else:
+            self.people_container.set_visible(False)
+
+    def _open_person(self, person: dict) -> None:
+        """Klick auf eine Schauspieler-Karte der Suchergebnisse öffnet dieselbe
+        Personen-Ansicht wie ein Klick auf ein Besetzungsportrait in der
+        Detailseite (`DetailPage._open_person`, `SeasonsPage._open_person`)."""
+        tmdb_id = person.get("tmdbId")
+        if not tmdb_id:
+            return
+        from .person_page import PersonPage
+
+        self.nav_view.push(PersonPage(self.ctx, self.nav_view, int(tmdb_id), person.get("name") or ""))
 
     def _update_count(self) -> None:
         """Die Zeile über dem Raster: wie viel hier drin ist.
@@ -251,6 +317,75 @@ class BrowsePage(Adw.NavigationPage):
                 parts.append(f"{format_count(shown_folders)} Ordner")
             parts.append(f"{format_count(shown_items)} {noun}")
             self.count_label.set_text(" · ".join(parts))
+
+    def _update_fuzzy_button(self) -> None:
+        """Zeigt/versteckt den "N weitere Treffer"-Knopf unter dem Raster.
+
+        Nur bei aktiver Textsuche sinnvoll — Filter allein kennen keinen
+        Fuzzy-Modus."""
+        if self.fuzzy_button is None:
+            return
+        if self.search_text and self._fuzzy_extra_count > 0:
+            noun = "weiterer Treffer" if self._fuzzy_extra_count == 1 else "weitere Treffer"
+            self.fuzzy_button.set_label(f"{format_count(self._fuzzy_extra_count)} {noun} anzeigen")
+            self.fuzzy_button.set_sensitive(True)
+            self.fuzzy_button.set_visible(True)
+        else:
+            self.fuzzy_button.set_visible(False)
+
+    def _on_fuzzy_button_clicked(self, button: Gtk.Button) -> None:
+        """Lädt zusätzlich per `searchMode=fuzzy` (FTS5-Präfixsuche statt nur
+        ganzer Wörter) und hängt die neuen Treffer ans bestehende Raster an,
+        statt die Suche komplett neu zu laden — Scrollposition und bereits
+        gebundene Kacheln bleiben so erhalten."""
+        button.set_sensitive(False)
+        search = self.search_text
+        lib_id = self.library["id"]
+        f = self.filters
+        common = {
+            "sort": f.sort,
+            "sort_dir": f.sort_dir,
+            "watched": f.watched,
+            "favorite": "yes" if f.favorites_only else "",
+            "buckets": sorted(f.buckets),
+            "genres": sorted(f.genres),
+        }
+        # shown_items ist bereits gruppiert (group_variants) — Geschwister-
+        # Varianten stecken in item["_variants"], nicht als eigene Einträge
+        # in shown_items. Ohne die Variants mit einzubeziehen, rutschen
+        # Geschwister-IDs eines bereits gezeigten Mehrfach-Varianten-Treffers
+        # am Dedup-Filter vorbei und erzeugen eine zweite Kachel desselben
+        # Films (QM-Review FTS5-Fuzzy-Suche, 2026-09-19).
+        known_ids = {
+            v.get("id")
+            for it in self.shown_items
+            for v in (it.get("_variants") or [it])
+        }
+
+        def worker() -> None:
+            try:
+                fuzzy_items, _ = self.ctx.client.get_items_with_fuzzy_count(
+                    lib_id, folder=self.folder, search=search, search_mode="fuzzy", **common
+                )
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._toast, f"Weitere Treffer konnten nicht geladen werden: {exc}")
+                GLib.idle_add(button.set_sensitive, True)
+                return
+            new_items = [it for it in fuzzy_items if it.get("id") not in known_ids]
+            new_items = group_variants(new_items)
+            GLib.idle_add(self._apply_fuzzy_extra, new_items)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_fuzzy_extra(self, new_items: list[dict]) -> bool:
+        self.all_items = self.all_items + new_items
+        self.shown_items = self.shown_items + new_items
+        if self.grid is not None:
+            self.grid.append_items(new_items)
+        self._fuzzy_extra_count = 0
+        self._update_count()
+        self._update_fuzzy_button()
+        return False
 
     def grid_folder_count(self) -> list[dict]:
         """Die aktuell gezeigten Ordnerkacheln (nach Buchstabenfilter)."""
@@ -475,9 +610,13 @@ class BrowsePage(Adw.NavigationPage):
            anfühlte. Der Browser macht es ebenso (`grid.js`: `flatView =
            state.flatView || lib.kind === "movies" || isShuffle`).
         1. **Suche**: nie Ordnerkacheln. Der Ordner bleibt als Bereich gesetzt,
-           in der Wurzel sucht sie damit über die ganze Bibliothek. Der Server
-           durchsucht dabei auch Besetzungsnamen, Künstler und Album — dafür ist
-           hier nichts zu tun.
+           in der Wurzel sucht sie damit über die ganze Bibliothek. Seit
+           Server 1.4.22 durchsucht `/api/items?search=` NUR NOCH den Titel
+           (FTS5-Wortmatch) — Besetzungstreffer kommen NICHT mehr aus diesem
+           Aufruf, sondern separat aus `GET /api/search/people` (siehe unten,
+           `_load_people`) und stehen als eigene Reihe über dem Raster
+           (aufgegliederte Trefferanzeige, wie im Browser `cards.js`
+           `appendSearchResultCards`).
         2. **Flache Sortierung** (`FilterState.is_flat`, z. B. Hinzugefügt oder
            Laufzeit) ODER **nur Favoriten**: ebenfalls ohne Ordnerkacheln, die
            Struktur wird bewusst übergangen. In der Wurzel geht der
@@ -523,10 +662,13 @@ class BrowsePage(Adw.NavigationPage):
             except Exception:  # noqa: BLE001 — eine fehlende Zahl ist kein Grund,
                 # die ganze Ansicht scheitern zu lassen
                 stats = {}
+        fuzzy_extra_count = 0
         try:
             if search:
                 folders = []
-                items = client.items(lib_id, folder=self.folder, search=search, **common)
+                items, fuzzy_extra_count = client.get_items_with_fuzzy_count(
+                    lib_id, folder=self.folder, search=search, **common
+                )
             elif f.is_flat or f.favorites_only or self._always_flat:
                 folders = []
                 items = client.items(lib_id, folder=self.folder, **common)
@@ -557,7 +699,18 @@ class BrowsePage(Adw.NavigationPage):
             return
         if seq != self._load_seq:
             return  # ein neuerer Lauf ist unterwegs
-        GLib.idle_add(self._show_results, folders, items, stats)
+        people: list[dict] = []
+        if search:
+            # Eigener Aufruf statt Teil des try/except oben: ein Fehler bei
+            # der Personensuche darf die eigentliche Trefferliste nicht mit
+            # zu Fall bringen — die Reihe bleibt dann einfach leer.
+            try:
+                people = client.search_people(search, library_id=lib_id, folder=self.folder)
+            except GoldfishAPIError:
+                people = []
+        if seq != self._load_seq:
+            return
+        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people)
 
 
 def _folder_label(folder: dict) -> str:
