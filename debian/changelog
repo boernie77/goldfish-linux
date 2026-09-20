@@ -1,3 +1,12 @@
+goldfish-linux (0.1.57-1) unstable; urgency=medium
+
+  * Person-Filter gruppiert Serien-Treffer jetzt zu einer Sammelkachel pro
+    Serie mit Folgenzahl statt jede Folge einzeln zu zeigen (wie im Browser).
+    Klick auf die Serien-Kachel zeigt nur die Folgen dieser Serie mit der
+    gewaehlten Person.
+  * Serienname im Detail-Dialog einer Episode ist jetzt klickbar und fuehrt
+    zur Staffeluebersicht der Serie.
+
 goldfish-linux (0.1.56-1) unstable; urgency=medium
 
   * Aufgegliederte Trefferanzeige (Server 1.4.22): "/api/items?search=" matcht
