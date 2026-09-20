@@ -12,3 +12,6 @@ debian/debhelper-build-stamp
 *.buildinfo
 *.changes
 .*.~*
+
+# Projektlokale Hermes-Skills (Symlink auf .claude/skills - nur lokal)
+/.hermes/
