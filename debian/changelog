@@ -1,4 +1,8 @@
-goldfish-linux (0.1.59-1) unstable; urgency=medium
+goldfish-linux (0.1.60-1) unstable; urgency=medium
+
+  * Ueberschrift der Schauspieler-Sektion im Person-Filter zeigte keine
+    Trefferzahl ("Schauspieler" statt "Schauspieler (N)") - die
+    "Filme"-Ueberschrift hatte den Zaehler bereits, diese Sektion nicht.
 
   * Faelschlich in 0.1.58 hinzugefuegte absteigende Episoden-Sortierung in
     der Serien-Sammelkachel des Schauspieler-Filters wieder entfernt - das

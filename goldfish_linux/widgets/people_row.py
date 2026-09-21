@@ -70,7 +70,7 @@ class PeopleSearchRow(Gtk.Box):
         self.client = client
         self.on_person = on_person
 
-        heading = Gtk.Label(label="Schauspieler", xalign=0)
+        heading = Gtk.Label(label=f"Schauspieler ({len(people)})", xalign=0)
         heading.add_css_class("heading")
         self.append(heading)
 
