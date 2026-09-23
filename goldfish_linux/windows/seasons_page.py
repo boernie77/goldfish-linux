@@ -224,8 +224,18 @@ class SeasonEpisodesPage(Adw.NavigationPage):
 
         flow = card_flow()
         episodes = season.get("episodes") or []
+        # Kachel je Folge merken, damit eine Zustandsänderung (Folge im Player zu Ende
+        # gesehen) den grünen Haken SOFORT setzen kann statt erst beim nächsten Aufbau
+        # dieser Seite — User-Report 2026-09-23.
+        self._cards_by_item_id: dict[int, SimpleCard] = {}
+        self._state_listener = self._on_item_state_changed
+        ctx.add_item_state_listener(self._state_listener)
         for episode in episodes:
-            flow.append(self._episode_card(episode))
+            card = self._episode_card(episode)
+            flow.append(card)
+            item_id = episode.get("itemId")
+            if item_id:
+                self._cards_by_item_id[int(item_id)] = card
         if not episodes:
             toolbar_view.set_content(
                 Adw.StatusPage(icon_name="folder-open-symbolic", title="Keine Folgen", description="Für diese Staffel liegen keine Angaben vor.")
@@ -260,6 +270,21 @@ class SeasonEpisodesPage(Adw.NavigationPage):
             on_click=(lambda e=episode: self._open_episode(e)) if owned else None,
             tooltip=episode.get("overview") or "",
         )
+
+    def _on_item_state_changed(self, item_id: int, watched=None, favorite=None) -> None:
+        """Gesehen-Status einer Folge wurde woanders umgeschaltet (Player-Ende,
+        Info-Karte) — den grünen Haken auf der Kachel sofort nachziehen.
+
+        Ohne das blieb die Kachel grau, bis die Staffelansicht neu aufgebaut wurde
+        (User-Report 2026-09-23)."""
+        if watched is None:
+            return
+        for episode in self.season.get("episodes") or []:
+            if episode.get("itemId") == item_id:
+                episode["watched"] = bool(watched)   # Datenstand für spätere Neuaufbauten
+        card = self._cards_by_item_id.get(int(item_id))
+        if card is not None:
+            card.set_corner_mark("✓" if watched else "")
 
     def _open_episode(self, episode: dict) -> None:
         item_id = episode.get("itemId")

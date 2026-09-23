@@ -680,10 +680,12 @@ class SimpleCard(Gtk.Box):
 
         overlay, picture = _image_frame(width, card_height_for(aspect, width))
 
+        self._corner_label: Gtk.Label | None = None
         if corner:
             label = Gtk.Label(label=corner, halign=Gtk.Align.START, valign=Gtk.Align.START, margin_start=6, margin_top=6)
             label.add_css_class("gf-badge-ok" if corner_ok else "gf-badge")
             overlay.add_overlay(label)
+            self._corner_label = label
         if badge:
             label = Gtk.Label(label=badge, halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6)
             label.add_css_class("gf-badge")
@@ -718,6 +720,20 @@ class SimpleCard(Gtk.Box):
             picture.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
 
         load_poster_async(picture, client, image_path, decode_width=width)
+
+    def set_corner_mark(self, text: str) -> None:
+        """Die Ecke oben links nachträglich setzen/entfernen.
+
+        Eine `SimpleCard` wird einmal gebaut und nicht wiederverwendet — ohne
+        diesen Weg könnte sie nach einer Wiedergabe nicht nachziehen (der grüne
+        Gesehen-Haken entstand sonst erst beim nächsten Aufbau der Ansicht,
+        User-Report 2026-09-23). Kacheln, die ohne `corner` gebaut wurden
+        (z. B. nicht vorhandene Folgen), haben keine Ecke — dort passiert nichts.
+        """
+        if self._corner_label is None:
+            return
+        self._corner_label.set_text(text)
+        self._corner_label.set_visible(bool(text))
 
 
 

@@ -149,6 +149,7 @@ class PlayerWindow(Adw.Window):
         window_title: str | None = None,
         random_fetch=None,
         view_prefs=None,
+        ctx=None,
     ):
         _ensure_css()
         title = self._title_for(item, window_title)
@@ -177,6 +178,11 @@ class PlayerWindow(Adw.Window):
         # reicht die Instanz durch; fehlt sie (Treiber-Skripte, Tests), gilt
         # schlicht "aus" — genau das bisherige Verhalten.
         self.view_prefs = view_prefs
+        # Anwendungs-Kontext (Hauptfenster) — gebraucht, um nach der automatischen
+        # Gesehen-Markierung die Kacheln der darunterliegenden Ansicht nachzuziehen
+        # (`ctx.notify_item_state`, siehe `_maybe_report_position`). Fehlt er (Treiber-
+        # Skripte, Tests), passiert einfach nichts — wie vorher.
+        self.ctx = ctx
         # Die Wiedergabe-Einstellung hängt am Konto und kann auf einem anderen
         # Gerät (Browser/Handy) umgestellt worden sein — beim Öffnen einmal
         # spiegeln. Im Hintergrund, damit der Start nie darauf wartet; der
@@ -752,6 +758,17 @@ class PlayerWindow(Adw.Window):
             self._watched_marked = True
             item_id = self.item_id
             self._background(lambda: self.client.set_watched(item_id, True))
+            # Kacheln der darunterliegenden Ansicht sofort nachziehen — User-Report
+            # 2026-09-23 (am iOS-Client gemeldet, hier dasselbe Muster): der grüne
+            # Haken erschien erst, wenn man die Ansicht verließ und neu betrat. Der
+            # Browser macht das über `markWatchedNow` → `silentlyRefreshItem` direkt
+            # nach dem Server-Call; hier gibt es dafür die bestehende Zustands-Leitung
+            # (`ctx.notify_item_state` → `browse_page._on_item_state_changed` →
+            # `grid.apply_item_state`). Läuft im GTK-Hauptablauf (Position-Handler),
+            # also direkt aufrufbar — keine `idle_add`-Umleitung nötig.
+            ctx = getattr(self, "ctx", None)
+            if ctx is not None:
+                ctx.notify_item_state(item_id, watched=True)
 
     # -- Bedienung -------------------------------------------------------
 
@@ -1557,7 +1574,7 @@ def open_player(ctx, item: dict, **kwargs) -> "PlayerWindow":
     # nur `autoplayNext` ("Nächste Folge automatisch starten"). Fehlt die
     # Instanz, gilt die Option als aus.
     kwargs.setdefault("view_prefs", getattr(ctx, "view_prefs", None))
-    window = PlayerWindow(ctx.application, ctx.client, item, **kwargs)
+    window = PlayerWindow(ctx.application, ctx.client, item, ctx=ctx, **kwargs)
     # KEIN set_transient_for(ctx.window) mehr (User-Report 2026-09-16: der
     # Vollbild-Button tat rein GAR NICHTS, solange das Hauptfenster noch
     # offen war — Kopfleiste blieb sichtbar, Fenstergröße änderte sich

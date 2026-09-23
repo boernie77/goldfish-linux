@@ -109,6 +109,14 @@ class DetailPage(Adw.NavigationPage):
         # Registry, Auflösung erst nach dem asynchronen Discoverer-Lauf.
         self._download_resolution: str | None = None
 
+        # Zustandsänderungen von außen (Player-Ende markiert die Folge als gesehen,
+        # Staffel-Bulk) mitbekommen, damit der Umschaltknopf hier nicht auf „ungesehen"
+        # stehen bleibt, während die Kachel schon grün ist — User-Report 2026-09-23.
+        # Die gebundene Methode muss festgehalten werden: die Anmeldung hält nur eine
+        # SCHWACHE Referenz (siehe `browse_page`).
+        self._state_listener = self._on_item_state_changed
+        ctx.add_item_state_listener(self._state_listener)
+
         box.append(self._build_head())
         self.stream_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.append(self.stream_box)
@@ -660,6 +668,28 @@ class DetailPage(Adw.NavigationPage):
         self.favorite_toggle.set_tooltip_text(
             "Favorit entfernen" if self.favorite_toggle.get_active() else "Als Favorit merken"
         )
+
+    def _on_item_state_changed(self, item_id: int, watched=None, favorite=None) -> None:
+        """Gesehen-/Favoriten-Zustand wurde woanders geändert (Player-Ende, Staffel-Bulk,
+        andere Ansicht) — die Knöpfe hier nachziehen, ohne den Server erneut zu rufen.
+
+        Der Signal-Handler wird dabei blockiert: sonst löste `set_active` den normalen
+        Umschalt-Pfad aus, der den Zustand noch einmal zum Server schickt.
+        """
+        if int(item_id) != int(self.item_id):
+            return
+        toggle = getattr(self, "watched_toggle", None)
+        if toggle is not None and watched is not None and toggle.get_active() != bool(watched):
+            toggle.handler_block_by_func(self._on_watched_toggled)
+            toggle.set_active(bool(watched))
+            toggle.handler_unblock_by_func(self._on_watched_toggled)
+            self._update_watched_label()
+        fav = getattr(self, "favorite_toggle", None)
+        if fav is not None and favorite is not None and fav.get_active() != bool(favorite):
+            fav.handler_block_by_func(self._on_favorite_toggled)
+            fav.set_active(bool(favorite))
+            fav.handler_unblock_by_func(self._on_favorite_toggled)
+            self._update_favorite_label()
 
     def _on_watched_toggled(self, button: Gtk.ToggleButton) -> None:
         watched = button.get_active()

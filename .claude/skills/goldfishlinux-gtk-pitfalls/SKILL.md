@@ -90,4 +90,25 @@ Aus der frueheren Sammel-CLAUDE.md des GoldfishLinux-Repos ausgelagerter Themenb
 - **`/api/playback/{id}` ist teuer** (ffprobe serverseitig). Nie in Schleifen
   über viele Items aufrufen; eine Suche über 40 Titel hat den Server in einen
   Timeout gezogen. Für Musik wird er gar nicht gebraucht (siehe unten).
+- **`weakref.ref(obj.methode)` ist sofort tot.** `AppContext.add_item_state_listener`
+  hält nur eine SCHWACHE Referenz; ein inline übergebener Ausdruck wie
+  `self.ctx.add_item_state_listener(self._on_item_state_changed)` erzeugt ein
+  Methoden-Objekt, das sofort wieder freigegeben wird — der Rückruf lief NIE
+  (nachgestellt: `weakref.ref(a.f)()` → `None`). Die gebundene Methode deshalb
+  als Attribut festhalten (`self._state_listener = self._on_item_state_changed`,
+  dann anmelden) — so machten es `browse_page` und `detail_page` bis zum
+  User-Report 2026-09-23 gar nicht, die „Kachel zieht nach"-Leitung war damit
+  wirkungslos.
+- **Gesehen-Haken der Kachel live nachziehen.** Der Player markiert eine Folge ab
+  `_WATCHED_AT` (90 %) als gesehen; ohne Rückmeldung blieb die Kachel grau, bis man
+  die Ansicht verließ und neu betrat (User-Report 2026-09-23, im Browser richtig über
+  `player.js` → `markWatchedNow` → `silentlyRefreshItem`). `player_window` bekommt
+  dafür jetzt `ctx` und ruft nach `set_watched` `ctx.notify_item_state(item_id,
+  watched=True)` — die Position-Handler laufen im GTK-Hauptablauf, also direkt
+  aufrufbar (kein `idle_add`). Angemeldet sind: `browse_page` (Raster),
+  `seasons_page.SeasonEpisodesPage` (Folgen-Kacheln, über
+  `SimpleCard.set_corner_mark`) und `detail_page` (Umschaltknopf, blockiert beim
+  Nachziehen den eigenen `toggled`-Handler, sonst schickt er den Zustand doppelt zum
+  Server). **Nicht** nachziehend: die Staffelübersicht („x gesehen"-Zähler) — die
+  braucht weiterhin einen Neuaufbau.
 

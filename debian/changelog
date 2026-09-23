@@ -1,3 +1,18 @@
+goldfish-linux (0.1.61-1) unstable; urgency=medium
+
+  * Der gruene Gesehen-Haken auf der Kachel erscheint jetzt sofort, wenn eine
+    Folge zu Ende gelaufen ist - bisher erst nach Verlassen und erneutem
+    Betreten der Ansicht.
+  * Das Wiedergabefenster meldet das Gesehen-Werden an die Ansicht zurueck:
+    Kanal-/Bibliotheksraster, Folgen-Kacheln der Staffel und die Infokarte
+    ziehen sofort mit (im Browser war es schon so).
+  * Behoben: der Rueckruf, der Kacheln bei Zustandsaenderungen nachzieht, war
+    nie angemeldet - eine schwache Referenz auf eine inline erzeugte gebundene
+    Methode war im selben Moment tot (Infokarte und Kachel konnten deshalb
+    auseinanderlaufen).
+
+ -- Christian <christian@byboernie.de>  Wed, 23 Sep 2026 13:00:00 +0200
+
 goldfish-linux (0.1.60-1) unstable; urgency=medium
 
   * Ueberschrift der Schauspieler-Sektion im Person-Filter zeigte keine

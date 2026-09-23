@@ -60,7 +60,15 @@ class BrowsePage(Adw.NavigationPage):
         self.drilldown = drilldown
         self.toolbar_view = toolbar_view
         self.grid: CardGrid | None = None
-        self.ctx.add_item_state_listener(self._on_item_state_changed)
+        # Gebundene Methode festhalten! `ctx.add_item_state_listener` hält nur eine
+        # SCHWACHE Referenz: ein inline übergebener Ausdruck wie
+        # `self.ctx.add_item_state_listener(self._on_item_state_changed)` erzeugt ein
+        # Methoden-Objekt, das sofort wieder freigegeben wird — die Referenz war damit
+        # vom ersten Moment an tot und der Rückruf lief nie (nachgestellt: `weakref.ref(
+        # a.f)()` liefert None). Deshalb liegt die Methode hier als Attribut, solange
+        # die Seite lebt.
+        self._state_listener = self._on_item_state_changed
+        self.ctx.add_item_state_listener(self._state_listener)
         self.content_box: Gtk.Box | None = None
         self.people_container: Gtk.Box | None = None
         self.people_row: Gtk.Widget | None = None
