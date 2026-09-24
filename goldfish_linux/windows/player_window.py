@@ -865,9 +865,9 @@ class PlayerWindow(Adw.Window):
         if keyval == Gdk.KEY_space:
             self.toggle_play()
         elif keyval == Gdk.KEY_Left:
-            self.skip(-10)
+            self.skip(-_SKIP_BACK)
         elif keyval == Gdk.KEY_Right:
-            self.skip(10)
+            self.skip(_SKIP_FORWARD)
         elif keyval in (Gdk.KEY_f, Gdk.KEY_F, Gdk.KEY_F11):
             self.toggle_fullscreen()
         elif keyval == Gdk.KEY_Escape and self.is_fullscreen():

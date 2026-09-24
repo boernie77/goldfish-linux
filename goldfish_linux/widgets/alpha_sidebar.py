@@ -19,10 +19,10 @@ _LETTERS = ["#"] + [chr(c) for c in range(ord("A"), ord("Z") + 1)]
 _CSS = b"""
 .gf-alpha-bar { padding: 2px 4px; }
 .gf-alpha-bar button {
-  min-width: 22px;
-  min-height: 17px;
+  min-width: 26px;
+  min-height: 22px;
   padding: 0;
-  font-size: 0.72rem;
+  font-size: 0.85rem;
   opacity: 0.55;
 }
 .gf-alpha-bar button:hover { opacity: 1; }
@@ -71,7 +71,11 @@ def first_letter(text: str) -> str:
 
 class AlphaSidebar(Gtk.Box):
     def __init__(self, on_select: Callable[[str | None], None]) -> None:
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0, valign=Gtk.Align.CENTER)
+        # `vexpand=True` und (weiter unten) dasselbe an jedem Buchstaben-Knopf,
+        # nicht `valign=CENTER` mit fester Knopfhöhe: nur so wächst die Leiste
+        # mit dem Fenster mit, statt bei 27 × 22px stehenzubleiben, während
+        # rechts daneben viel Platz frei bleibt (User-Wunsch 2026-09-24).
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=0, vexpand=True, valign=Gtk.Align.FILL)
         _ensure_css()
         self.add_css_class("gf-alpha-bar")
         self.on_select = on_select
@@ -79,7 +83,7 @@ class AlphaSidebar(Gtk.Box):
         self._buttons: dict[str, Gtk.Button] = {}
 
         for letter in _LETTERS:
-            button = Gtk.Button(label=letter, has_frame=False)
+            button = Gtk.Button(label=letter, has_frame=False, vexpand=True, valign=Gtk.Align.FILL)
             button.set_tooltip_text(f"Nur Titel mit {letter} — nochmal klicken hebt den Filter auf")
             button.connect("clicked", lambda _b, l=letter: self._clicked(l))
             self._buttons[letter] = button

@@ -1,3 +1,12 @@
+goldfish-linux (0.1.63-1) unstable; urgency=medium
+
+  * Spulen mit den Pfeiltasten im Player springt jetzt 15/30 Sekunden statt
+    10 - passend zu den Knoepfen daneben, die das schon so anzeigten.
+  * Buchstabenleiste im Bibliotheksraster ist groesser und passt sich der
+    Fensterhoehe an, statt auf ihrer kleinen festen Groesse stehenzubleiben.
+
+ -- Christian <christian@byboernie.de>  Thu, 24 Sep 2026 13:00:00 +0200
+
 goldfish-linux (0.1.62-1) unstable; urgency=medium
 
   * Behoben: bei Offline-Downloads blieb die Zeitleiste leer und liess sich
