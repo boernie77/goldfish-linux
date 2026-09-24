@@ -1,3 +1,13 @@
+goldfish-linux (0.1.64-1) unstable; urgency=medium
+
+  * Behoben: nach einem Sprung auf der Zeitleiste bewegte sich der Balken
+    danach nicht mehr weiter, obwohl die Wiedergabe normal lief - ein
+    einfacher Klick (ohne Ziehen) liess das Ziehen-Kennzeichen haengen.
+  * Beim Hovern ueber der Zeitleiste erscheint jetzt der Zeitstempel der
+    Stelle, auch wenn (noch) kein Vorschaubild verfuegbar ist.
+
+ -- Christian <christian@byboernie.de>  Thu, 24 Sep 2026 14:00:00 +0200
+
 goldfish-linux (0.1.63-1) unstable; urgency=medium
 
   * Spulen mit den Pfeiltasten im Player springt jetzt 15/30 Sekunden statt

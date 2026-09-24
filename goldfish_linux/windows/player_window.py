@@ -208,6 +208,20 @@ class PlayerWindow(Adw.Window):
         self._trickplay: list[TrickplayCue] = []
         self._sprite: GdkPixbuf.Pixbuf | None = None
         self._hide_bar_source: int | None = None
+        # Absicherung gegen einen eingefrorenen Fortschrittsbalken: die
+        # bisherige Logik verließ sich allein auf press/released/cancel der
+        # eigenen GestureClick, um `_seeking` zurückzusetzen. Bei einem
+        # einfachen Klick auf die Zeitleiste (kein Ziehen) beansprucht
+        # GTKs eigene, interne Klick-Erkennung des Scale-Widgets dieselbe
+        # Eingabesequenz zuerst — unsere Geste bekam dann teils gar kein
+        # `released` mehr gemeldet (User-Report 2026-09-24: nach einem
+        # Sprung bewegte sich die Zeitleiste danach gar nicht mehr, obwohl
+        # die Wiedergabe normal weiterlief). Deshalb zusätzlich ein
+        # Sicherheitsnetz: jeder `change-value` startet einen kurzen Timer
+        # neu, der `_seeking` spätestens 400 ms nach der letzten Änderung
+        # wieder freigibt — unabhängig davon, ob press/released überhaupt
+        # sauber feuern.
+        self._seek_settle_source: int | None = None
         self.media: Gtk.MediaFile | None = None
         self._media_handlers: list[int] = []
         # Diagnose-Anzeige: letzter bekannter Stand der serverseitigen
@@ -882,6 +896,19 @@ class PlayerWindow(Adw.Window):
 
     def _on_scale_change(self, _scale, _scroll, value: float) -> bool:
         self.seek_to(value)
+        # Sicherheitsnetz (siehe Kommentar am Feld): _seeking IMMER spätestens
+        # 400 ms nach der letzten Änderung wieder freigeben, egal ob GTKs
+        # interne Klick-Erkennung unserer eigenen GestureClick ein
+        # `released`/`cancel` gönnt oder nicht.
+        if self._seek_settle_source is not None:
+            GLib.source_remove(self._seek_settle_source)
+
+        def settle() -> bool:
+            self._seek_settle_source = None
+            self._seeking = False
+            return False
+
+        self._seek_settle_source = GLib.timeout_add(400, settle)
         return False
 
     # -- Vorschaubilder --------------------------------------------------
@@ -917,22 +944,29 @@ class PlayerWindow(Adw.Window):
         self._on_scale_motion(None, x - left, 0.0)
 
     def _on_scale_motion(self, _controller, x: float, _y: float) -> None:
-        if not self._trickplay or self._sprite is None:
-            return
         width = self.scale.get_allocated_width()
         duration = self._duration or self.scale.get_adjustment().get_upper()
         if width <= 0 or duration <= 0:
             return
         seconds = max(0.0, min(duration, duration * (x / width)))
-        cue = next((c for c in self._trickplay if c.start <= seconds <= c.end), None)
-        if cue is None:
-            cue = min(self._trickplay, key=lambda c: abs(c.start - seconds))
-        try:
-            crop = GdkPixbuf.Pixbuf.new_subpixbuf(self._sprite, cue.x, cue.y, cue.width, cue.height)
-        except (GLib.Error, TypeError, ValueError):
-            return
-        self.preview_picture.set_paintable(Gdk.Texture.new_for_pixbuf(crop))
         self.preview_label.set_label(format_duration(seconds))
+        # Ohne fertige Vorschaubilder (Trickplay noch nicht erzeugt, oder
+        # lokaler Download ohne Server) bleibt das Bild leer — der
+        # Zeitstempel soll trotzdem erscheinen (User-Wunsch 2026-09-24: beim
+        # Hovern die Position sehen, auch ohne Vorschaubild).
+        if self._trickplay and self._sprite is not None:
+            cue = next((c for c in self._trickplay if c.start <= seconds <= c.end), None)
+            if cue is None:
+                cue = min(self._trickplay, key=lambda c: abs(c.start - seconds))
+            try:
+                crop = GdkPixbuf.Pixbuf.new_subpixbuf(self._sprite, cue.x, cue.y, cue.width, cue.height)
+            except (GLib.Error, TypeError, ValueError):
+                crop = None
+            if crop is not None:
+                self.preview_picture.set_paintable(Gdk.Texture.new_for_pixbuf(crop))
+                self.preview_picture.set_visible(True)
+        else:
+            self.preview_picture.set_visible(False)
         # Das Fähnchen dem Mauszeiger folgen lassen.
         rect = Gdk.Rectangle()
         rect.x, rect.y, rect.width, rect.height = int(x), 0, 1, 1
@@ -1383,6 +1417,9 @@ class PlayerWindow(Adw.Window):
         if self._hide_bar_source is not None:
             GLib.source_remove(self._hide_bar_source)
             self._hide_bar_source = None
+        if self._seek_settle_source is not None:
+            GLib.source_remove(self._seek_settle_source)
+            self._seek_settle_source = None
         return False  # Fenster trotzdem schließen lassen
 
     def _report_stop(self, reason: str) -> None:
