@@ -748,16 +748,24 @@ class PlayerWindow(Adw.Window):
         return True
 
     def _maybe_report_position(self, position: float, duration: float) -> None:
-        if self.local_path or self.direct_url or position <= 0:
+        if self.direct_url or position <= 0:
             return
         if position - self._last_resume_sent >= _RESUME_EVERY_S:
             self._last_resume_sent = position
             item_id = self.item_id
-            self._background(lambda: self.client.set_resume(item_id, position))
+            if self.local_path:
+                # Offline-Download: rein lokal in der Downloads-Registry
+                # merken, kein Server-Aufruf (der Server ist beim
+                # Offline-Abspielen typischerweise gar nicht erreichbar).
+                if self.ctx is not None and getattr(self.ctx, "downloads", None) is not None:
+                    self.ctx.downloads.set_local_resume(item_id, position)
+            else:
+                self._background(lambda: self.client.set_resume(item_id, position))
         if not self._watched_marked and duration > 0 and position / duration >= _WATCHED_AT:
             self._watched_marked = True
             item_id = self.item_id
-            self._background(lambda: self.client.set_watched(item_id, True))
+            if not self.local_path:
+                self._background(lambda: self.client.set_watched(item_id, True))
             # Kacheln der darunterliegenden Ansicht sofort nachziehen — User-Report
             # 2026-09-23 (am iOS-Client gemeldet, hier dasselbe Muster): der grüne
             # Haken erschien erst, wenn man die Ansicht verließ und neu betrat. Der

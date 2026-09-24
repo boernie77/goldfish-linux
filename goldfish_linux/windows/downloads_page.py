@@ -66,8 +66,38 @@ class DownloadsPage(Adw.NavigationPage):
         return row
 
     def _play(self, rec: dict) -> None:
-        item = {"id": rec["id"], "title": rec.get("title", "")}
-        open_player(self.ctx, item, local_path=rec["path"])
+        item = {"id": rec["id"], "title": rec.get("title", ""), "durationSec": rec.get("durationSec", 0)}
+        self._play_with_resume_check(item, rec["path"])
+
+    def _play_with_resume_check(self, item: dict, path: str) -> None:
+        """Fragt nach, wenn der Download schon einmal angesehen wurde.
+
+        Die Position kommt rein lokal aus der Downloads-Registry (kein
+        Server-Aufruf — beim Offline-Abspielen ist der Server typischerweise
+        gar nicht erreichbar), genau wie bei Server-Titeln in `detail_page.py`."""
+        item_id = int(item["id"])
+        position = self.ctx.downloads.get_local_resume(item_id)
+        duration = item.get("durationSec") or 0
+        if position < 60 or (duration and position > duration * 0.95):
+            open_player(self.ctx, item, local_path=path)
+            return
+
+        dialog = Adw.MessageDialog(
+            transient_for=self.ctx.dialog_parent(),
+            heading="Weiterschauen?",
+            body=f"Du warst bei {format_duration(position)} von {format_duration(duration)}.",
+        )
+        dialog.add_response("start", "Von Anfang")
+        dialog.add_response("resume", f"Bei {format_duration(position)} fortsetzen")
+        dialog.set_default_response("resume")
+        dialog.set_response_appearance("resume", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect(
+            "response",
+            lambda _d, response: open_player(
+                self.ctx, item, local_path=path, start_position=position if response == "resume" else 0.0
+            ),
+        )
+        dialog.present()
 
     def _delete(self, rec: dict) -> None:
         self.ctx.downloads.delete_download(rec["id"])

@@ -1,3 +1,14 @@
+goldfish-linux (0.1.62-1) unstable; urgency=medium
+
+  * Behoben: bei Offline-Downloads blieb die Zeitleiste leer und liess sich
+    nicht verschieben, weil die Gesamtdauer beim Oeffnen aus den Downloads
+    nicht mitgegeben wurde.
+  * Weiterschauen-Abfrage gibt es jetzt auch bei Downloads: die Position wird
+    rein lokal in der Downloads-Liste gemerkt (kein Server noetig), und beim
+    erneuten Start wird gefragt, ob von Anfang oder von der letzten Stelle.
+
+ -- Christian <christian@byboernie.de>  Thu, 24 Sep 2026 12:00:00 +0200
+
 goldfish-linux (0.1.61-1) unstable; urgency=medium
 
   * Der gruene Gesehen-Haken auf der Kachel erscheint jetzt sofort, wenn eine

@@ -75,6 +75,22 @@ class DownloadManager:
             return rec
         return None
 
+    def get_local_resume(self, item_id: int) -> float:
+        """Fortsetz-Position eines offline heruntergeladenen Videos.
+
+        Läuft rein lokal aus der Registry (kein `/api/items/{id}/resume` —
+        der Server ist beim Offline-Abspielen nicht erreichbar), damit
+        „Weiterschauen?" auch ohne Netz funktioniert."""
+        rec = self._registry.get(str(item_id))
+        return float(rec.get("resumeSec") or 0.0) if rec else 0.0
+
+    def set_local_resume(self, item_id: int, position_sec: float) -> None:
+        rec = self._registry.get(str(item_id))
+        if rec is None:
+            return
+        rec["resumeSec"] = position_sec
+        self._save()
+
     def delete_download(self, item_id: int) -> None:
         rec = self._registry.pop(str(item_id), None)
         if rec:
