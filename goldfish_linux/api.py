@@ -162,6 +162,35 @@ def parse_trickplay_vtt(text: str) -> list[TrickplayCue]:
     return cues
 
 
+def intro_markers(item: dict) -> tuple[float | None, float | None]:
+    """Anfang und Ende des erkannten Vorspanns aus einem Item-JSON.
+
+    `introStartSec`/`introEndSec` liefert AUSSCHLIESSLICH
+    `GET /api/items/{id}` (Server-Handler `GetItemFor`) — die
+    Listen-Endpunkte (`/api/items`, Startseite, Sammlungen, Playlists,
+    Staffeln) tragen sie nicht. Fehlt die Erkennung oder gab es keinen
+    Treffer, kommen sie als `null`.
+
+    Beide Werte sind ABSOLUTE Sekunden im Video, nicht relativ zu einer
+    laufenden Umwandlung.
+
+    Rückgabe `(None, None)`, wenn etwas fehlt oder unbrauchbar ist.
+    ⚠ `0.0` ist ein GÜLTIGER Anfang (Vorspann ab der ersten Sekunde) und darf
+    NICHT als „fehlt" durchgehen — deshalb wird überall auf `is None` geprüft
+    und nie auf den Wahrheitswert.
+    """
+    start, end = item.get("introStartSec"), item.get("introEndSec")
+    if start is None or end is None:
+        return None, None
+    try:
+        start, end = float(start), float(end)
+    except (TypeError, ValueError):
+        return None, None
+    if start < 0 or end <= start:
+        return None, None
+    return start, end
+
+
 class GoldfishClient:
     """Ein Client pro Server-Verbindung. Nicht thread-safe für Login/Logout,
     aber `requests.Session` selbst ist für parallele GET-Requests (z. B.
@@ -407,6 +436,12 @@ class GoldfishClient:
         return data or [], fuzzy_extra_count
 
     def item(self, item_id: int) -> dict:
+        """Ein einzelnes Item — der Player-Datenpfad (`GetItemFor`).
+
+        Nur diese Antwort trägt `introStartSec`/`introEndSec` (Vorspann-
+        Erkennung, siehe `intro_markers`); die Listen-Endpunkte kennen die
+        Felder nicht. Ein Aufruf je geöffnetem Titel ist in Ordnung — NICHT in
+        Schleifen über viele Items aufrufen."""
         return self.get(f"/api/items/{item_id}") or {}
 
     def next_episode(self, item_id: int) -> dict:

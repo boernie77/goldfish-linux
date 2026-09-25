@@ -45,7 +45,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 
-from ..api import GoldfishAPIError, GoldfishClient, TrickplayCue  # noqa: E402
+from ..api import GoldfishAPIError, GoldfishClient, TrickplayCue, intro_markers  # noqa: E402
 from ..formatting import format_duration, format_resolution  # noqa: E402
 from ..subtitles import SubtitleTrack, parse_vtt  # noqa: E402
 from ..widgets.stats_popover import (  # noqa: E402
@@ -114,6 +114,14 @@ _CSS = b"""
   color: #ffffff;
   font-size: 1.05rem;
 }
+.gf-intro-skip {
+  background-color: alpha(#000000, 0.72);
+  color: #ffffff;
+  font-size: 1.05rem;
+  padding: 10px 20px;
+  border-radius: 999px;
+}
+.gf-intro-skip label { color: #ffffff; }
 """
 
 _css_loaded = False
@@ -255,6 +263,19 @@ class PlayerWindow(Adw.Window):
         self._autoplay_source: int | None = None
         self._autoplay_token = 0
 
+        # Zustand für „Vorspann überspringen" (siehe _build_intro_overlay).
+        # Die Marken kommen NUR über GET /api/items/{id} und sind None,
+        # solange keine Erkennung vorliegt. `_intro_visible` spiegelt, was
+        # gerade angezeigt wird, damit `_tick` nicht viermal je Sekunde
+        # dasselbe `set_visible()` aufruft. `_intro_token` steigt bei JEDEM
+        # Titelwechsel und beim Schließen: eine im Hintergrund laufende
+        # Abfrage erkennt daran, dass ihr Ergebnis nicht mehr gilt (gleiche
+        # Technik wie `_autoplay_token`).
+        self._intro_start: float | None = None
+        self._intro_end: float | None = None
+        self._intro_visible = False
+        self._intro_token = 0
+
         self.set_default_size(1100, 680)
         self._build_ui(title)
         self._wire_input()
@@ -323,6 +344,7 @@ class PlayerWindow(Adw.Window):
         self.overlay.add_overlay(self.subtitle_label)
         self.overlay.add_overlay(self.busy)
         self.overlay.add_overlay(self._build_autoplay_overlay())
+        self.overlay.add_overlay(self._build_intro_overlay())
 
         self.bar = self._build_bar()
 
@@ -369,6 +391,36 @@ class PlayerWindow(Adw.Window):
 
         self.autoplay_box = box
         return box
+
+    def _build_intro_overlay(self) -> Gtk.Widget:
+        """Knopf „Vorspann überspringen" — unsichtbar, bis die Wiedergabe im
+        erkannten Vorspann steht.
+
+        Liegt IM selben Gtk.Overlay wie Untertitel, Ladekreisel und
+        Nächste-Folge-Hinweis, also über dem Bild und unter der Steuerleiste —
+        wie im Browser ein auffälliger Knopf IM Videobild.
+
+        ⚠ **Er darf NICHT in die Steuerleiste (`self.bar`).** Dort verändert
+        jedes Ein- und Ausblenden die Breite der Zeitleiste daneben (die hat
+        `hexpand`), und die Leiste springt — dreimal als Fehler gemeldet, siehe
+        die Notizen an `_update_step_buttons` und an `self.res_label`. Als
+        Overlay-Kind über dem Bild kostet das Umschalten das Layout nichts.
+
+        Unten RECHTS, damit er dem mittig-unten liegenden
+        Nächste-Folge-Hinweis (`.gf-autoplay`) nicht in die Quere kommt."""
+        button = Gtk.Button(
+            label="Vorspann überspringen",
+            halign=Gtk.Align.END,
+            valign=Gtk.Align.END,
+            margin_end=24,
+            margin_bottom=24,
+            visible=False,
+            tooltip_text="Zum Ende des erkannten Vorspanns springen",
+        )
+        button.add_css_class("gf-intro-skip")
+        button.connect("clicked", lambda *_: self._skip_intro())
+        self.intro_button = button
+        return button
 
     def _build_bar(self) -> Gtk.Widget:
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -542,6 +594,9 @@ class PlayerWindow(Adw.Window):
     # -- Wiedergabe starten ----------------------------------------------
 
     def _start_playback(self) -> None:
+        # Vorspann-Marken gehören zum laufenden Titel und kommen nur über
+        # GET /api/items/{id} (siehe _request_intro_markers).
+        self._request_intro_markers()
         if self.local_path:
             self._play_uri(Gio.File.new_for_path(self.local_path).get_uri())
             return
@@ -586,6 +641,103 @@ class PlayerWindow(Adw.Window):
             sprite = self.client.trickplay_sprite_bytes(self.item_id) if cues else None
             if cues and sprite:
                 GLib.idle_add(self._set_trickplay, cues, sprite)
+
+    def _request_intro_markers(self) -> None:
+        """Vorspann-Marken des laufenden Titels beschaffen.
+
+        Zwei Stufen: erst das mitgegebene Item auswerten (kostet nichts — wer
+        es schon über `GET /api/items/{id}` geladen hat, trägt die Felder
+        bereits), dann eine eigene Abfrage im Hintergrund, weil die
+        Listen-Endpunkte sie NICHT liefern.
+
+        Nicht gefragt wird bei Trailern (`direct_url` — ein Trailer hat keine
+        Marken) und bei Titeln eigener Datenträger (`local: True`, Kennung
+        negativ, siehe `local_library.py`): deren Kennung ist dem Server
+        unbekannt, eine Abfrage träfe ein fremdes Item. Ein heruntergeladenes
+        Server-Video behält seine echte Kennung und wird gefragt; ohne Netz
+        scheitert die Abfrage still und es gibt schlicht keinen Knopf.
+
+        **Die Abfrage läuft absichtlich in einem EIGENEN Faden** und nicht in
+        `_load_side_data`: dort kann das Holen einer Untertitelspur bis zu 120 s
+        blockieren (der Server extrahiert sie beim ersten Abruf per ffmpeg) —
+        der Knopf soll aber schon am Anfang des Films bereitstehen."""
+        self._intro_token += 1
+        token = self._intro_token
+        if self.direct_url is not None:
+            # Trailer: das Item gehört zum FILM, nicht zum abgespielten
+            # Trailer — seine Marken zeigen auf Sekunden im Film und wären im
+            # Trailer schlicht falsch. Auch die MITGEGEBENEN nicht auswerten:
+            # kommt das Item von `GET /api/items/{id}` (Weg über die
+            # Staffelseite), trägt es die Felder bereits, und ohne diese
+            # Abkürzung erschiene der Knopf mitten im Trailer.
+            self._apply_intro_markers(None, None, token)
+            return
+        start, end = intro_markers(self.item)
+        self._apply_intro_markers(start, end, token)
+        if self.item.get("local") or self.item_id <= 0:
+            return
+        item_id = self.item_id
+
+        def worker() -> None:
+            # Bewusst KEINE sichtbare Fehlermeldung (anders als bei der
+            # Wiedergabe selbst): die Marken sind Beigabe, genau wie in
+            # `_refresh_autoplay_pref`. Ohne sie fehlt nur der Knopf.
+            try:
+                data = self.client.item(item_id)
+            except Exception:  # noqa: BLE001 — siehe Kommentar
+                return
+            fetched_start, fetched_end = intro_markers(data)
+            GLib.idle_add(self._apply_intro_markers, fetched_start, fetched_end, token)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_intro_markers(self, start: float | None, end: float | None, token: int) -> bool:
+        """Marken übernehmen. Läuft im GTK-Hauptablauf (direkt oder per
+        `idle_add`). Ein veralteter Token heißt: inzwischen läuft ein anderer
+        Titel — Ergebnis verwerfen."""
+        if token != self._intro_token:
+            return False
+        self._intro_start = start
+        self._intro_end = end
+        if start is None or end is None:
+            self._set_intro_visible(False)
+        return False
+
+    def _update_intro_skip(self, position: float) -> None:
+        """Sichtbarkeit allein aus der Position — genau wie im Browser
+        (`maybeToggleIntroSkip`): zwischen Anfang und Ende des erkannten
+        Vorspanns sichtbar, sonst nicht.
+
+        `position` ist die ABSOLUTE Stelle im Film; `_tick` hat den
+        `_virtual_offset` der laufenden Umwandlung dort schon aufgerechnet
+        (siehe Dateikopf). Die Marken des Servers sind ebenfalls absolut, es
+        wird also Gleiches mit Gleichem verglichen — bei direkter Wiedergabe
+        ist der Offset 0 und es passt ohne Umrechnung."""
+        start, end = self._intro_start, self._intro_end
+        show = start is not None and end is not None and start <= position < end
+        self._set_intro_visible(show)
+
+    def _set_intro_visible(self, visible: bool) -> None:
+        # Nur bei echter Änderung schalten — `_tick` läuft viermal je Sekunde.
+        if visible == self._intro_visible:
+            return
+        self._intro_visible = visible
+        self.intro_button.set_visible(visible)
+
+    def _skip_intro(self) -> None:
+        """Klick auf den Knopf: an das Ende des Vorspanns springen.
+
+        `seek_to` erledigt den Rest — bei direkter Wiedergabe ein Sprung im
+        Abspieler, bei laufender Umwandlung eine neue Umwandlung ab der
+        Zielsekunde. Der Knopf verschwindet SOFORT und nicht erst beim nächsten
+        Takt: bei einer Umwandlung tauscht `seek_to` das Medium aus, und bis
+        das neue eine Position meldet, stünde der Knopf sonst noch sichtbar
+        über dem schon verlassenen Vorspann."""
+        end = self._intro_end
+        self._set_intro_visible(False)
+        if end is None:
+            return
+        self.seek_to(end)
 
     def _fetch_subtitle(self, stream: dict) -> str | None:
         """Holt die gewählte Spur. Erzeugte Spuren liegen unter eigenen
@@ -757,6 +909,7 @@ class PlayerWindow(Adw.Window):
             self.subtitle_label.set_label(text)
             self.subtitle_label.set_visible(bool(text))
 
+        self._update_intro_skip(position)
         self._maybe_report_position(position, duration)
         self._update_stats(position, duration)
         return True
@@ -1331,6 +1484,13 @@ class PlayerWindow(Adw.Window):
         self.subtitle_stream = None
         self.subtitle_label.set_visible(False)
         self._virtual_offset = 0.0
+        # Vorspann-Marken gehören zum ALTEN Titel: verwerfen, Knopf verstecken,
+        # laufende Abfrage entwerten. `_start_playback()` am Ende dieser Methode
+        # holt die Marken des neuen Titels.
+        self._intro_token += 1
+        self._intro_start = None
+        self._intro_end = None
+        self._set_intro_visible(False)
         self._duration = float(self.item.get("durationSec") or 0)
         self._fresh_token = str(int(time.time() * 1000))
         # Dritte Absicherung: beim Umschalten auf ein anderes Video zaehlt
@@ -1411,6 +1571,7 @@ class PlayerWindow(Adw.Window):
         # Erst den Hinweis auf die nächste Folge stilllegen: sein Countdown
         # darf nach dem Schließen nicht mehr auslösen.
         self._autoplay_token += 1
+        self._intro_token += 1
         self._dismiss_autoplay_overlay()
         self._report_stop("closed")
         self._release_media()

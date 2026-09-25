@@ -77,6 +77,9 @@ inzwischen im Wesentlichen denselben Funktionsumfang ab wie die Mac-App
   fortsetzen"; die Position wird an den Server zurückgemeldet und gilt damit
   auch in allen anderen Clients.
 - **Vorschaubilder beim Spulen** (Trickplay-Sprites des Servers).
+- **„Vorspann überspringen"** — erkennt der Server einen Vorspann, erscheint
+  während dessen Laufzeit ein Knopf im Videobild, der direkt an sein Ende
+  springt.
 - **Untertitel im Bild** (WebVTT, eingebettet oder erzeugt).
 - **Zufallswiedergabe** pro Bibliothek — der Bereich folgt dem, was gerade
   offen ist.
