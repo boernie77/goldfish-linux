@@ -1,7 +1,7 @@
 Source: goldfish-linux
 Section: video
 Priority: optional
-Maintainer: boernie77 <boernie77@gmail.com>
+Maintainer: boernie77 <115419572+boernie77@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.6.2
 Homepage: https://github.com/boernie77/goldfish-linux

@@ -58,6 +58,10 @@ Drei Orte müssen bei jedem Release **synchron** sein, im selben Commit:
 
 **Kein automatischer Versions-Inject beim Build.** Die Versionsnummer ist auf der Login-Seite und in der Seitenleiste sichtbar.
 
+- **Maintainer-Zeile im Changelog und in `debian/control` immer**
+  `boernie77 <115419572+boernie77@users.noreply.github.com>` — nie ein echter Name oder
+  eine echte E-Mail-Adresse. Das Repo ist öffentlich, und die Zeile landet auch im `.deb`.
+  (Bis 0.1.65 standen dort echte Adressen, am 2026-09-27 ersetzt.)
 - **Changelog-Stil:** der ERSTE SATZ eines Stichpunkts muss die Aussage tragen — nur er landet im Update-Dialog (`_highlights`, höchstens 5 kurze Stichpunkte, mittig, ohne Installations-Anleitung).
 - Feature-Historie im Einzelnen: `debian/changelog`. Die Chronik 0.1.7 bis 0.1.56 (welche Funktion, welcher User-Report, welcher Fix in welcher Fassung) steht im Skill `goldfishlinux-overview`.
 - **Den aktuellen Stand nie aus dieser Datei ablesen:** `git log --oneline -10` und `__version__` prüfen.

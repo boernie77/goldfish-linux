@@ -15,7 +15,7 @@ goldfish-linux (0.1.65-1) unstable; urgency=medium
     Download-Verwalter meldet Fertig/Fehlschlag/Loeschen jetzt an alle
     offenen Seiten.
 
- -- Christian <christian@byboernie.de>  Sun, 27 Sep 2026 12:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 27 Sep 2026 12:00:00 +0200
 
 goldfish-linux (0.1.64-1) unstable; urgency=medium
 
@@ -25,7 +25,7 @@ goldfish-linux (0.1.64-1) unstable; urgency=medium
   * Beim Hovern ueber der Zeitleiste erscheint jetzt der Zeitstempel der
     Stelle, auch wenn (noch) kein Vorschaubild verfuegbar ist.
 
- -- Christian <christian@byboernie.de>  Thu, 24 Sep 2026 14:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Thu, 24 Sep 2026 14:00:00 +0200
 
 goldfish-linux (0.1.63-1) unstable; urgency=medium
 
@@ -34,7 +34,7 @@ goldfish-linux (0.1.63-1) unstable; urgency=medium
   * Buchstabenleiste im Bibliotheksraster ist groesser und passt sich der
     Fensterhoehe an, statt auf ihrer kleinen festen Groesse stehenzubleiben.
 
- -- Christian <christian@byboernie.de>  Thu, 24 Sep 2026 13:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Thu, 24 Sep 2026 13:00:00 +0200
 
 goldfish-linux (0.1.62-1) unstable; urgency=medium
 
@@ -45,7 +45,7 @@ goldfish-linux (0.1.62-1) unstable; urgency=medium
     rein lokal in der Downloads-Liste gemerkt (kein Server noetig), und beim
     erneuten Start wird gefragt, ob von Anfang oder von der letzten Stelle.
 
- -- Christian <christian@byboernie.de>  Thu, 24 Sep 2026 12:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Thu, 24 Sep 2026 12:00:00 +0200
 
 goldfish-linux (0.1.61-1) unstable; urgency=medium
 
@@ -60,7 +60,7 @@ goldfish-linux (0.1.61-1) unstable; urgency=medium
     Methode war im selben Moment tot (Infokarte und Kachel konnten deshalb
     auseinanderlaufen).
 
- -- Christian <christian@byboernie.de>  Wed, 23 Sep 2026 13:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 23 Sep 2026 13:00:00 +0200
 
 goldfish-linux (0.1.60-1) unstable; urgency=medium
 
@@ -103,7 +103,7 @@ goldfish-linux (0.1.56-1) unstable; urgency=medium
     Besetzungsportrait der Detailseite. Client hatte nie eigene
     Besetzungs-Suchlogik, es war also nichts zu entfernen.
 
- -- Christian <christian@byboernie.de>  Sun, 20 Sep 2026 00:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 20 Sep 2026 00:00:00 +0200
 
 goldfish-linux (0.1.55-1) unstable; urgency=medium
 
@@ -115,7 +115,7 @@ goldfish-linux (0.1.55-1) unstable; urgency=medium
     eigene Kacheln trennen. Gilt fuer Bibliotheken, Ordner, Suche, Personen-
     und Playlist-Ansicht; Musik bleibt unveraendert.
 
- -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 14:35:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Fri, 18 Sep 2026 14:35:00 +0200
 
 goldfish-linux (0.1.55-1) unstable; urgency=medium
 
@@ -133,7 +133,7 @@ goldfish-linux (0.1.55-1) unstable; urgency=medium
   * Gesehen-/Favoriten-Haken verschwindet auf der Kachel, sobald er in der
     Infokarte entfernt wird.
 
- -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 14:05:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Fri, 18 Sep 2026 14:05:00 +0200
 
 goldfish-linux (0.1.54-1) unstable; urgency=medium
 
@@ -153,7 +153,7 @@ goldfish-linux (0.1.54-1) unstable; urgency=medium
     zeigen; diese ziehen die gebundene Kachel nach — ohne das Rastermodell
     anzufassen.
 
- -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 13:35:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Fri, 18 Sep 2026 13:35:00 +0200
 
 goldfish-linux (0.1.53-1) unstable; urgency=medium
 
@@ -168,7 +168,7 @@ goldfish-linux (0.1.53-1) unstable; urgency=medium
     (einzeilig, mit Auslassung), damit sie beim Erscheinen des
     Aktualisierungs-Hinweises nicht springt.
 
- -- Christian <christian@byboernie.de>  Fri, 18 Sep 2026 13:05:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Fri, 18 Sep 2026 13:05:00 +0200
 
 goldfish-linux (0.1.52-1) unstable; urgency=medium
 
@@ -191,7 +191,7 @@ goldfish-linux (0.1.52-1) unstable; urgency=medium
     nextTitle -> metadata.title -> title -> "Nächste Folge", damit im Hinweis
     nie der Dateiname steht.
 
- -- Christian <boernie77@gmail.com>  Fri, 18 Sep 2026 11:32:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Fri, 18 Sep 2026 11:32:00 +0200
 
 goldfish-linux (0.1.48-1) unstable; urgency=medium
 
@@ -207,7 +207,7 @@ goldfish-linux (0.1.48-1) unstable; urgency=medium
     sind davon nicht betroffen, sie holen ihren Parent bereits dynamisch
     über das gerade aktive Fenster.
 
- -- Christian <boernie77@gmail.com>  Tue, 16 Sep 2026 13:30:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 16 Sep 2026 13:30:00 +0200
 
 goldfish-linux (0.1.47-1) unstable; urgency=medium
 
@@ -221,7 +221,7 @@ goldfish-linux (0.1.47-1) unstable; urgency=medium
     jetzt erst über das "notify::fullscreened"-Signal aktualisiert,
     sobald der Fenstermanager den neuen Zustand bestätigt hat.
 
- -- Christian <boernie77@gmail.com>  Tue, 16 Sep 2026 12:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 16 Sep 2026 12:00:00 +0200
 
 goldfish-linux (0.1.46-1) unstable; urgency=medium
 
@@ -234,7 +234,7 @@ goldfish-linux (0.1.46-1) unstable; urgency=medium
     mit GStreamer aus der Datei gelesen (dieselbe Technik wie beim Einlesen
     lokaler Bibliotheken) und erscheint kurz danach.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 17:15:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 17:15:00 +0200
 
 goldfish-linux (0.1.45-1) unstable; urgency=medium
 
@@ -247,7 +247,7 @@ goldfish-linux (0.1.45-1) unstable; urgency=medium
     zurückgesetzt erst beim Umschalten auf ein anderes Video — analog zur
     schon vorhandenen Logik für das Wiedergabe-Ende.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 16:40:39 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 16:40:39 +0200
 
 goldfish-linux (0.1.44-1) unstable; urgency=medium
 
@@ -265,7 +265,7 @@ goldfish-linux (0.1.44-1) unstable; urgency=medium
     senkrecht wird gar nicht mehr geprüft, waagerecht schon: über den Knöpfen,
     der Zeitanzeige und dem Lautstärkeregler kommt weiterhin nichts.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 16:25:21 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 16:25:21 +0200
 
 goldfish-linux (0.1.43-1) unstable; urgency=medium
 
@@ -288,7 +288,7 @@ goldfish-linux (0.1.43-1) unstable; urgency=medium
     also 0 px Trefferfläche oben und 12 px tote Zone unten. Die Zeitleiste
     dehnt sich jetzt über die volle Höhe der Steuerleiste.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 16:09:47 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 16:09:47 +0200
 
 goldfish-linux (0.1.42-1) unstable; urgency=medium
 
@@ -299,7 +299,7 @@ goldfish-linux (0.1.42-1) unstable; urgency=medium
     weiterhin kaum zu erkennen war. Derselbe Grünton wie am Server
     (#22c55e), auf Kachel und Detailseite einheitlich.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 15:17:14 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 15:17:14 +0200
 
 goldfish-linux (0.1.41-1) unstable; urgency=medium
 
@@ -321,7 +321,7 @@ goldfish-linux (0.1.41-1) unstable; urgency=medium
     das fehlende Abhängigkeiten nachzieht — "dpkg -i" bräche mit halb
     eingerichtetem Paket ab.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 14:33:11 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 14:33:11 +0200
 
 goldfish-linux (0.1.40-1) unstable; urgency=medium
 
@@ -344,7 +344,7 @@ goldfish-linux (0.1.40-1) unstable; urgency=medium
     dunklerer Grauton) und auf der Kachel nur deckend statt halbtransparent
     weiss — beides war als Zustandsanzeige praktisch nicht erkennbar.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 14:24:15 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 14:24:15 +0200
 
 goldfish-linux (0.1.39-1) unstable; urgency=medium
 
@@ -356,7 +356,7 @@ goldfish-linux (0.1.39-1) unstable; urgency=medium
     Browser-Erkennung in die Irre führte. Rein diagnostische Änderung, kein
     sichtbarer Unterschied in der App selbst.
 
- -- Christian <boernie77@gmail.com>  Mon, 14 Sep 2026 10:40:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 10:40:00 +0200
 
 goldfish-linux (0.1.38-1) unstable; urgency=medium
 
@@ -372,7 +372,7 @@ goldfish-linux (0.1.38-1) unstable; urgency=medium
     Nacharbeit auf dem Server nötig — einfach aktualisieren und die Kacheln
     sind beim nächsten Öffnen scharf.
 
- -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 17:35:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 17:35:00 +0200
 
 goldfish-linux (0.1.37-1) unstable; urgency=medium
 
@@ -389,7 +389,7 @@ goldfish-linux (0.1.37-1) unstable; urgency=medium
   * Anderes Symbol für die Warteschlange (nummerierte Liste statt eines
     Kastens mit Abspielzeichen, der nach Video aussah).
 
- -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:26:50 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 13:26:50 +0200
 
 goldfish-linux (0.1.36-1) unstable; urgency=medium
 
@@ -403,7 +403,7 @@ goldfish-linux (0.1.36-1) unstable; urgency=medium
     zeigt jetzt die Anzahl der Titel, und "Leeren" steht als Wort statt als
     Papierkorb-Symbol im Fenster.
 
- -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:20:36 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 13:20:36 +0200
 
 goldfish-linux (0.1.35-1) unstable; urgency=medium
 
@@ -412,7 +412,7 @@ goldfish-linux (0.1.35-1) unstable; urgency=medium
     weiterhin die Kurzhilfe beim Zeigen mit der Maus. Gleiches gilt für den
     Umschalter in einer Musik-Playlist.
 
- -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:06:44 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 13:06:44 +0200
 
 goldfish-linux (0.1.34-1) unstable; urgency=medium
 
@@ -427,7 +427,7 @@ goldfish-linux (0.1.34-1) unstable; urgency=medium
     Bibliothek (eigene Breiten, eigenes Spalten-Menü).
   * Anderes Symbol für "Musik-Playlists" statt des Klemmbrett-Emojis.
 
- -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 13:03:41 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 13:03:41 +0200
 
 goldfish-linux (0.1.33-1) unstable; urgency=medium
 
@@ -448,7 +448,7 @@ goldfish-linux (0.1.33-1) unstable; urgency=medium
   * Startseite: der Unterstrich unter dem Serien- bzw. Kanalnamen ist weg,
     die Färbung beim Zeigen mit der Maus genügt (Wunsch).
 
- -- Christian <boernie77@gmail.com>  Sun, 13 Sep 2026 12:46:05 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 12:46:05 +0200
 
 goldfish-linux (0.1.32-1) unstable; urgency=medium
 
@@ -462,7 +462,7 @@ goldfish-linux (0.1.32-1) unstable; urgency=medium
     und Titellisten, ein-/ausblendbar über ein neues Spalten-Menü (analog
     zu Browser und Mac-App).
 
- -- boernie77 <boernie77@gmail.com>  Sun, 14 Sep 2026 10:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 14 Sep 2026 10:00:00 +0200
 
 goldfish-linux (0.1.31-1) unstable; urgency=medium
 
@@ -471,7 +471,7 @@ goldfish-linux (0.1.31-1) unstable; urgency=medium
     Serien- bzw. Kanalübersicht, statt nur das einzelne Video zu öffnen
     (analog zur gleichzeitig gebauten Mac-App-Funktion).
 
- -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 10:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 10:00:00 +0200
 
 goldfish-linux (0.1.30-1) unstable; urgency=medium
 
@@ -483,7 +483,7 @@ goldfish-linux (0.1.30-1) unstable; urgency=medium
     direkt aus der Musikbibliothek heraus, nur Musik-Playlists zeigend und
     neue auch als solche anlegend.
 
- -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 09:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 09:00:00 +0200
 
 goldfish-linux (0.1.29-1) unstable; urgency=medium
 
@@ -498,7 +498,7 @@ goldfish-linux (0.1.29-1) unstable; urgency=medium
     nur ein ECHTES "nichts gefunden" gemerkt, ein Fehler löst beim nächsten
     Seitenleisten-Neuaufbau einen neuen Versuch aus.
 
- -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 01:30:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 01:30:00 +0200
 
 goldfish-linux (0.1.28-1) unstable; urgency=medium
 
@@ -509,7 +509,7 @@ goldfish-linux (0.1.28-1) unstable; urgency=medium
     stehen, und ⏭/⏮ ziehen weiterhin aus allen Playlists derselben Art
     (Video oder Musik, je nachdem was zuerst getroffen wurde).
 
- -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 01:10:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 01:10:00 +0200
 
 goldfish-linux (0.1.27-1) unstable; urgency=medium
 
@@ -525,7 +525,7 @@ goldfish-linux (0.1.27-1) unstable; urgency=medium
     Dunkelmodus-Einstellung nicht über das Portal, das libadwaita sonst
     automatisch abfragt; die App blieb dort bisher immer hell.
 
- -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 00:45:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 00:45:00 +0200
 
 goldfish-linux (0.1.26-1) unstable; urgency=medium
 
@@ -538,7 +538,7 @@ goldfish-linux (0.1.26-1) unstable; urgency=medium
     Entlastet vor allem höhere Auflösungen/HEVC-Material auf schwächeren
     Prozessoren.
 
- -- boernie77 <boernie77@gmail.com>  Sun, 13 Sep 2026 00:15:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 13 Sep 2026 00:15:00 +0200
 
 goldfish-linux (0.1.25-1) unstable; urgency=medium
 
@@ -550,7 +550,7 @@ goldfish-linux (0.1.25-1) unstable; urgency=medium
     Trefferfläche zum Hovern (32 statt der GTK-Standardhöhe) — der
     sichtbare Balken selbst bleibt exakt gleich dünn.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 23:59:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 23:59:00 +0200
 
 goldfish-linux (0.1.24-1) unstable; urgency=medium
 
@@ -565,7 +565,7 @@ goldfish-linux (0.1.24-1) unstable; urgency=medium
   * Die Vorschau beim Zeigen auf die Zeitleiste im Player ist jetzt größer
     (240×135 statt 160×90 px) — auf Wunsch, weil sie kaum zu erkennen war.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 23:50:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 23:50:00 +0200
 
 goldfish-linux (0.1.23-1) unstable; urgency=medium
 
@@ -579,7 +579,7 @@ goldfish-linux (0.1.23-1) unstable; urgency=medium
     Import fehl — auf einem System, auf dem sie nur zufällig über eine
     andere Anwendung mitinstalliert wurden, fiel das bisher nie auf.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 23:30:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 23:30:00 +0200
 
 goldfish-linux (0.1.22-1) unstable; urgency=medium
 
@@ -594,7 +594,7 @@ goldfish-linux (0.1.22-1) unstable; urgency=medium
     Fehler zurück — der Ladekreisel läuft deshalb für immer. Jetzt fest als
     Abhängigkeit eingetragen, `apt install` zieht es künftig automatisch mit.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 23:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 23:00:00 +0200
 
 goldfish-linux (0.1.21-1) unstable; urgency=medium
 
@@ -621,7 +621,7 @@ goldfish-linux (0.1.21-1) unstable; urgency=medium
     Veröffentlichung aufsteigend sortiert — älteste zuerst, wie im Browser. In
     der Bibliothekswurzel bleibt es bei A–Z, damit die Kanal-Kacheln stehen.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 22:05:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 22:05:00 +0200
 
 goldfish-linux (0.1.20-1) unstable; urgency=medium
 
@@ -647,7 +647,7 @@ goldfish-linux (0.1.20-1) unstable; urgency=medium
     beim Dateimanager nach Vorschaubildern; auf einem langsamen Datenträger
     führte das zu Aussetzern beim Blättern.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 21:20:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 21:20:00 +0200
 
 goldfish-linux (0.1.19-1) unstable; urgency=medium
 
@@ -689,7 +689,7 @@ goldfish-linux (0.1.19-1) unstable; urgency=medium
   * Beim Einlesen eines Datenträgers werden die Beihefte übersprungen, die
     macOS beim Kopieren anlegt ("._"-Dateien, 4 KB, ohne Bild und Ton).
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 20:45:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 20:45:00 +0200
 
 goldfish-linux (0.1.18-1) unstable; urgency=medium
 
@@ -718,7 +718,7 @@ goldfish-linux (0.1.18-1) unstable; urgency=medium
   * Playlists: Zufallswiedergabe in der Übersicht (zieht aus allen Playlists)
     und in einer Playlist (spielt sie gemischt ab).
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 19:35:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 19:35:00 +0200
 
 goldfish-linux (0.1.17-1) unstable; urgency=medium
 
@@ -732,7 +732,7 @@ goldfish-linux (0.1.17-1) unstable; urgency=medium
   * Eine Sammlung gilt als erreichbar, sobald mindestens eine ihrer Platten
     angeschlossen ist — der Rest bleibt sichtbar.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 21:35:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 21:35:00 +0200
 
 goldfish-linux (0.1.16-1) unstable; urgency=medium
 
@@ -750,7 +750,7 @@ goldfish-linux (0.1.16-1) unstable; urgency=medium
   * Neu: Downloads in kleinerer Qualität. Die Auswahl in der Detailansicht
     gilt auch für den Download; der Knopf zeigt die gewählte Stufe.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 21:05:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 21:05:00 +0200
 
 goldfish-linux (0.1.15-1) unstable; urgency=medium
 
@@ -769,7 +769,7 @@ goldfish-linux (0.1.15-1) unstable; urgency=medium
   * Vorschaubilder stammen aus dem Zwischenspeicher des Dateimanagers, soweit
     er schon eines angelegt hat.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 20:30:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 20:30:00 +0200
 
 goldfish-linux (0.1.14-1) unstable; urgency=medium
 
@@ -789,7 +789,7 @@ goldfish-linux (0.1.14-1) unstable; urgency=medium
   * Musik wird direkt abgespielt, auch FLAC und WAV — das erspart pro Titel
     eine serverseitige Umwandlung und lässt die Wiedergabe sofort beginnen.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 19:55:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 19:55:00 +0200
 
 goldfish-linux (0.1.13-1) unstable; urgency=medium
 
@@ -803,7 +803,7 @@ goldfish-linux (0.1.13-1) unstable; urgency=medium
   * Die Streifen der Startseite und die Besetzungsleiste sammeln ihre Kacheln
     jetzt links, statt den Restplatz zwischen ihnen zu verteilen.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 19:10:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 19:10:00 +0200
 
 goldfish-linux (0.1.12-1) unstable; urgency=medium
 
@@ -829,7 +829,7 @@ goldfish-linux (0.1.12-1) unstable; urgency=medium
     wird jetzt nur noch verworfen, wenn der Server die Sitzung ausdrücklich
     ablehnt.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 18:40:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 18:40:00 +0200
 
 goldfish-linux (0.1.11-1) unstable; urgency=medium
 
@@ -853,7 +853,7 @@ goldfish-linux (0.1.11-1) unstable; urgency=medium
     Film weiterlief — das abgelöste Medium meldete den Fehler seiner beendeten
     Umwandlung. Alte Medien werden jetzt abgeklemmt.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 18:05:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 18:05:00 +0200
 
 goldfish-linux (0.1.10-1) unstable; urgency=medium
 
@@ -873,7 +873,7 @@ goldfish-linux (0.1.10-1) unstable; urgency=medium
   * Das Einblenden der gewählten Untertitel im Bild folgt in der nächsten
     Version zusammen mit Weiterschauen und den Vorschaubildern.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 17:25:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 17:25:00 +0200
 
 goldfish-linux (0.1.9-1) unstable; urgency=medium
 
@@ -897,7 +897,7 @@ goldfish-linux (0.1.9-1) unstable; urgency=medium
     'GDK_IS_FRAME_CLOCK (frame_clock)' failed" auf der Konsole — der
     Lade-Spinner wurde animiert, bevor er im Widget-Baum hing.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 16:55:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 16:55:00 +0200
 
 goldfish-linux (0.1.8-1) unstable; urgency=medium
 
@@ -923,7 +923,7 @@ goldfish-linux (0.1.8-1) unstable; urgency=medium
   * Die Auflösungsstufen entsprechen jetzt exakt denen des Servers; 1080p
     begann bisher schon bei 900 statt 1000 Bildzeilen.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 16:20:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 16:20:00 +0200
 
 goldfish-linux (0.1.7-1) unstable; urgency=medium
 
@@ -943,7 +943,7 @@ goldfish-linux (0.1.7-1) unstable; urgency=medium
     sichtbar — bei nicht erreichbarem Server erscheint dadurch zügig der
     Login-Dialog statt einer scheinbar nicht startenden App.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:40:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 15:40:00 +0200
 
 goldfish-linux (0.1.6-1) unstable; urgency=medium
 
@@ -954,7 +954,7 @@ goldfish-linux (0.1.6-1) unstable; urgency=medium
     normaler Gtk.Box-Sibling unter der Bibliotheksliste, garantiert
     unproblematisch.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:21:02 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 15:21:02 +0200
 
 goldfish-linux (0.1.5-1) unstable; urgency=medium
 
@@ -962,7 +962,7 @@ goldfish-linux (0.1.5-1) unstable; urgency=medium
     der Login-Seite und unten links in der Seitenleiste der Hauptansicht
     (analog zum Zahnrad-Menü-Fuß der Web-UI).
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:15:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 15:15:00 +0200
 
 goldfish-linux (0.1.4-1) unstable; urgency=medium
 
@@ -976,7 +976,7 @@ goldfish-linux (0.1.4-1) unstable; urgency=medium
     'gtk_widget_get_parent (child) == NULL' failed" beim Öffnen einer
     Bibliothek mit Inhalt.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:11:57 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 15:11:57 +0200
 
 goldfish-linux (0.1.3-1) unstable; urgency=medium
 
@@ -991,7 +991,7 @@ goldfish-linux (0.1.3-1) unstable; urgency=medium
     Diagnose-Hinweis (ACL-Zugriff prüfen) statt einer stillen leeren
     Seitenleiste.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 15:05:46 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 15:05:46 +0200
 
 goldfish-linux (0.1.2-1) unstable; urgency=medium
 
@@ -1002,7 +1002,7 @@ goldfish-linux (0.1.2-1) unstable; urgency=medium
     die eigentliche HTTP-Anfrage dort aber per RST abgelehnt wird —
     verifiziert direkt gegen den betroffenen Server.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 14:58:02 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 14:58:02 +0200
 
 goldfish-linux (0.1.1-1) unstable; urgency=medium
 
@@ -1013,7 +1013,7 @@ goldfish-linux (0.1.1-1) unstable; urgency=medium
     Zeitüberschreitung — manche selbstgehosteten Server brauchen für den
     allerersten Request nach einer Weile Inaktivität spürbar länger.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 14:48:56 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 14:48:56 +0200
 
 goldfish-linux (0.1.0-1) unstable; urgency=medium
 
@@ -1021,4 +1021,4 @@ goldfish-linux (0.1.0-1) unstable; urgency=medium
     Wiedergabe (Direct Play/Transcode über den GTK4-GStreamer-Player) sowie
     Offline-Downloads mit lokaler Wiedergabe.
 
- -- boernie77 <boernie77@gmail.com>  Sat, 12 Sep 2026 14:13:39 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 12 Sep 2026 14:13:39 +0200
