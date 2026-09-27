@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import threading
+import weakref
 from pathlib import Path
 from typing import Callable
 
@@ -21,6 +22,7 @@ _SANITIZE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 ProgressCB = Callable[[int, float], None]  # (item_id, fraction 0..1)
 DoneCB = Callable[[int, str], None]  # (item_id, local_path)
 ErrorCB = Callable[[int, str], None]  # (item_id, message)
+ChangeCB = Callable[[int], None]  # (item_id) — Download fertig, fehlgeschlagen oder gelöscht
 
 
 def _sanitize_filename(name: str) -> str:
@@ -33,7 +35,41 @@ class DownloadManager:
         self.client = client
         self._registry: dict[str, dict] = {}
         self._active: set[int] = set()
+        # Wer wissen will, ob ein Titel (nicht mehr) offline vorliegt — etwa
+        # die Detailseite, deren Abspielen-Knopf dann auf "Offline abspielen"
+        # wechselt. Die `on_done`-Rückrufe von `start_download` reichen dafür
+        # nicht: sie erreichen nur die Seite, die den Download gestartet hat,
+        # und keine, die später für denselben Titel geöffnet wurde.
+        # Schwache Referenzen wie bei `AppContext.add_item_state_listener`:
+        # eine geschlossene Seite soll nicht durch diese Liste weiterleben.
+        # Deshalb muss der Aufrufer die gebundene Methode selbst festhalten
+        # (`weakref.ref(obj.methode)` ist sofort tot).
+        self._listeners: list[weakref.ref] = []
         self._load()
+
+    # -- Änderungs-Meldungen ----------------------------------------------
+
+    def add_listener(self, callback: ChangeCB) -> None:
+        """`callback(item_id)` läuft im GTK-Hauptablauf, sobald ein Download
+        fertig ist, fehlschlägt oder gelöscht wird."""
+        self._listeners.append(weakref.ref(callback))
+
+    def remove_listener(self, callback: ChangeCB) -> None:
+        self._listeners = [r for r in self._listeners if r() is not None and r() != callback]
+
+    def _notify(self, item_id: int) -> bool:
+        alive = []
+        for ref in self._listeners:
+            callback = ref()
+            if callback is None:
+                continue  # Seite ist weg — Eintrag ausräumen
+            alive.append(ref)
+            try:
+                callback(item_id)
+            except Exception:  # noqa: BLE001 — eine Anzeige darf den Rest nie stören
+                continue
+        self._listeners = alive
+        return False  # auch als GLib.idle_add-Rückruf nutzbar
 
     # -- Registry --------------------------------------------------------
 
@@ -99,6 +135,7 @@ class DownloadManager:
             except OSError:
                 pass
             self._save()
+            self._notify(int(item_id))
 
     # -- Download ----------------------------------------------------------
 
@@ -145,6 +182,7 @@ class DownloadManager:
             self._active.discard(item_id)
             if on_error:
                 GLib.idle_add(on_error, item_id, str(exc))
+            GLib.idle_add(self._notify, item_id)
             return
 
         title = item.get("title") or f"item-{item_id}"
@@ -172,6 +210,14 @@ class DownloadManager:
             self._active.discard(item_id)
             if on_error:
                 GLib.idle_add(on_error, item_id, f"Datei konnte nicht geschrieben werden: {exc}")
+            GLib.idle_add(self._notify, item_id)
+            return
+        except Exception as exc:  # noqa: BLE001 — sonst bliebe "Download läuft" für immer stehen
+            tmp_path.unlink(missing_ok=True)
+            self._active.discard(item_id)
+            if on_error:
+                GLib.idle_add(on_error, item_id, f"Unerwarteter Fehler: {exc}")
+            GLib.idle_add(self._notify, item_id)
             return
 
         self._registry[str(item_id)] = {
@@ -186,3 +232,4 @@ class DownloadManager:
         self._active.discard(item_id)
         if on_done:
             GLib.idle_add(on_done, item_id, str(final_path))
+        GLib.idle_add(self._notify, item_id)

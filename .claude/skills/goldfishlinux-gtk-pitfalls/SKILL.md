@@ -111,4 +111,16 @@ Aus der frueheren Sammel-CLAUDE.md des GoldfishLinux-Repos ausgelagerter Themenb
   Nachziehen den eigenen `toggled`-Handler, sonst schickt er den Zustand doppelt zum
   Server). **Nicht** nachziehend: die Staffelübersicht („x gesehen"-Zähler) — die
   braucht weiterhin einen Neuaufbau.
+- **Download-Zustand live: `DownloadManager.add_listener`** (0.1.62, User-Report
+  2026-09-27: nach einem Download aus der offenen Infoseite streamte „Abspielen"
+  weiter). Die `on_done`-Rückrufe von `start_download` erreichen nur die Seite, die
+  den Download gestartet hat — für „Titel ist (nicht mehr) offline" deshalb die
+  Meldung des Managers nutzen: `callback(item_id)` im Hauptablauf bei Fertig,
+  Fehlschlag und Löschen (NICHT beim Start). Schwache Referenzen wie oben, also
+  gebundene Methode festhalten. `detail_page` meldet sich zusätzlich über
+  `nav_view`-Signal `popped` ausdrücklich ab. Der Hauptknopf der Infoseite heißt bei
+  vorhandenem Download „Offline abspielen" (Wortlaut der Apple-App) und spielt die
+  lokale Datei; der frühere runde Zusatz-Abspielknopf ist entfallen. Offline gibt es
+  (wie bisher) keine Fortsetz-Abfrage — der Player meldet lokal keine Position.
+  Test ohne GTK: `python3 -m unittest discover -s tests` (Attrappen für GLib/api).
 

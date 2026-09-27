@@ -1,3 +1,22 @@
+goldfish-linux (0.1.65-1) unstable; urgency=medium
+
+  * Die Infoseite merkt jetzt sofort, wenn ein Download fertig ist: der
+    Abspielen-Knopf wechselt auf "Offline abspielen" und spielt die lokale
+    Datei statt zu streamen.
+  * Auch beim Oeffnen der Infoseite eines schon heruntergeladenen Titels
+    spielt der Hauptknopf die lokale Datei; wird der Download geloescht,
+    faellt er wieder auf normales Abspielen zurueck.
+  * "Offline abspielen" auf der Infoseite fragt wie die Downloads-Ansicht
+    nach, ob von Anfang oder von der zuletzt gemerkten Stelle (lokale
+    Position aus der Downloads-Liste, kein Server noetig).
+  * Ursache: der Hauptknopf fragte den Download-Zustand nie ab, nur ein
+    kleiner runder Zusatzknopf spielte offline - und von einem fertigen
+    Download erfuhr nur die Seite, die ihn gestartet hatte. Der
+    Download-Verwalter meldet Fertig/Fehlschlag/Loeschen jetzt an alle
+    offenen Seiten.
+
+ -- Christian <christian@byboernie.de>  Sun, 27 Sep 2026 12:00:00 +0200
+
 goldfish-linux (0.1.64-1) unstable; urgency=medium
 
   * Behoben: nach einem Sprung auf der Zeitleiste bewegte sich der Balken

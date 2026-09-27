@@ -117,6 +117,18 @@ class DetailPage(Adw.NavigationPage):
         self._state_listener = self._on_item_state_changed
         ctx.add_item_state_listener(self._state_listener)
 
+        # Download fertig/gelöscht mitbekommen — auch wenn ihn eine andere
+        # Instanz dieser Seite (oder die Downloads-Ansicht) ausgelöst hat.
+        # User-Report 2026-09-27: nach einem Download aus der offenen Infoseite
+        # streamte "Abspielen" weiter, statt die lokale Datei zu nehmen; die
+        # anderen Apps wechseln die Beschriftung auf "Offline abspielen".
+        # Auch hier die gebundene Methode festhalten (schwache Referenz).
+        self._download_listener = self._on_download_state_changed
+        ctx.downloads.add_listener(self._download_listener)
+        # Beim Verlassen der Seite (Zurück, Seitenleisten-Wechsel) ausdrücklich
+        # abmelden, statt auf den Müllsammler zu warten.
+        self._popped_handler = nav_view.connect("popped", self._on_nav_popped)
+
         box.append(self._build_head())
         self.stream_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.append(self.stream_box)
@@ -238,12 +250,16 @@ class DetailPage(Adw.NavigationPage):
         # Aktionen ebenfalls als Symbole in einer Reihe stehen. Vorher las sich
         # die Zeile wie ein Satz ("Als gesehen markieren ♡ Favorit 📋 Zu
         # Playlist ⬇ Herunterladen") und war entsprechend breit.
-        play = Gtk.Button(icon_name="media-playback-start-symbolic", label="Abspielen")
-        play.set_child(_icon_label("media-playback-start-symbolic", "Abspielen"))
-        play.add_css_class("suggested-action")
-        play.add_css_class("pill")
-        play.connect("clicked", lambda *_: self._play_music() if self.is_music else self._play_with_resume_check())
-        row.append(play)
+        # Beschriftung ("Abspielen" / "Offline abspielen") setzt
+        # `_update_play_button` — sie hängt am Download-Zustand und wechselt,
+        # während die Seite offen ist.
+        self.play_button = Gtk.Button()
+        self.play_button.add_css_class("suggested-action")
+        self.play_button.add_css_class("pill")
+        self.play_button.connect("clicked", self._on_play_clicked)
+        self._play_button_offline: bool | None = None
+        self._update_play_button()
+        row.append(self.play_button)
 
         if self.is_music:
             enqueue = Gtk.Button(icon_name="list-add-symbolic", valign=Gtk.Align.CENTER)
@@ -297,6 +313,32 @@ class DetailPage(Adw.NavigationPage):
         # Herunterladen gehört in dieselbe Reihe wie die übrigen Handgriffe.
         row.append(self.download_box)
         return row
+
+    def _plays_offline(self) -> bool:
+        """Spielt der Hauptknopf die heruntergeladene Datei? Musik nicht: die
+        läuft über die Abspielleiste, nie über das Videofenster."""
+        return not self.is_music and self.ctx.downloads.is_downloaded(self.item_id)
+
+    def _update_play_button(self) -> None:
+        offline = self._plays_offline()
+        if offline == self._play_button_offline:
+            return  # unverändert — Kind nicht unnötig neu bauen
+        self._play_button_offline = offline
+        # Wortlaut wie in der Apple-App (ItemDetailView: "Offline abspielen").
+        self.play_button.set_child(
+            _icon_label("media-playback-start-symbolic", "Offline abspielen" if offline else "Abspielen")
+        )
+        self.play_button.set_tooltip_text(
+            "Die heruntergeladene Datei abspielen (ohne Netz)" if offline else None
+        )
+
+    def _on_play_clicked(self, *_args) -> None:
+        if self.is_music:
+            self._play_music()
+        elif self._plays_offline():
+            self._on_play_offline()
+        else:
+            self._play_with_resume_check()
 
     # -- Musik ------------------------------------------------------------
 
@@ -502,6 +544,7 @@ class DetailPage(Adw.NavigationPage):
         self._download_resolution = None
         self._fill_meta_row()
         self._refresh_download_ui()
+        self._update_play_button()
         self._probe_download_resolution()
 
     def _on_audio_changed(self, drop: Gtk.DropDown, _param) -> None:
@@ -553,7 +596,10 @@ class DetailPage(Adw.NavigationPage):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _after_resume_lookup(self, position: float) -> bool:
+    def _after_resume_lookup(self, position: float, local_path: str | None = None) -> bool:
+        # local_path: Offline-Wiedergabe eines Downloads — dieselbe Frage, die
+        # Position kommt dann aus der lokalen Downloads-Liste (siehe
+        # `_on_play_offline`), gespielt wird die lokale Datei.
         # **Ein noch offenes Wiedergabefenster ZUERST schließen.** Sonst legt
         # sich die Frage dahinter und wartet dort unsichtbar auf eine Antwort,
         # während das alte Video weiterläuft — für den Benutzer hängt die App
@@ -564,7 +610,7 @@ class DetailPage(Adw.NavigationPage):
         # Unter einer Minute lohnt die Frage nicht, und kurz vor dem Ende
         # wäre "fortsetzen" sinnlos — dann von vorn, wie im Browser.
         if position < 60 or (duration and position > duration * 0.95):
-            self._open_player()
+            self._open_player(local_path=local_path)
             return False
 
         dialog = Adw.MessageDialog(
@@ -578,7 +624,9 @@ class DetailPage(Adw.NavigationPage):
         dialog.set_response_appearance("resume", Adw.ResponseAppearance.SUGGESTED)
         dialog.connect(
             "response",
-            lambda _d, response: self._open_player(start_position=position if response == "resume" else 0.0),
+            lambda _d, response: self._open_player(
+                local_path=local_path, start_position=position if response == "resume" else 0.0
+            ),
         )
         dialog.present()
         return False
@@ -733,15 +781,11 @@ class DetailPage(Adw.NavigationPage):
             child = nxt
 
         if self.ctx.downloads.is_downloaded(self.item_id):
+            # Kein eigener runder Offline-Abspielknopf mehr: das übernimmt der
+            # Hauptknopf ("Offline abspielen"). Zwei gleich aussehende
+            # Abspielknöpfe, von denen der beschriftete streamt, waren genau
+            # die Falle aus dem User-Report 2026-09-27.
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            offline_button = Gtk.Button(
-                icon_name="media-playback-start-symbolic",
-                valign=Gtk.Align.CENTER,
-                tooltip_text="Die heruntergeladene Datei abspielen (ohne Netz)",
-            )
-            offline_button.add_css_class("circular")
-            offline_button.connect("clicked", self._on_play_offline)
-            row.append(offline_button)
             delete_button = Gtk.Button(
                 icon_name="user-trash-symbolic",
                 tooltip_text="Heruntergeladene Datei löschen",
@@ -784,10 +828,11 @@ class DetailPage(Adw.NavigationPage):
             # Mit gewählter Qualität wandelt der Server vorher um; das dauert
             # einmalig und ist am Fortschritt noch nicht zu sehen.
             self.progress_bar.set_text("Wird vorbereitet …")
+        # Fertig/Fehlschlag baut die Seite über `_on_download_state_changed`
+        # um (Meldung des DownloadManagers) — `on_done` braucht es hier nicht.
         self.ctx.downloads.start_download(
             self.item,
             on_progress=self._on_download_progress,
-            on_done=self._on_download_done,
             on_error=self._on_download_error,
             profile=self.chosen_profile,
         )
@@ -799,20 +844,30 @@ class DetailPage(Adw.NavigationPage):
         self.progress_bar.set_text(f"{int(fraction * 100)} %")
         return False
 
-    def _on_download_done(self, item_id: int, _local_path: str) -> bool:
-        if item_id != self.item_id:
-            return False
+    def _on_download_state_changed(self, item_id: int) -> None:
+        """Meldung des DownloadManagers (Hauptablauf): ein Download ist fertig,
+        fehlgeschlagen oder gelöscht. Download-Bereich, Kenndaten und die
+        Beschriftung des Abspielen-Knopfs neu setzen."""
+        if int(item_id) != int(self.item_id):
+            return
         self._download_resolution = None
         self._refresh_download_ui()
         self._fill_meta_row()
+        self._update_play_button()
         self._probe_download_resolution()
-        return False
+
+    def _on_nav_popped(self, nav_view, page) -> None:
+        if page is not self:
+            return
+        self.ctx.downloads.remove_listener(self._download_listener)
+        if self._popped_handler:
+            nav_view.disconnect(self._popped_handler)
+            self._popped_handler = 0
 
     def _on_download_error(self, item_id: int, message: str) -> bool:
-        if item_id != self.item_id:
-            return False
-        self._refresh_download_ui()
-        self._toast(f"Download fehlgeschlagen: {message}")
+        # Den Download-Bereich setzt `_on_download_state_changed` zurück.
+        if item_id == self.item_id:
+            self._toast(f"Download fehlgeschlagen: {message}")
         return False
 
     def _probe_download_resolution(self) -> None:
@@ -853,14 +908,21 @@ class DetailPage(Adw.NavigationPage):
 
     def _on_play_offline(self, *_args) -> None:
         path = self.ctx.downloads.local_path(self.item_id)
-        if path:
-            self._open_player(local_path=str(path))
+        if not path:
+            # Datei inzwischen verschwunden (von Hand gelöscht): zurück auf
+            # normales Abspielen statt ins Leere zu klicken.
+            self._update_play_button()
+            self._play_with_resume_check()
+            return
+        # „Weiterschauen?" auch offline: die Position merkt sich die lokale
+        # Downloads-Liste (seit 0.1.62, wie in der Downloads-Ansicht) — der
+        # Server ist beim Offline-Abspielen womöglich gar nicht erreichbar.
+        self._after_resume_lookup(self.ctx.downloads.get_local_resume(self.item_id), local_path=str(path))
 
     def _on_delete_download(self, *_args) -> None:
+        # Seite, Kenndaten und Abspielen-Knopf zieht die Meldung des
+        # DownloadManagers nach (`_on_download_state_changed`).
         self.ctx.downloads.delete_download(self.item_id)
-        self._download_resolution = None
-        self._refresh_download_ui()
-        self._fill_meta_row()
 
 
 # -- kleine Bausteine ---------------------------------------------------
