@@ -526,6 +526,16 @@ class GoldfishClient:
             self.post(f"/api/playback/{item_id}/start")
         except GoldfishAPIError:
             pass  # Protokoll ist Komfort-Feature, kein Blocker fürs Abspielen
+        # "Zuletzt abgespielt" + Wiedergabezähler setzen, wie es Browser und die
+        # anderen Apps beim Player-Start tun (POST /items/{id}/played). Fehlte
+        # hier bis 0.1.67 — angefangene Folgen hatten dadurch kein Datum und
+        # tauchten nicht (bzw. ganz hinten) in "Fortsetzen" auf (User-Befund
+        # 2026-09-29; der Server setzt das Datum seit 1.4.51 zusätzlich beim
+        # Speichern der Position).
+        try:
+            self.post(f"/api/items/{item_id}/played")
+        except GoldfishAPIError:
+            pass
 
     def playback_stop(self, item_id: int, reason: str, position_sec: float, duration_sec: float) -> None:
         try:
