@@ -149,29 +149,6 @@ _CSS = b"""
 /* "Aus Als naechstes entfernen" (Startseite, Server 1.4.49): rot beim
    Zeigen, wie `.nextup-hide-toggle:hover` im Browser. Nur ASCII. */
 .gf-toggle-remove:hover { background-color: alpha(#ef4444, 0.9); color: #ffffff; }
-/* Einheitliche Startseiten-Kachel (`CardWidget(uniform=True)`, 0.1.69):
-   das Bild steht vollstaendig und mittig (ContentFit.CONTAIN), dahinter
-   dasselbe Bild formatfuellend als abgedunkelte Fuellung auf schwarzem
-   Grund. Abgedunkelt wird ueber `opacity` (in GTK4 sicher), NICHT ueber
-   `filter: brightness()` - so bleibt es dunkel, selbst wenn eine GTK-
-   Fassung `filter` nicht kennt. Nur ASCII. */
-.gf-card-fit-base {
-  background-color: #000000;
-  border-radius: 8px;
-}
-.gf-card-image.gf-card-fit { background-color: transparent; }
-.gf-card-backdrop {
-  border-radius: 8px;
-  opacity: 0.4;
-}
-.gf-card-watched .gf-card-backdrop { opacity: 0.22; }
-"""
-
-# Die Unschaerfe steht in einem EIGENEN Stylesheet: kennt eine GTK-Fassung
-# `filter` nicht, verwirft sie nur diese eine Angabe (mit einer Warnung auf der
-# Konsole) - die Abdunkelung oben bleibt davon unberuehrt.
-_CSS_BLUR = b"""
-.gf-card-backdrop { filter: blur(10px); }
 """
 
 _css_loaded = False
@@ -185,17 +162,13 @@ def ensure_card_css() -> None:
     display = Gdk.Display.get_default()
     if display is None:
         return  # kein Display (z. B. im Test) — Kacheln funktionieren auch ungestylt
-    for css in (_CSS, _CSS_BLUR):
-        provider = Gtk.CssProvider()
-        try:
-            provider.load_from_data(css)
-        except Exception:  # noqa: BLE001 — Unschärfe ist Zierde, kein Grund zum Abbruch
-            continue
-        Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    provider = Gtk.CssProvider()
+    provider.load_from_data(_CSS)
+    Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
     _css_loaded = True
 
 
-def _image_frame(width: int, height: int, fit: bool = False) -> tuple[Gtk.Overlay, Gtk.Picture]:
+def _image_frame(width: int, height: int) -> tuple[Gtk.Overlay, Gtk.Picture]:
     """Ein Bildbereich mit FESTER Sollgröße — und ein Bild darin, das sie nicht
     sprengen kann.
 
@@ -210,44 +183,16 @@ def _image_frame(width: int, height: int, fit: bool = False) -> tuple[Gtk.Overla
     Die Lösung: die Sollgröße gibt eine leere Box als HAUPTKIND des Overlays
     vor, das Bild liegt als Overlay-Kind darüber und wird von der Messung
     ausgenommen (`set_measure_overlay(..., False)`). Damit ist die Naturbreite
-    bei jeder Höhe 168 — geprüft für -1, 252 und 301.
-
-    `fit=True` (nur die Startseite, über `CardWidget(uniform=True)`): das Bild
-    wird NICHT beschnitten, sondern vollständig und mittig eingepasst
-    (ContentFit.CONTAIN). Die frei bleibenden Ränder füllt dasselbe Bild ein
-    zweites Mal, formatfüllend (COVER), abgedunkelt und — wo GTK den
-    CSS-`filter` kennt — unscharf, auf schwarzem Grund. Die Füllung ist ein
-    weiteres Overlay-Kind UNTER dem Bild, ebenfalls aus der Messung genommen
-    und ohne Klickziel. Sie bekommt ihr Bild nicht über einen eigenen
-    Ladevorgang, sondern spiegelt per `notify::paintable` jede Textur, die
-    `load_poster_async` auf das Hauptbild setzt — auch das `None` beim
-    Umbelegen. So gibt es keinen zweiten Generationszähler, der aus dem Tritt
-    geraten könnte."""
+    bei jeder Höhe 168 — geprüft für -1, 252 und 301."""
     frame = Gtk.Box()
     frame.set_size_request(width, height)
     overlay = Gtk.Overlay(child=frame)
     overlay.set_hexpand(False)
     overlay.set_halign(Gtk.Align.START)
     overlay.set_overflow(Gtk.Overflow.HIDDEN)
-    picture = Gtk.Picture(
-        content_fit=Gtk.ContentFit.CONTAIN if fit else Gtk.ContentFit.COVER,
-        can_shrink=True,
-    )
+    picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
     picture.set_hexpand(False)
     picture.add_css_class("gf-card-image")
-    if fit:
-        frame.add_css_class("gf-card-fit-base")
-        picture.add_css_class("gf-card-fit")
-        backdrop = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True)
-        backdrop.set_hexpand(False)
-        backdrop.set_can_target(False)
-        backdrop.add_css_class("gf-card-backdrop")
-        overlay.add_overlay(backdrop)
-        overlay.set_measure_overlay(backdrop, False)
-        picture.connect(
-            "notify::paintable",
-            lambda pic, _pspec, bd=backdrop: bd.set_paintable(pic.get_paintable()),
-        )
     overlay.add_overlay(picture)
     overlay.set_measure_overlay(picture, False)
     return overlay, picture
@@ -273,8 +218,9 @@ class CardWidget(Gtk.Box):
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         # Einheitliche Startseiten-Kachel (0.1.69, nur `home_page.py` setzt
-        # das): Bild vollständig eingepasst statt beschnitten, abgedunkelte
-        # Füllung dahinter (siehe `_image_frame(fit=True)`), und immer genau
+        # das): das Bild füllt die 2:3-Kachel (COVER) — Videos ohne Poster
+        # laden dafür seit 0.1.70 das Hochformat-Vorschaubild des Servers
+        # (`GoldfishClient.portrait_thumb_path`, Server 1.4.54) —, und immer genau
         # drei Textzeilen (Serie/Kanal, Titel, Untertitel) — leere Zeilen
         # tragen ein Leerzeichen, damit alle Kacheln eines Streifens gleich
         # hoch sind. Das Bibliotheksraster bleibt beim Default `False`.
@@ -296,9 +242,11 @@ class CardWidget(Gtk.Box):
         # `aspect_kind` trennt die Form der Kachel von der Bibliotheksart:
         # auf der Startseite liegen Filme, Folgen und Privatvideos in einer
         # Reihe und sollen dort gleich groß sein — ein 16:9-Standbild in einem
-        # 2:3-Rahmen wird dafür mittig beschnitten (ContentFit.COVER) — außer
-        # mit `uniform=True` (Startseite seit 0.1.69): dann vollständig
-        # eingepasst mit abgedunkelter Füllung, siehe `_image_frame`.
+        # 2:3-Rahmen wird dafür mittig beschnitten (ContentFit.COVER). Mit
+        # `uniform=True` (Startseite seit 0.1.70) holen Videos ohne Poster
+        # stattdessen gleich ein Hochformat-Bild vom Server, siehe `bind`.
+        # Die Füllung mit eingepasstem Bild vor unscharfem Hintergrund aus
+        # 0.1.69 hat der Benutzer ausdrücklich abgelehnt — nicht zurückholen.
         geometry = aspect_kind or kind
         # Private Bibliotheken (YouTube, eigene Videos) bekommen die breite
         # Kachel (240 statt 168 px) — ein 16:9-Bild bei 168 px ist nur 94 px
@@ -329,7 +277,7 @@ class CardWidget(Gtk.Box):
 
         # -- Bildbereich mit Abzeichen --
         self._frame_height = card_height_for(geometry, self._frame_width)
-        self.overlay, self.picture = _image_frame(self._frame_width, self._frame_height, fit=uniform)
+        self.overlay, self.picture = _image_frame(self._frame_width, self._frame_height)
 
         self.watched_btn = Gtk.Button(
             icon_name="object-select-symbolic",
@@ -554,15 +502,29 @@ class CardWidget(Gtk.Box):
         poster_path = (
             self.client.show_poster_path_for_episode(item) if self.show_poster else None
         ) or self.client.poster_path_for_item(item)
+        # Einheitliche Startseiten-Kachel (0.1.70): Videos ohne Poster (vor
+        # allem private Videos) holen statt des 16:9-Vorschaubilds ein
+        # 2:3-Hochformat-Bild (`?format=portrait`, Server 1.4.54, aus dem
+        # Originalvideo). Das füllt die Kachel ohne Beschnitt. Musik behält
+        # ihr Cover (ebenfalls COVER), Poster bleiben Poster. Die URL mit
+        # Query ist im Bild-Zwischenspeicher ein eigener Schlüssel (Hash des
+        # vollen Pfads), kollidiert also nicht mit dem 16:9-Bild der
+        # Bibliotheksansicht.
+        portrait = False
+        if (
+            self.uniform
+            and self.kind != "music"
+            and poster_path == f"/api/thumb/{item.get('id')}"
+        ):
+            poster_path = self.client.portrait_thumb_path(item["id"])
+            portrait = True
         # Siehe `_thumb_decode_width`-Kommentar oben: ein `/api/thumb/`-
         # Fallback braucht in einer nicht-16:9-Kartenform mehr Dekodierbreite,
         # sonst wird beim Anzeigen (ContentFit.COVER) unnötig hochskaliert.
-        # Bei der einheitlichen Kachel (CONTAIN) steht das Bild höchstens in
-        # Kachelbreite da — dort reicht die Kachelbreite, die unscharfe
-        # Füllung dahinter braucht keine Schärfe.
+        # Das Hochformat-Bild hat schon die Kachelform — Kachelbreite reicht.
         decode_width = (
             _thumb_decode_width(self._frame_width, self._frame_height)
-            if poster_path and poster_path.startswith("/api/thumb/") and not self.uniform
+            if poster_path and poster_path.startswith("/api/thumb/") and not portrait
             else self._frame_width
         )
         load_poster_async(

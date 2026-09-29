@@ -990,6 +990,16 @@ class GoldfishClient:
             return f"/api/thumb/{item['id']}"
         return None
 
+    def portrait_thumb_path(self, item_id: int) -> str:
+        """Hochformat-Vorschaubild (400×600, 2:3) eines Videos für die
+        einheitlichen Startseiten-Kacheln (seit 0.1.70). Der Server (ab 1.4.54)
+        schneidet es aus der Bildmitte des Originalvideos, erzeugt es beim
+        ersten Abruf und hält es danach vor; ältere Server ignorieren
+        `format` und liefern das normale 16:9-Vorschaubild. Nur für Items,
+        die ohnehin auf `/api/thumb/{id}` fallen (kein Poster), und nicht für
+        Musik (dort ist das Vorschaubild das Cover)."""
+        return f"/api/thumb/{item_id}?format=portrait"
+
     def library_preview_path(self, library_id: int, attempts: int = 5) -> str | None:
         """Ein repräsentatives Vorschaubild für die Bibliothek — für die
         runden Kacheln in der Seitenleiste (analog zur Mac/iOS-App). Zieht

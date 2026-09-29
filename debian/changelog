@@ -1,3 +1,12 @@
+goldfish-linux (0.1.70-1) unstable; urgency=medium
+
+  * Startseiten-Kacheln zeigen wieder grosse, kachelfuellende Bilder statt
+    eines kleinen Bilds vor unscharfem Hintergrund.
+  * Private Videos bekommen dafuer ein eigenes Hochformat-Bild vom Server
+    (braucht Server 1.4.54, sonst das normale Vorschaubild).
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 29 Sep 2026 18:29:51 +0200
+
 goldfish-linux (0.1.69-1) unstable; urgency=medium
 
   * Alle Kacheln der Startseite sind gleich gross und im Posterformat,

@@ -176,10 +176,10 @@ class HomePage(Adw.NavigationPage):
         (seit 0.1.69 in allen drei Streifenarten, auch „Fortsetzen").
 
         Alle Kacheln der Startseite sind gleich breit, im 2:3-Posterformat und
-        gleich hoch (`CardWidget(uniform=True)`, 0.1.69): Standbilder von
-        YouTube/Privatvideos (16:9) und Musikcover (1:1) werden dabei NICHT
-        mehr beschnitten, sondern vollständig eingepasst, mit derselben
-        abgedunkelten Bildfläche dahinter.
+        gleich hoch (`CardWidget(uniform=True)`, 0.1.69): das Bild füllt die
+        Kachel immer ganz. Videos ohne Poster (YouTube/Privatvideos) laden
+        dafür seit 0.1.70 ein eigenes Hochformat-Bild vom Server
+        (`?format=portrait`), Musikcover werden mittig beschnitten.
         `removable`: ✕ je Kachel, blendet die Serie aus „Als nächstes" aus."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         label = Gtk.Label(label=title, xalign=0, margin_start=16)
@@ -245,8 +245,8 @@ class HomePage(Adw.NavigationPage):
                 # Alle Kacheln eines Streifens gleich groß, auch die von
                 # YouTube und Musik: in einer Reihe mit Filmpostern sähen
                 # 16:9-Kacheln wie ein Fehler aus. Die Form ist immer die des
-                # Posters; `uniform` passt das Bild darin vollständig ein
-                # (statt es wie bis 0.1.68 mittig zu beschneiden) und hält die
+                # Posters; `uniform` lädt für Videos ohne Poster ein
+                # kachelfüllendes Hochformat-Bild (0.1.70) und hält die
                 # Textzeilen auf fester Anzahl.
                 aspect_kind="movies",
                 uniform=True,
