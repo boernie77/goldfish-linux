@@ -29,7 +29,10 @@ inzwischen im Wesentlichen denselben Funktionsumfang ab wie die Mac-App
 - **Kachelraster mit TMDB-Postern**, Auflösungs- und Laufzeit-Kennzeichnung,
   Gesehen-Haken und Favoritenherz direkt auf der Kachel.
 - **Startseite** mit „Fortsetzen" und „Als nächstes" je in einer Zeile über
-  alle Bibliotheken hinweg, darunter „Neu hinzugefügt" je Bibliothek.
+  alle Bibliotheken hinweg, darunter „Neu hinzugefügt" je Bibliothek. Folgen
+  erscheinen dort (außer in „Fortsetzen") mit dem Serienposter; eine Serie
+  lässt sich per ✕ aus „Als nächstes" ausblenden, und wie lange Titel in den
+  beiden oberen Streifen bleiben, ist einstellbar.
 - **Staffelansicht für Serien** mit Poster, Beschreibung, Besetzung und
   „x von y Folgen" pro Staffel; fehlende Folgen sind erkennbar.
 - **Sammlungen** (James Bond, Star Wars …) inklusive der Teile, die noch

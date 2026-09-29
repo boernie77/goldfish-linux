@@ -146,6 +146,9 @@ _CSS = b"""
    allein durch die Akzentfarbe beim Zeigen mit der Maus. */
 .gf-card-link { opacity: 1; color: alpha(currentColor, 0.9); }
 .gf-card-link:hover { color: @accent_color; }
+/* "Aus Als naechstes entfernen" (Startseite, Server 1.4.49): rot beim
+   Zeigen, wie `.nextup-hide-toggle:hover` im Browser. Nur ASCII. */
+.gf-toggle-remove:hover { background-color: alpha(#ef4444, 0.9); color: #ffffff; }
 """
 
 _css_loaded = False
@@ -208,8 +211,17 @@ class CardWidget(Gtk.Box):
         scroller: Gtk.ScrolledWindow | None = None,
         aspect_kind: str | None = None,
         on_open_folder: Callable[[dict], None] | None = None,
+        show_poster: bool = False,
+        on_remove: Callable[[dict], None] | None = None,
+        remove_tooltip: str = "",
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        # Serienposter statt Folgenbild (nur Startseite: „Als nächstes" und
+        # „Zuletzt hinzugefügt", siehe `GoldfishClient.show_poster_path_for_episode`).
+        self.show_poster = show_poster
+        # ✕-Knopf unter dem Gesehen-Haken (nur „Als nächstes"): `None` lässt
+        # ihn ganz weg. Der Aufrufer entfernt die Kachel nach Erfolg selbst.
+        self.on_remove = on_remove
         self.client = client
         self.kind = kind
         # Serien-/Kanalname klickbar (User-Wunsch 2026-09-13, nur Startseite):
@@ -266,6 +278,24 @@ class CardWidget(Gtk.Box):
         self.watched_btn.add_css_class("gf-toggle")
         self.watched_btn.connect("clicked", self._on_watched_clicked)
         self.overlay.add_overlay(self.watched_btn)
+
+        # Gleiche Stelle wie im Browser (`.nextup-hide-toggle`): links, unter
+        # dem Gesehen-Haken. Nur angelegt, wenn der Aufrufer ihn will — die
+        # Sichtbarkeit wechselt also nie (Kacheln werden sonst recycelt).
+        if on_remove is not None:
+            remove_btn = Gtk.Button(
+                icon_name="window-close-symbolic",
+                halign=Gtk.Align.START,
+                valign=Gtk.Align.START,
+                margin_start=6,
+                margin_top=36,
+                has_frame=False,
+                tooltip_text=remove_tooltip or "Entfernen",
+            )
+            remove_btn.add_css_class("gf-toggle")
+            remove_btn.add_css_class("gf-toggle-remove")
+            remove_btn.connect("clicked", self._on_remove_clicked)
+            self.overlay.add_overlay(remove_btn)
 
         self.rating_label = Gtk.Label(halign=Gtk.Align.END, valign=Gtk.Align.START, margin_end=6, margin_top=6)
         self.rating_label.add_css_class("gf-badge")
@@ -446,7 +476,9 @@ class CardWidget(Gtk.Box):
         self._apply_watched(bool(item.get("watched")))
         self._apply_favorite(bool(item.get("favorite")))
 
-        poster_path = self.client.poster_path_for_item(item)
+        poster_path = (
+            self.client.show_poster_path_for_episode(item) if self.show_poster else None
+        ) or self.client.poster_path_for_item(item)
         # Siehe `_thumb_decode_width`-Kommentar oben: ein `/api/thumb/`-
         # Fallback braucht in einer nicht-16:9-Kartenform mehr Dekodierbreite,
         # sonst wird beim Anzeigen (ContentFit.COVER) unnötig hochskaliert.
@@ -519,6 +551,10 @@ class CardWidget(Gtk.Box):
     def _on_folder_clicked(self, *_args) -> None:
         if self.item and self.on_open_folder:
             self.on_open_folder(self.item)
+
+    def _on_remove_clicked(self, *_args) -> None:
+        if self.item and self.on_remove:
+            self.on_remove(self.item)
 
     def _on_watched_clicked(self, *_args) -> None:
         if not self.item:

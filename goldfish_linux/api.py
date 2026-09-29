@@ -14,7 +14,7 @@ import socket
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urljoin, urlparse, urlencode, urlunparse, parse_qsl
+from urllib.parse import urljoin, urlparse, urlencode, urlunparse, parse_qsl, quote
 
 import requests
 import urllib3.util.connection as _urllib3_connection
@@ -659,6 +659,13 @@ class GoldfishClient:
         effektiven Benutzer-Reihenfolge sortiert und ACL-gefiltert."""
         return self.get("/api/home") or {}
 
+    def hide_next_up(self, item_id: int) -> None:
+        """Blendet die Serie dieser Folge für das eigene Konto aus „Als
+        nächstes" aus (Server ab 1.4.49, Antwort 204). Nur Ansicht: schaut man
+        in der Serie weiter, taucht sie von selbst wieder auf. 404 heißt „keine
+        Serienfolge" und kommt als `GoldfishAPIError` beim Aufrufer an."""
+        self.post(f"/api/home/nextup/{item_id}/hide")
+
     # -- Metadaten: Besetzung, Trailer, Personen --------------------------
 
     def cast(self, metadata_id: int) -> list[dict]:
@@ -803,9 +810,11 @@ class GoldfishClient:
     # -- Startseite & Reiterleiste (pro Benutzer) --------------------------
 
     def home_preferences(self) -> dict:
-        """`{libraries: [...], showContinue, showNextUp}` — welche Bibliotheken
-        auf der Startseite erscheinen, in welcher Reihenfolge, plus die beiden
-        globalen Streifen-Schalter."""
+        """`{libraries: [...], showContinue, showNextUp, continueMaxAgeDays,
+        nextUpMaxAgeDays}` — welche Bibliotheken auf der Startseite erscheinen,
+        in welcher Reihenfolge, plus die beiden globalen Streifen-Schalter und
+        ihre Verweildauer in Tagen (0 = unbegrenzt; ältere Server liefern die
+        beiden Felder nicht, dann gilt ebenfalls 0)."""
         return self.get("/api/home/preferences") or {}
 
     def set_home_preference(self, library_id: int, on_home: bool) -> None:
@@ -814,12 +823,25 @@ class GoldfishClient:
     def set_home_order(self, library_ids: list[int]) -> None:
         self.put("/api/home/order", {"ids": library_ids})
 
-    def set_home_strips(self, show_continue: bool | None = None, show_next_up: bool | None = None) -> None:
-        body: dict[str, bool] = {}
+    def set_home_strips(
+        self,
+        show_continue: bool | None = None,
+        show_next_up: bool | None = None,
+        continue_max_age_days: int | None = None,
+        next_up_max_age_days: int | None = None,
+    ) -> None:
+        """Nur die übergebenen Felder landen im Körper — der Server lässt
+        fehlende unverändert. Die Verweildauer (Tage seit dem letzten
+        Abspielen, 0 = unbegrenzt) nimmt er nur aus 0/7/14/30/60/90/180/365."""
+        body: dict[str, bool | int] = {}
         if show_continue is not None:
             body["showContinue"] = show_continue
         if show_next_up is not None:
             body["showNextUp"] = show_next_up
+        if continue_max_age_days is not None:
+            body["continueMaxAgeDays"] = int(continue_max_age_days)
+        if next_up_max_age_days is not None:
+            body["nextUpMaxAgeDays"] = int(next_up_max_age_days)
         self.put("/api/home/strips", body)
 
     def nav_preferences(self) -> dict:
@@ -927,6 +949,25 @@ class GoldfishClient:
         query["session"] = self.session_token
         new_query = urlencode(query)
         return urlunparse(parts._replace(query=new_query))
+
+    def show_poster_path_for_episode(self, item: dict) -> str | None:
+        """Serienposter statt Folgenbild (Startseite: „Als nächstes" und
+        „Zuletzt hinzugefügt", wie im Browser seit Server 1.4.49).
+
+        Nur für Folgen (`metadata.tmdbType == "episode"`), und nur wenn der
+        Server `parentId` UND `showPosterPath` mitliefert — letzteres gibt es
+        erst ab Server 1.4.48. Fehlt eines davon, `None`: der Aufrufer fällt
+        dann auf `poster_path_for_item` zurück. `?v=` trägt den Posterpfad als
+        Versionskennung, damit ein neues Serienposter nicht an einem alten
+        Zwischenspeicher-Eintrag (Dateiname = Hash des Pfads) hängen bleibt."""
+        metadata = item.get("metadata") or {}
+        if metadata.get("tmdbType") != "episode":
+            return None
+        parent_id = metadata.get("parentId") or 0
+        show_poster = metadata.get("showPosterPath") or ""
+        if not isinstance(parent_id, int) or parent_id <= 0 or not show_poster:
+            return None
+        return f"/api/poster/metadata/{parent_id}?v={quote(show_poster, safe='')}"
 
     def poster_path_for_item(self, item: dict) -> str | None:
         """Poster-Pfad analog zur Web-UI (cards.js): TMDB/Custom-Metadata

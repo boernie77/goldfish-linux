@@ -18,6 +18,19 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 from ..api import GoldfishAPIError  # noqa: E402
 from ..theme import apply_color_scheme  # noqa: E402
 
+# Verweildauer der Startseiten-Streifen in Tagen (0 = unbegrenzt). Genau die
+# Werte, die der Server annimmt (`PUT /api/home/strips`), in dieser Reihenfolge.
+_MAX_AGE_CHOICES: list[tuple[int, str]] = [
+    (0, "unbegrenzt"),
+    (7, "1 Woche"),
+    (14, "2 Wochen"),
+    (30, "1 Monat"),
+    (60, "2 Monate"),
+    (90, "3 Monate"),
+    (180, "6 Monate"),
+    (365, "1 Jahr"),
+]
+
 
 class SettingsPage(Adw.NavigationPage):
     def __init__(self, ctx, nav_view: Adw.NavigationView):
@@ -401,6 +414,20 @@ class HomePrefsPage(Adw.NavigationPage):
         nextup = Adw.SwitchRow(title="📺 Als nächstes", active=bool(home.get("showNextUp", True)))
         nextup.connect("notify::active", lambda r, _p: self._set_strips(show_next_up=r.get_active()))
         strips.add(nextup)
+        strips.add(
+            self._max_age_row(
+                "⏳ Fortsetzen bleibt",
+                home.get("continueMaxAgeDays"),
+                lambda days: self._set_strips(continue_max_age_days=days),
+            )
+        )
+        strips.add(
+            self._max_age_row(
+                "⏳ Als nächstes bleibt",
+                home.get("nextUpMaxAgeDays"),
+                lambda days: self._set_strips(next_up_max_age_days=days),
+            )
+        )
         page.add(strips)
 
         page.add(self._library_group("Auf der Startseite", home.get("libraries") or [], "onHome", self._set_home))
@@ -469,8 +496,55 @@ class HomePrefsPage(Adw.NavigationPage):
             group.add(row)
         return group
 
-    def _set_strips(self, show_continue: bool | None = None, show_next_up: bool | None = None) -> None:
-        self._background(lambda: self.ctx.client.set_home_strips(show_continue, show_next_up))
+    def _max_age_row(self, title: str, current, on_change) -> Adw.ComboRow:
+        """Verweildauer eines Streifens (Server 1.4.49): wie lange ein Titel
+        nach dem letzten Abspielen in „Fortsetzen" bzw. „Als nächstes" bleibt.
+        Der Server nimmt nur die Werte aus `_MAX_AGE_CHOICES`; ein unbekannter
+        oder fehlender Wert (älterer Server) zeigt „unbegrenzt"."""
+        try:
+            days = int(current or 0)
+        except (TypeError, ValueError):
+            days = 0
+        values = [d for d, _label in _MAX_AGE_CHOICES]
+        row = Adw.ComboRow(
+            title=title,
+            subtitle="Gerechnet ab dem letzten Abspielen. Ältere Einträge verschwinden nur aus der Ansicht.",
+            model=Gtk.StringList.new([label for _d, label in _MAX_AGE_CHOICES]),
+        )
+        row.set_selected(values.index(days) if days in values else 0)
+        # Erst NACH dem Vorbelegen verbinden, sonst schriebe schon das Öffnen
+        # der Seite den Wert zurück.
+        row.connect(
+            "notify::selected",
+            lambda r, _p: on_change(values[r.get_selected()]) if r.get_selected() < len(values) else None,
+        )
+        return row
+
+    def _set_strips(
+        self,
+        show_continue: bool | None = None,
+        show_next_up: bool | None = None,
+        continue_max_age_days: int | None = None,
+        next_up_max_age_days: int | None = None,
+    ) -> None:
+        self._background(
+            lambda: self.ctx.client.set_home_strips(
+                show_continue, show_next_up, continue_max_age_days, next_up_max_age_days
+            ),
+            after=self._reload_home_pages,
+        )
+
+    def _reload_home_pages(self) -> None:
+        """Eine bereits offene Startseite (sie liegt meist ganz unten im
+        Navigationsstapel) zeigt sonst bis zum nächsten Öffnen die alten
+        Streifen."""
+        from .home_page import HomePage
+
+        stack = self.nav_view.get_navigation_stack()
+        for index in range(stack.get_n_items()):
+            page = stack.get_item(index)
+            if isinstance(page, HomePage):
+                page._reload()
 
     def _set_home(self, library_id: int, state: bool) -> None:
         # Die Startseite liest ihre Streifen bei jedem Öffnen neu — hier ist

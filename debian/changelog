@@ -1,3 +1,17 @@
+goldfish-linux (0.1.66-1) unstable; urgency=medium
+
+  * Die Startseite zeigt bei Folgen in "Als naechstes" und "Zuletzt
+    hinzugefuegt" das Serienposter statt des Folgenbilds (braucht Server
+    1.4.48 oder neuer, sonst bleibt alles wie bisher).
+  * Ein kleines X auf jeder Kachel in "Als naechstes" blendet die Serie fuer
+    das eigene Konto aus dem Streifen aus; schaut man weiter, kommt sie von
+    selbst zurueck.
+  * Unter Einstellungen, Startseite und Reiter laesst sich festlegen, wie
+    lange Titel in "Fortsetzen" und "Als naechstes" bleiben, von einer Woche
+    bis zu einem Jahr oder unbegrenzt, gerechnet ab dem letzten Abspielen.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 29 Sep 2026 12:00:00 +0200
+
 goldfish-linux (0.1.65-1) unstable; urgency=medium
 
   * Die Infoseite merkt jetzt sofort, wenn ein Download fertig ist: der

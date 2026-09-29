@@ -120,7 +120,11 @@ class HomePage(Adw.NavigationPage):
             outer.append(self._strip("▶ Fortsetzen", all_continue[:_STRIP_CAP]))
         if show_next_up and all_next_up:
             any_content = True
-            outer.append(self._strip("📺 Als nächstes", all_next_up[:_STRIP_CAP]))
+            # Serienposter statt Folgenbild, und je Kachel ein ✕ zum
+            # Ausblenden der Serie (beides Server 1.4.49, wie im Browser).
+            outer.append(
+                self._strip("📺 Als nächstes", all_next_up[:_STRIP_CAP], show_poster=True, removable=True)
+            )
 
         # Danach je Bibliothek nur noch das Neue.
         for section in sections:
@@ -134,7 +138,7 @@ class HomePage(Adw.NavigationPage):
             heading.set_margin_start(16)
             heading.connect("clicked", lambda _b, lib=library: self._open_library(lib))
             outer.append(heading)
-            outer.append(self._strip("🆕 Zuletzt hinzugefügt", recent, library.get("kind")))
+            outer.append(self._strip("🆕 Zuletzt hinzugefügt", recent, library.get("kind"), show_poster=True))
 
         if not any_content:
             return self._show_error(
@@ -146,7 +150,14 @@ class HomePage(Adw.NavigationPage):
         self.toolbar_view.set_content(Gtk.ScrolledWindow(vexpand=True, child=outer))
         return False
 
-    def _strip(self, title: str, items: list[dict], kind: str | None = None) -> Gtk.Widget:
+    def _strip(
+        self,
+        title: str,
+        items: list[dict],
+        kind: str | None = None,
+        show_poster: bool = False,
+        removable: bool = False,
+    ) -> Gtk.Widget:
         """Ein waagerecht scrollbarer Streifen. Die Kacheln sind dieselben wie
         im Raster, damit Gesehen- und Favoritenschalter überall gleich
         funktionieren.
@@ -154,7 +165,12 @@ class HomePage(Adw.NavigationPage):
         `kind` gibt die Bibliotheksart vor (Seitenverhältnis der Kachel). In
         den übergreifenden Streifen steht sie nicht fest: dort liegen Filme,
         Folgen und Privatvideos nebeneinander, jede Kachel bestimmt ihre Art
-        deshalb selbst über `libraryId`."""
+        deshalb selbst über `libraryId`.
+
+        `show_poster`: Folgen zeigen das Serienposter statt ihres Standbilds
+        (nur „Als nächstes" und „Zuletzt hinzugefügt" — in „Fortsetzen" bleibt
+        das Folgenbild, dort geht es um genau diese eine Folge).
+        `removable`: ✕ je Kachel, blendet die Serie aus „Als nächstes" aus."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         label = Gtk.Label(label=title, xalign=0, margin_start=16)
         label.add_css_class("heading")
@@ -193,6 +209,8 @@ class HomePage(Adw.NavigationPage):
             vscrollbar_policy=Gtk.PolicyType.NEVER,
             propagate_natural_height=True,
         )
+        # Die Kacheln dieses Streifens, für das Entfernen per ✕.
+        cards: list[CardWidget] = []
         for item in items:
             # NICHT `self.ctx.library_kind(...)` — der wird von `MainWindow`
             # in einem eigenen Hintergrund-Ladevorgang befüllt, der beim
@@ -221,14 +239,93 @@ class HomePage(Adw.NavigationPage):
                 # User-Wunsch 2026-09-13: Serien-/Kanalname klickbar → zur
                 # Serien-/Kanalübersicht statt zum einzelnen Item.
                 on_open_folder=self._open_folder_from_item,
+                show_poster=show_poster,
+                on_remove=(
+                    (lambda it: self._hide_next_up(it, items, cards, row, box)) if removable else None
+                ),
+                remove_tooltip="Aus „Als nächstes“ entfernen",
             )
             card.bind(item)
             card.set_size_request(CARD_WIDTH, -1)
             row.append(card)
-
+            cards.append(card)
 
         box.append(scroller)
         return box
+
+    def _hide_next_up(
+        self,
+        item: dict,
+        strip_items: list[dict],
+        cards: list,
+        row: Gtk.Box,
+        strip_box: Gtk.Box,
+    ) -> None:
+        """✕ auf einer „Als nächstes"-Kachel: Serie für dieses Konto aus dem
+        Streifen ausblenden (`POST /api/home/nextup/{id}/hide`, nur Ansicht —
+        schaut man weiter, kommt sie von selbst zurück). Erst nach der
+        Bestätigung des Servers lokal entfernen, sonst stünde bei einem Fehler
+        eine Lücke, die beim nächsten Laden wieder aufginge."""
+        item_id = item.get("id")
+        if not item_id:
+            return
+
+        def worker() -> None:
+            try:
+                self.ctx.client.hide_next_up(int(item_id))
+            except GoldfishAPIError as exc:
+                message = (
+                    "Nur Serienfolgen lassen sich aus „Als nächstes“ entfernen."
+                    if exc.status == 404
+                    else f"Nicht entfernt: {exc}"
+                )
+                GLib.idle_add(self._toast, message)
+                return
+            except Exception as exc:  # noqa: BLE001 — sichtbar melden statt still scheitern
+                GLib.idle_add(self._toast, f"Nicht entfernt: {exc}")
+                return
+            GLib.idle_add(self._remove_series_cards, item, strip_items, cards, row, strip_box)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _remove_series_cards(
+        self,
+        item: dict,
+        strip_items: list[dict],
+        cards: list,
+        row: Gtk.Box,
+        strip_box: Gtk.Box,
+    ) -> bool:
+        """Entfernt die Kachel — und weitere derselben Serie, denn der Server
+        blendet die GANZE Serie aus. Ist danach nichts mehr übrig, verschwindet
+        der Streifen samt Überschrift."""
+        parent_id = (item.get("metadata") or {}).get("parentId") or 0
+
+        def same_series(other: dict | None) -> bool:
+            if other is None:
+                return False
+            if other is item or other.get("id") == item.get("id"):
+                return True
+            return bool(parent_id) and (other.get("metadata") or {}).get("parentId") == parent_id
+
+        for card in list(cards):
+            if same_series(card.item):
+                cards.remove(card)
+                row.remove(card)
+        # Auch aus der Warteschlange, die die Detailseite beim Öffnen einer
+        # Kachel dieses Streifens mitbekommt.
+        strip_items[:] = [it for it in strip_items if not same_series(it)]
+        if not cards:
+            parent = strip_box.get_parent()
+            if parent is not None:
+                parent.remove(strip_box)
+        return False
+
+    def _toast(self, message: str) -> bool:
+        root = self.get_root()
+        if hasattr(root, "show_toast"):
+            root.show_toast(message)
+        return False
 
     def _open_item(self, item: dict, strip_items: list[dict]) -> None:
         from .detail_page import DetailPage
