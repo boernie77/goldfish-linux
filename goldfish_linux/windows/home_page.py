@@ -120,7 +120,9 @@ class HomePage(Adw.NavigationPage):
 
         if show_continue and all_continue:
             any_content = True
-            outer.append(self._strip("▶ Fortsetzen", all_continue[:_STRIP_CAP]))
+            # Serienposter auch hier (0.1.69, Wunsch des Benutzers) — welche
+            # Folge es ist, sagt die Untertitelzeile (SxxEyy).
+            outer.append(self._strip("▶ Fortsetzen", all_continue[:_STRIP_CAP], show_poster=True))
         if show_next_up and all_next_up:
             any_content = True
             # Serienposter statt Folgenbild, und je Kachel ein ✕ zum
@@ -171,8 +173,13 @@ class HomePage(Adw.NavigationPage):
         deshalb selbst über `libraryId`.
 
         `show_poster`: Folgen zeigen das Serienposter statt ihres Standbilds
-        (nur „Als nächstes" und „Zuletzt hinzugefügt" — in „Fortsetzen" bleibt
-        das Folgenbild, dort geht es um genau diese eine Folge).
+        (seit 0.1.69 in allen drei Streifenarten, auch „Fortsetzen").
+
+        Alle Kacheln der Startseite sind gleich breit, im 2:3-Posterformat und
+        gleich hoch (`CardWidget(uniform=True)`, 0.1.69): Standbilder von
+        YouTube/Privatvideos (16:9) und Musikcover (1:1) werden dabei NICHT
+        mehr beschnitten, sondern vollständig eingepasst, mit derselben
+        abgedunkelten Bildfläche dahinter.
         `removable`: ✕ je Kachel, blendet die Serie aus „Als nächstes" aus."""
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         label = Gtk.Label(label=title, xalign=0, margin_start=16)
@@ -236,9 +243,13 @@ class HomePage(Adw.NavigationPage):
                 on_toggle_favorite=lambda it, f: self._background(lambda: self.ctx.client.set_favorite(it["id"], f)),
                 scroller=scroller,
                 # Alle Kacheln eines Streifens gleich groß, auch die von
-                # YouTube: in einer Reihe mit Filmpostern sähen 16:9-Kacheln
-                # wie ein Fehler aus. Die Form ist immer die des Posters.
+                # YouTube und Musik: in einer Reihe mit Filmpostern sähen
+                # 16:9-Kacheln wie ein Fehler aus. Die Form ist immer die des
+                # Posters; `uniform` passt das Bild darin vollständig ein
+                # (statt es wie bis 0.1.68 mittig zu beschneiden) und hält die
+                # Textzeilen auf fester Anzahl.
                 aspect_kind="movies",
+                uniform=True,
                 # User-Wunsch 2026-09-13: Serien-/Kanalname klickbar → zur
                 # Serien-/Kanalübersicht statt zum einzelnen Item.
                 on_open_folder=self._open_folder_from_item,

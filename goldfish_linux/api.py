@@ -962,7 +962,8 @@ class GoldfishClient:
 
     def show_poster_path_for_episode(self, item: dict) -> str | None:
         """Serienposter statt Folgenbild (Startseite: „Als nächstes" und
-        „Zuletzt hinzugefügt", wie im Browser seit Server 1.4.49).
+        „Zuletzt hinzugefügt" wie im Browser seit Server 1.4.49, seit 0.1.69
+        auch „Fortsetzen").
 
         Nur für Folgen (`metadata.tmdbType == "episode"`), und nur wenn der
         Server `parentId` UND `showPosterPath` mitliefert — letzteres gibt es
