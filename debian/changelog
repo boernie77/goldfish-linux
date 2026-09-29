@@ -1,3 +1,11 @@
+goldfish-linux (0.1.68-1) unstable; urgency=medium
+
+  * "Weiterschauen?" kommt jetzt schon ab 30 Sekunden (wie im Browser),
+    vorher erst ab einer Minute.
+  * "Als naechstes" ist nach der zuletzt geschauten Serie sortiert.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 29 Sep 2026 15:47:46 +0200
+
 goldfish-linux (0.1.67-1) unstable; urgency=medium
 
   * Angefangene Filme und Folgen erscheinen jetzt zuverlaessig unter

@@ -113,7 +113,10 @@ class HomePage(Adw.NavigationPage):
             return item.get(preferred) or item.get("addedAt") or ""
 
         all_continue.sort(key=lambda it: stamp(it, "lastPlayedAt"), reverse=True)
-        all_next_up.sort(key=lambda it: stamp(it, "addedAt"), reverse=True)
+        # "Als nächstes" nach der letzten Aktivität in der SERIE (Server-Feld
+        # showLastActivity, wie im Browser) — addedAt der nächsten Folge sagt
+        # nichts darüber, was gerade geschaut wird.
+        all_next_up.sort(key=lambda it: stamp(it, "showLastActivity"), reverse=True)
 
         if show_continue and all_continue:
             any_content = True

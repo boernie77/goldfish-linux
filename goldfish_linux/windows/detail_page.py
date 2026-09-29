@@ -607,9 +607,12 @@ class DetailPage(Adw.NavigationPage):
         # Öffnen des neuen Fensters: die Frage kommt vorher.
         close_player(self.ctx)
         duration = self.item.get("durationSec") or 0
-        # Unter einer Minute lohnt die Frage nicht, und kurz vor dem Ende
-        # wäre "fortsetzen" sinnlos — dann von vorn, wie im Browser.
-        if position < 60 or (duration and position > duration * 0.95):
+        # Unter 30 Sekunden lohnt die Frage nicht, und kurz vor dem Ende
+        # wäre "fortsetzen" sinnlos — dann von vorn, wie im Browser (player.js
+        # fragt ab 30 s; bis 0.1.67 stand hier 60 s, eine nach 31 s
+        # abgebrochene Folge startete dadurch kommentarlos von vorn und die
+        # gespeicherte Position wurde beim Schließen überschrieben).
+        if position < 30 or (duration and position > duration * 0.95):
             self._open_player(local_path=local_path)
             return False
 
