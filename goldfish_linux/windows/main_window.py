@@ -79,6 +79,10 @@ class AppContext:
         # Bibliotheks-ID kennen (etwa die Detailansicht), brauchen sie für
         # Entscheidungen wie Video- oder Musik-Playlist.
         self.library_kinds: dict[int, str] = {}
+        # Die Bibliotheken selbst, nach ID — Ordner-Sammlungen und die
+        # Kommissar-Zeile kennen nur eine `libraryId`, `BrowsePage` braucht
+        # aber das ganze Dict (Name, Art).
+        self.libraries_by_id: dict[int, dict] = {}
         # Ein Spieler pro Fenster, unabhängig vom Videofenster — die Musik
         # läuft weiter, während man durch die Bibliotheken blättert.
         self.music = MusicPlayer(client)
@@ -115,6 +119,24 @@ class AppContext:
         except (TypeError, ValueError):
             return ""
 
+    def size_visible(self, item: dict, fallback_kind: str = "") -> bool:
+        """Dateigröße auf der Kachel dieses Items? Die Art kommt aus der
+        Bibliothek des Items (Startseite, Playlists und Personenseite mischen
+        Arten), sonst aus `fallback_kind`."""
+        kind = self.library_kind(item.get("libraryId")) or fallback_kind
+        return self.view_prefs.show_size(kind)
+
+    def library_for(self, library_id, fallback: dict | None = None) -> dict:
+        """Das Bibliotheks-Dict zu einer ID — zur Not ein Minimal-Dict."""
+        try:
+            lib_id = int(library_id)
+        except (TypeError, ValueError):
+            return fallback or {}
+        if lib_id in self.libraries_by_id:
+            return self.libraries_by_id[lib_id]
+        if fallback and fallback.get("id") == lib_id:
+            return fallback
+        return {"id": lib_id, "name": "", "kind": self.library_kind(lib_id) or "tv"}
 
     def add_item_state_listener(self, callback) -> None:
         """Ein Raster meldet sich an, um Zustandsänderungen mitzubekommen.
@@ -283,6 +305,7 @@ class MainWindow(Adw.ApplicationWindow):
         # Seiten kennen oft nur eine Bibliotheks-ID und brauchen die Art (etwa
         # die Detailansicht für die Wahl der Playlist-Art).
         self.ctx.library_kinds = {int(lib["id"]): (lib.get("kind") or "") for lib in libraries if lib.get("id")}
+        self.ctx.libraries_by_id = {int(lib["id"]): lib for lib in libraries if lib.get("id")}
         # Beim Neuaufbau erst leeren — sonst hängen die alten Zeilen darunter.
         while (row := self.sidebar_list.get_first_child()) is not None:
             self.sidebar_list.remove(row)

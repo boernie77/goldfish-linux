@@ -5,6 +5,11 @@ alle Teile chronologisch — die vorhandenen normal, die fehlenden
 zurückgeblendet mit dem Hinweis "Fehlt". So ist auf einen Blick zu sehen, was
 der Reihe noch abgeht.
 
+Seit Server 1.4.57 liefert `/api/collections` zusätzlich **Ordner-Sammlungen**
+(`kind: "folder"`, z. B. „Tatort"): ihre Kachel zählt Dateien und öffnet den
+Ordner in der Ordner-Ansicht (`BrowsePage(forced_root=…)`), nie in der
+Staffel-Ansicht und nie als Film-Liste.
+
 Ein Teil kann auch dann als fehlend erscheinen, wenn die Datei existiert, der
 angemeldete Benutzer aber keinen Zugriff auf ihre Bibliothek hat — der Server
 verschweigt den Unterschied bewusst, statt die Existenz preiszugeben.
@@ -21,6 +26,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..catalog import file_count_label  # noqa: E402
 from ..widgets.card import SimpleCard, card_flow  # noqa: E402
 
 
@@ -81,6 +87,8 @@ class CollectionsPage(Adw.NavigationPage):
 
         Vollständig heißt grünes "✓ komplett" — so wie in den anderen Apps
         auch. Ein bloßer Haken ging zwischen den übrigen Abzeichen unter."""
+        if col.get("kind") == "folder":
+            return self._folder_card(col)
         have = col.get("movieCount") or 0
         parts = col.get("partCount") or 0
         hidden = col.get("hiddenCount") or 0
@@ -112,8 +120,51 @@ class CollectionsPage(Adw.NavigationPage):
             on_click=lambda c=col: self._open(c),
         )
 
+    def _folder_card(self, col: dict) -> Gtk.Widget:
+        """Ordner-Sammlung: „N Dateien", kein Vollständigkeits-Zeichen (ein
+        Ordner hat kein Soll wie eine TMDB-Reihe)."""
+        count = int(col.get("movieCount") or 0)
+        label = file_count_label(count)
+        return SimpleCard(
+            self.ctx.client,
+            self.ctx.client.collection_poster_path(col["id"]),
+            col.get("name") or col.get("folder") or "",
+            subtitle="Ordner-Sammlung",
+            badge=label,
+            tooltip=f"{col.get('name') or col.get('folder') or ''}: {label} — öffnet die Ordner-Ansicht",
+            on_click=lambda c=col: self._open(c),
+        )
+
     def _open(self, col: dict) -> None:
+        if col.get("kind") == "folder":
+            self._open_folder_collection(col)
+            return
         self.nav_view.push(CollectionPartsPage(self.ctx, self.nav_view, col))
+
+    def _open_folder_collection(self, col: dict) -> None:
+        """Den Ordner der Sammlung in der erzwungenen Ordner-Ansicht öffnen:
+        Unterordner als Kacheln (bei `drilldown`), nie die Staffel-Ansicht —
+        auch wenn derselbe Ordner unter „Serien" dort läuft (Browser
+        `renderCollectionCard`, Server 1.4.57)."""
+        from .browse_page import BrowsePage
+
+        folder = (col.get("folder") or "").strip("/")
+        if not folder or not col.get("libraryId"):
+            return
+        library = self.ctx.library_for(col["libraryId"])
+        if not library.get("name"):
+            library = dict(library, name=col.get("name") or folder)
+        self.nav_view.push(
+            BrowsePage(
+                self.ctx,
+                self.nav_view,
+                library,
+                folder=folder,
+                title=col.get("name") or folder,
+                drilldown=bool(col.get("drilldown")),
+                forced_root=folder,
+            )
+        )
 
 
 class CollectionPartsPage(Adw.NavigationPage):

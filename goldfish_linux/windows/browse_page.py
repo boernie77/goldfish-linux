@@ -22,6 +22,16 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..catalog import (  # noqa: E402
+    catalog_note,
+    episode_group,
+    episode_group_folder,
+    in_forced_folder,
+    is_team_folder,
+    merge_missing,
+    missing_placeholders,
+    team_placeholders,
+)
 from ..formatting import format_count  # noqa: E402
 from ..widgets.alpha_sidebar import AlphaSidebar, first_letter  # noqa: E402
 from ..widgets.filterbar import FilterBar, FilterState  # noqa: E402
@@ -40,6 +50,7 @@ class BrowsePage(Adw.NavigationPage):
         folder: str = "",
         title: str | None = None,
         drilldown: bool = False,
+        forced_root: str | None = None,
     ):
         page_title = title or (folder.rsplit("/", 1)[-1] if folder else library["name"])
 
@@ -52,12 +63,26 @@ class BrowsePage(Adw.NavigationPage):
         header.set_title_widget(search_entry)
         toolbar_view.add_top_bar(header)
 
-        super().__init__(title=page_title, tag=f"browse-{library['id']}-{folder}", child=toolbar_view)
+        # Eigenes Tag-Suffix in der erzwungenen Ordner-Ansicht: derselbe Ordner
+        # kann sonst schon als normale Ordneransicht im Stapel liegen.
+        tag = f"browse-{library['id']}-{folder}" + ("-forced" if forced_root else "")
+        super().__init__(title=page_title, tag=tag, child=toolbar_view)
         self.ctx = ctx
         self.nav_view = nav_view
         self.library = library
         self.folder = folder
         self.drilldown = drilldown
+        # **Erzwungene Ordner-Ansicht** (Browser `forcedFolderView`, Server
+        # 1.4.57): gesetzt, wenn die Seite über eine Ordner-Sammlung oder die
+        # Kommissar-Zeile einer Kachel geöffnet wurde. Dann öffnen Ordner-
+        # kacheln NIE die Staffel-Ansicht (Tatort hat keine TMDB-Staffeln,
+        # sondern Kommissar-Ordner), und der Ermittler-Katalog des Servers
+        # ergänzt fehlende Folgen (`_load_catalog`). Gilt für alle Unterordner.
+        self.forced_root = forced_root if in_forced_folder(folder, forced_root) else None
+        # Katalog-Ergänzungen der letzten Ladung (siehe `_show_results`).
+        self.catalog_missing: list[dict] = []
+        self.catalog_teams: list[dict] = []
+        self.catalog_note = ""
         self.toolbar_view = toolbar_view
         self.grid: CardGrid | None = None
         # Gebundene Methode festhalten! `ctx.add_item_state_listener` hält nur eine
@@ -105,6 +130,11 @@ class BrowsePage(Adw.NavigationPage):
         remembered = self.view_prefs.get_sort(library["id"], folder)
         if remembered is not None:
             self.filters.sort, self.filters.ascending = remembered
+        elif self.forced_root and is_team_folder(folder):
+            # **Folgen eines Kommissars: nach Erstausstrahlung, älteste
+            # zuerst** (Browser seit 1.4.64). Nur so lassen sich die
+            # fehlenden Folgen aus dem Katalog in die Zeitleiste einreihen.
+            self.filters.sort, self.filters.ascending = "released", True
         elif (library.get("kind") or "") == "private" and folder:
             # **Privatvideos in einem Ordner: älteste zuerst.** Bei einem
             # YouTube-Kanal ist die Reihenfolge der Veröffentlichung die
@@ -157,12 +187,14 @@ class BrowsePage(Adw.NavigationPage):
         stats: dict | None = None,
         fuzzy_extra_count: int = 0,
         people: list[dict] | None = None,
+        catalog: dict | None = None,
     ) -> None:
         if stats:
             self.stats = stats
+        self._apply_catalog(catalog)
         self._fuzzy_extra_count = fuzzy_extra_count
         people = people or []
-        if not folders and not items:
+        if not folders and not items and not self.catalog_teams:
             # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
             # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
             active = self.filters.active_filter_count()
@@ -203,6 +235,9 @@ class BrowsePage(Adw.NavigationPage):
                 on_folder=self._open_folder,
                 on_toggle_watched=self._toggle_watched,
                 on_toggle_favorite=self._toggle_favorite,
+                on_open_group=self._open_group,
+                on_team=self._open_team,
+                show_size=lambda it: self.ctx.size_visible(it, self.library.get("kind") or ""),
             )
         # Varianten bündeln: derselbe Film in mehreren Auflösungen ist mehrere
         # Items mit gleicher metadataId — im Raster darf davon nur EINE Kachel
@@ -325,6 +360,15 @@ class BrowsePage(Adw.NavigationPage):
                 parts.append(f"{format_count(shown_folders)} Ordner")
             parts.append(f"{format_count(shown_items)} {noun}")
             self.count_label.set_text(" · ".join(parts))
+        # Katalog (Tatort): „owned/total Folgen vorhanden" bzw. wie viele
+        # Ermittler ohne eigenen Ordner am Ende des Rasters stehen.
+        extra = []
+        if self.catalog_note:
+            extra.append(self.catalog_note)
+        if self.catalog_teams and not letter:
+            extra.append(f"{len(self.catalog_teams)} Ermittler ohne eigenen Ordner (am Ende)")
+        if extra:
+            self.count_label.set_text(" · ".join([self.count_label.get_text(), *extra]))
 
     def _update_fuzzy_button(self) -> None:
         """Zeigt/versteckt den "N weitere Treffer"-Knopf unter dem Raster.
@@ -410,7 +454,7 @@ class BrowsePage(Adw.NavigationPage):
         behandelt, sonst verschwände beim Filtern die halbe Ansicht."""
         letter = self.alpha.active if self.alpha is not None else None
         if letter is None:
-            self.grid.set_content(self.all_folders, self.all_items)
+            self.grid.set_content(self.all_folders, self._with_catalog(self.all_items))
             self.shown_items = self.all_items
             self._update_count()
             return
@@ -419,6 +463,62 @@ class BrowsePage(Adw.NavigationPage):
         self.shown_items = items
         self.grid.set_content(folders, items)
         self._update_count()
+
+    # -- Ermittler-Katalog (Tatort, Server 1.4.65) ------------------------
+
+    def _apply_catalog(self, catalog: dict | None) -> None:
+        """Übernimmt die Katalog-Antwort der letzten Ladung.
+
+        Im Kommissar-Ordner: Zähler + Platzhalter je fehlender Folge. In der
+        Wurzel der Ordner-Sammlung: die Ermittler ohne eigenen Ordner als
+        Kacheln am Ende des Rasters (der Browser setzt dort eine Überschrift
+        dazwischen — ein GridView kennt keine Zeile über die volle Breite,
+        deshalb steht der Hinweis in der Zählzeile)."""
+        self.catalog_missing, self.catalog_teams, self.catalog_note = [], [], ""
+        if not catalog or not catalog.get("available"):
+            return
+        if is_team_folder(self.folder):
+            self.catalog_note = catalog_note(catalog)
+            self.catalog_missing = missing_placeholders(catalog.get("missing") or [])
+        else:
+            self.catalog_teams = team_placeholders(catalog.get("groups") or [])
+
+    def _with_catalog(self, items: list[dict]) -> list[dict]:
+        """Items plus Katalog-Platzhalter in Anzeige-Reihenfolge."""
+        chrono = self.filters.sort == "released" and self.filters.effective_ascending()
+        return merge_missing(items, self.catalog_missing, chrono) + self.catalog_teams
+
+    def _catalog_applies(self, search: str) -> bool:
+        """Katalog nur in der erzwungenen Ordner-Ansicht und ohne Suche/Filter
+        — in einer gefilterten Liste wären „fehlende" Folgen irreführend."""
+        return bool(self.forced_root) and not search and not self.filters.active_filter_count()
+
+    def _open_group(self, item: dict) -> None:
+        """Klick auf die Kommissar-Zeile: `<Serie>/<Kommissar>` als flache
+        Liste, immer Ordner-Ansicht (Browser seit 1.4.63)."""
+        folder = episode_group_folder(item)
+        if not folder or (folder == self.folder and self.forced_root):
+            return  # schon genau diese Ansicht
+        library = self.ctx.library_for(item.get("libraryId"), fallback=self.library)
+        if not library:
+            library = self.library
+        self.nav_view.push(
+            BrowsePage(
+                self.ctx,
+                self.nav_view,
+                library,
+                folder=folder,
+                title=episode_group(item),
+                forced_root=folder,
+            )
+        )
+
+    def _open_team(self, group: dict) -> None:
+        """Ermittler ohne eigenen Ordner: seine fehlenden Folgen als Liste."""
+        root = (self.folder or "").split("/", 1)[0]
+        if not root or not group.get("team"):
+            return
+        self.nav_view.push(CatalogTeamPage(self.ctx, self.library, root, group))
 
     # -- Kachel-Abzeichen ------------------------------------------------
 
@@ -473,6 +573,7 @@ class BrowsePage(Adw.NavigationPage):
         name = folder["name"]
         if (
             (self.library.get("kind") == "tv")
+            and not self.forced_root
             and not self.folder
             and self.ctx.view_prefs.season_view(self.library["id"], name)
         ):
@@ -488,6 +589,7 @@ class BrowsePage(Adw.NavigationPage):
                 self.library,
                 folder=name,
                 drilldown=bool(folder.get("drilldown")),
+                forced_root=self.forced_root,
             )
         )
 
@@ -718,7 +820,17 @@ class BrowsePage(Adw.NavigationPage):
                 people = []
         if seq != self._load_seq:
             return
-        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people)
+        catalog: dict | None = None
+        if self._catalog_applies(search):
+            # Eigener Versuch: ohne Katalog bleibt die Ansicht einfach wie
+            # bisher, ein Fehler hier darf die Liste nicht verhindern.
+            try:
+                catalog = client.library_catalog(lib_id, self.folder)
+            except Exception:  # noqa: BLE001
+                catalog = None
+        if seq != self._load_seq:
+            return
+        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people, catalog)
 
 
 def _folder_label(folder: dict) -> str:
@@ -729,3 +841,72 @@ def _folder_label(folder: dict) -> str:
 def _item_label(item: dict) -> str:
     metadata = item.get("metadata") or {}
     return metadata.get("title") or item.get("title") or ""
+
+
+class CatalogTeamPage(Adw.NavigationPage):
+    """Folgen eines Ermittlers ohne eigenen Ordner (Browser
+    `renderCatalogTeamView`): `?folder=<Serie>&team=<Team>`. Gezeigt werden
+    die FEHLENDEN Folgen — die vorhandenen liegen verstreut in anderen
+    Ordnern und haben hier keine Zuordnung zu einem Item."""
+
+    def __init__(self, ctx, library: dict, root: str, group: dict):
+        toolbar_view = Adw.ToolbarView()
+        toolbar_view.add_top_bar(Adw.HeaderBar())
+        team = group.get("team") or ""
+        super().__init__(title=team or "Ermittler", tag=f"catalog-team-{library['id']}-{root}-{team}", child=toolbar_view)
+        self.ctx = ctx
+        self.library = library
+        self.root = root
+        self.team = team
+        self.toolbar_view = toolbar_view
+        spinner = Gtk.Spinner(width_request=48, height_request=48)
+        wrap = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        wrap.append(spinner)
+        toolbar_view.set_content(wrap)
+        spinner.start()
+        threading.Thread(target=self._load, daemon=True).start()
+
+    def _load(self) -> None:
+        try:
+            data = self.ctx.client.library_catalog(self.library["id"], self.root, team=self.team)
+        except GoldfishAPIError as exc:
+            GLib.idle_add(self._error, str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 — sonst dreht der Ladekreis ewig
+            GLib.idle_add(self._error, f"Unerwarteter Fehler: {exc}")
+            return
+        GLib.idle_add(self._apply, data)
+
+    def _error(self, message: str) -> bool:
+        self.toolbar_view.set_content(
+            Adw.StatusPage(icon_name="dialog-error-symbolic", title="Fehler", description=message)
+        )
+        return False
+
+    def _apply(self, data: dict) -> bool:
+        if not data or not data.get("available"):
+            return self._error("Für diesen Ordner gibt es keinen Katalog.")
+        missing = missing_placeholders(data.get("missing") or [])
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        head = Gtk.Label(
+            label=f"{int(data.get('owned') or 0)}/{int(data.get('total') or 0)} Folgen vorhanden",
+            xalign=0,
+            margin_start=16,
+            margin_top=8,
+            margin_end=16,
+        )
+        head.add_css_class("dim-label")
+        head.add_css_class("caption")
+        box.append(head)
+        if not missing:
+            status = Adw.StatusPage(
+                icon_name="object-select-symbolic", title="Vollständig", description="Keine Folge fehlt."
+            )
+            status.set_vexpand(True)
+            box.append(status)
+        else:
+            grid = CardGrid(self.ctx.client, self.library.get("kind") or "tv")
+            grid.set_content([], missing)
+            box.append(grid)
+        self.toolbar_view.set_content(box)
+        return False

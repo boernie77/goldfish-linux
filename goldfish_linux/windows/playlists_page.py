@@ -330,6 +330,7 @@ class PlaylistItemsPage(Adw.NavigationPage):
             on_item=self._open_item,
             on_toggle_watched=lambda it, w: self._background(lambda: self.ctx.client.set_watched(it["id"], w)),
             on_toggle_favorite=lambda it, f: self._background(lambda: self.ctx.client.set_favorite(it["id"], f)),
+            show_size=lambda it: self.ctx.size_visible(it),
         )
         grid.set_content([], self.items)
         self.toolbar_view.set_content(grid)

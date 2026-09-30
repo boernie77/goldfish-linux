@@ -25,18 +25,24 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gio, GObject, Gtk  # noqa: E402
 
 from ..api import GoldfishClient  # noqa: E402
+from ..catalog import MISSING_KEY, TEAM_KEY  # noqa: E402
 from .card import (  # noqa: E402
     CARD_WIDTH,
     AlbumCardWidget,
     CardWidget,
     FolderCardWidget,
     LocalCardWidget,
+    PlaceholderCardWidget,
     ensure_card_css,
 )
 
 
 class GridRow(GObject.Object):
-    """Eine Zeile im Modell — entweder ein Item oder ein Ordner."""
+    """Eine Zeile im Modell — ein Item, ein Ordner oder ein Katalog-Platzhalter.
+
+    `kind` ist "item", "folder", "missing" (fehlende Folge) oder "team"
+    (Ermittler ohne eigenen Ordner); die beiden letzten erkennt `set_content`
+    an den Kennzeichen aus `catalog.py`."""
 
     __gtype_name__ = "GoldfishGridRow"
 
@@ -44,6 +50,14 @@ class GridRow(GObject.Object):
         super().__init__()
         self.payload = payload
         self.is_folder = is_folder
+        if is_folder:
+            self.kind = "folder"
+        elif payload.get(TEAM_KEY):
+            self.kind = "team"
+        elif payload.get(MISSING_KEY):
+            self.kind = "missing"
+        else:
+            self.kind = "item"
 
 
 class CardGrid(Gtk.ScrolledWindow):
@@ -57,11 +71,19 @@ class CardGrid(Gtk.ScrolledWindow):
         on_folder: Callable[[dict], None] | None = None,
         on_toggle_watched: Callable[[dict, bool], None] | None = None,
         on_toggle_favorite: Callable[[dict, bool], None] | None = None,
+        on_open_group: Callable[[dict], None] | None = None,
+        on_team: Callable[[dict], None] | None = None,
+        show_size: Callable[[dict], bool] | None = None,
     ) -> None:
         super().__init__(vexpand=True, hexpand=True)
         ensure_card_css()
         self.client = client
         self.kind = kind
+        # Kommissar-Zeile, Ermittler-Kacheln und Dateigröße (siehe CardWidget/
+        # PlaceholderCardWidget) — alle optional, `None` = aus.
+        self.on_open_group = on_open_group
+        self.on_team = on_team
+        self.show_size = show_size
         self.on_item = on_item
         self.on_folder = on_folder
         self.on_toggle_watched = on_toggle_watched
@@ -140,7 +162,7 @@ class CardGrid(Gtk.ScrolledWindow):
         späteres Neubinden (Scrollen) den neuen Zustand mitbringt.
         """
         for row in self.store:
-            if row.is_folder:
+            if row.kind != "item":
                 continue
             if row.payload.get("id") != item_id:
                 continue
@@ -179,12 +201,16 @@ class CardGrid(Gtk.ScrolledWindow):
             on_toggle_favorite=self.on_toggle_favorite,
             scroller=self,
             aspect_kind=aspect,
+            on_open_group=self.on_open_group,
+            show_size=self.show_size,
         )
         folder_card = FolderCardWidget(
             self.client, aspect, on_activate=self._activate_folder, scroller=self
         )
+        placeholder = PlaceholderCardWidget(aspect, on_team=self.on_team)
         stack.add_named(card, "item")
         stack.add_named(folder_card, "folder")
+        stack.add_named(placeholder, "placeholder")
         list_item.set_child(stack)
 
     def _on_bind(self, _factory, list_item: Gtk.ListItem) -> None:
@@ -193,6 +219,9 @@ class CardGrid(Gtk.ScrolledWindow):
         if row.is_folder:
             stack.set_visible_child_name("folder")
             stack.get_child_by_name("folder").bind(row.payload)
+        elif row.kind in ("missing", "team"):
+            stack.set_visible_child_name("placeholder")
+            stack.get_child_by_name("placeholder").bind(row.payload, team=row.kind == "team")
         else:
             stack.set_visible_child_name("item")
             card = stack.get_child_by_name("item")
@@ -207,7 +236,7 @@ class CardGrid(Gtk.ScrolledWindow):
         stack: Gtk.Stack = list_item.get_child()
         card = stack.get_child_by_name("item")
         row = list_item.get_item()
-        if row is not None and not row.is_folder:
+        if row is not None and row.kind == "item":
             item_id = row.payload.get("id")
             # Nur ausräumen, wenn wirklich DIESE Kachel eingetragen ist — beim
             # Recycling kann inzwischen schon die nächste Bindung stehen.
@@ -215,6 +244,7 @@ class CardGrid(Gtk.ScrolledWindow):
                 self._card_by_item_id.pop(item_id, None)
         card.unbind()
         stack.get_child_by_name("folder").unbind()
+        stack.get_child_by_name("placeholder").unbind()
 
     # -- Klicks weiterreichen --------------------------------------------
 

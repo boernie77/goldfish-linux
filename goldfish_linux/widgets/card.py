@@ -24,7 +24,8 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Gdk, Gtk, Pango  # noqa: E402
 
 from ..api import GoldfishClient  # noqa: E402
-from ..formatting import format_date, format_duration, format_resolution  # noqa: E402
+from ..catalog import episode_group, format_catalog_date  # noqa: E402
+from ..formatting import format_date, format_duration, format_resolution, format_size  # noqa: E402
 from .poster import load_poster_async  # noqa: E402
 
 CARD_WIDTH = 168
@@ -215,8 +216,17 @@ class CardWidget(Gtk.Box):
         on_remove: Callable[[dict], None] | None = None,
         remove_tooltip: str = "",
         uniform: bool = False,
+        on_open_group: Callable[[dict], None] | None = None,
+        show_size: Callable[[dict], bool] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        # Kommissar-Zeile (Server 1.4.63, Tatort): Klick öffnet den
+        # Zwischenordner `<Serie>/<Kommissar>` als flache Liste. `None` lässt
+        # die Zeile weg (Startseite: dort bleibt es bei drei festen Zeilen).
+        self.on_open_group = on_open_group
+        # Dateigröße in der Unterzeile — pro Item gefragt, weil die Art aus
+        # der Bibliothek des Items kommt (Einstellungen → Anzeige, lokal).
+        self.show_size = show_size
         # Einheitliche Startseiten-Kachel (0.1.69, nur `home_page.py` setzt
         # das): das Bild füllt die 2:3-Kachel (COVER) — Videos ohne Poster
         # laden dafür seit 0.1.70 das Hochformat-Vorschaubild des Servers
@@ -409,6 +419,27 @@ class CardWidget(Gtk.Box):
         self.sub_label.add_css_class("gf-card-sub")
         self.append(self.sub_label)
 
+        # -- Kommissar-Zeile (nur wenn `on_open_group` gesetzt) --
+        # Wie die Serienzeile der Startseite: Akzentfarbe beim Zeigen, kein
+        # Unterstrich. Nur bei Folgen mit Zwischenordner sichtbar
+        # (`catalog.episode_group`), sonst versteckt — die Kacheln einer
+        # Zeile im GridView bekommen ohnehin die Höhe der höchsten.
+        self.group_label = Gtk.Label(
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=self._frame_width,
+            visible=False,
+        )
+        self.group_label.add_css_class("gf-card-sub")
+        if self.on_open_group:
+            self.group_label.add_css_class("gf-card-link")
+            self.group_label.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+            group_click = Gtk.GestureClick()
+            group_click.connect("released", self._on_group_clicked)
+            self.group_label.add_controller(group_click)
+        self.append(self.group_label)
+
         click = Gtk.GestureClick()
         click.connect("released", self._on_clicked)
         self.picture.add_controller(click)
@@ -461,7 +492,15 @@ class CardWidget(Gtk.Box):
             sub_parts.append(folder)
         if not sub_parts:
             sub_parts.append((item.get("container") or "").upper())
+        # Dateigröße (Browser seit 1.4.62, je Bibliotheksart abschaltbar).
+        if self.show_size is not None and self.show_size(item):
+            sub_parts.append(format_size(item.get("sizeBytes") or 0))
         self.sub_label.set_text(self._line(" · ".join(p for p in sub_parts if p)))
+
+        group = episode_group(item) if self.on_open_group else ""
+        self.group_label.set_text(group)
+        self.group_label.set_tooltip_text(f"Alle Folgen: {group}" if group else None)
+        self.group_label.set_visible(bool(group))
 
         # Serien-/Kanalname klickbar (User-Wunsch 2026-09-13, nur Startseite,
         # siehe `on_open_folder`): der oberste Ordner ist bei Serien immer die
@@ -600,6 +639,10 @@ class CardWidget(Gtk.Box):
         if self.item and self.on_open_folder:
             self.on_open_folder(self.item)
 
+    def _on_group_clicked(self, *_args) -> None:
+        if self.item and self.on_open_group:
+            self.on_open_group(self.item)
+
     def _on_remove_clicked(self, *_args) -> None:
         if self.item and self.on_remove:
             self.on_remove(self.item)
@@ -719,6 +762,108 @@ class FolderCardWidget(Gtk.Box):
     def _on_clicked(self, *_args) -> None:
         if self.folder and self.on_activate:
             self.on_activate(self.folder)
+
+
+class PlaceholderCardWidget(Gtk.Box):
+    """Wiederverwendbare Platzhalter-Kachel im `CardGrid` (Katalog, 1.4.65).
+
+    Zwei Belegungen:
+
+    * **fehlende Folge** (`catalog.MISSING_KEY`): zurückgeblendet, „Fehlt"
+      unten rechts, „Nr. <nr>" groß in der Bildfläche, darunter Titel und
+      „Nr. · Datum". Ohne Klickziel — alles Weitere steht im Tooltip.
+    * **Ermittler ohne eigenen Ordner** (`catalog.TEAM_KEY`): Teamname,
+      „owned/total Folgen", Klick öffnet die Liste seiner Folgen.
+
+    Alle Zustände werden in `bind()` gesetzt (Recycling, siehe Dateikopf)."""
+
+    def __init__(
+        self,
+        kind: str,
+        on_team: Callable[[dict], None] | None = None,
+    ) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self._frame_width = CARD_WIDTH_WIDE if kind == "private" else CARD_WIDTH
+        self.on_team = on_team
+        self.entry: dict | None = None
+        self.set_size_request(self._frame_width, -1)
+        self.set_hexpand(False)
+        self.set_halign(Gtk.Align.START)
+        self.set_valign(Gtk.Align.START)
+
+        self.overlay, self.picture = _image_frame(self._frame_width, card_height_for(kind, self._frame_width))
+        self.center_label = Gtk.Label(
+            halign=Gtk.Align.CENTER,
+            valign=Gtk.Align.CENTER,
+            justify=Gtk.Justification.CENTER,
+            wrap=True,
+            max_width_chars=1,
+            width_request=self._frame_width - 24,
+        )
+        self.center_label.add_css_class("title-2")
+        self.overlay.add_overlay(self.center_label)
+        self.badge_label = Gtk.Label(halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6)
+        self.badge_label.add_css_class("gf-badge")
+        self.overlay.add_overlay(self.badge_label)
+        self.append(self.overlay)
+
+        self.title_label = Gtk.Label(
+            xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=1, width_request=self._frame_width
+        )
+        self.title_label.add_css_class("gf-card-title")
+        self.append(self.title_label)
+        self.sub_label = Gtk.Label(
+            xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=1, width_request=self._frame_width
+        )
+        self.sub_label.add_css_class("gf-card-sub")
+        self.append(self.sub_label)
+
+        click = Gtk.GestureClick()
+        click.connect("released", self._on_clicked)
+        self.picture.add_controller(click)
+
+    def bind(self, entry: dict, team: bool) -> None:
+        self.entry = entry
+        if team:
+            name = entry.get("team") or ""
+            total, owned = int(entry.get("total") or 0), int(entry.get("owned") or 0)
+            self.center_label.set_text("")
+            self.center_label.set_visible(False)
+            self.badge_label.set_text(f"{owned}/{total} Folge" if total == 1 else f"{owned}/{total} Folgen")
+            self.title_label.set_text(name)
+            self.sub_label.set_text("kein eigener Ordner")
+            self.set_tooltip_text(f"{name}: {owned} von {total} Folgen vorhanden — kein eigener Ordner")
+            self.set_opacity(0.75)
+            self.picture.set_cursor(Gdk.Cursor.new_from_name("pointer", None))
+            self._team = True
+            return
+        nr = entry.get("nr") or ""
+        date = format_catalog_date(entry.get("date"))
+        title = entry.get("title") or ""
+        self.center_label.set_text(f"Nr. {nr}" if nr else "")
+        self.center_label.set_visible(bool(nr))
+        self.badge_label.set_text("Fehlt")
+        self.title_label.set_text(title)
+        self.sub_label.set_text(" · ".join(p for p in (f"Nr. {nr}" if nr else "", date) if p))
+        team_names = " / ".join(entry.get("ermittler") or [])
+        lines = [f"Nr. {nr}: {title}" if nr else title]
+        detail = " · ".join(p for p in (entry.get("sender") or "", f"Erstausstrahlung {date}" if date else "") if p)
+        if detail:
+            lines.append(detail)
+        if team_names:
+            lines.append(f"Ermittler: {team_names}")
+        lines.append("Fehlt in der Bibliothek.")
+        self.set_tooltip_text("\n".join(lines))
+        self.set_opacity(0.45)
+        self.picture.set_cursor(None)
+        self._team = False
+
+    def unbind(self) -> None:
+        self.entry = None
+
+    def _on_clicked(self, *_args) -> None:
+        if self.entry and getattr(self, "_team", False) and self.on_team:
+            self.on_team(self.entry)
 
 
 class SimpleCard(Gtk.Box):

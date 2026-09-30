@@ -258,6 +258,7 @@ class HomePage(Adw.NavigationPage):
                     (lambda it: self._hide_next_up(it, items, cards, row, box)) if removable else None
                 ),
                 remove_tooltip="Aus „Als nächstes“ entfernen",
+                show_size=lambda it, k=card_kind: self.ctx.size_visible(it, k),
             )
             card.bind(item)
             card.set_size_request(CARD_WIDTH, -1)

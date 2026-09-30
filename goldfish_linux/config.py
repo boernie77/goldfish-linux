@@ -171,6 +171,21 @@ class ViewPrefs:
         self._data["alphaSidebar"] = enabled
         self._save()
 
+    # Arten, für die es einen Dateigrößen-Schalter gibt (Browser seit 1.4.62:
+    # showSizeMovies/showSizeTv/showSizePrivate). Musik zeigt nie eine Größe.
+    SIZE_KINDS = ("movies", "tv", "private")
+
+    def show_size(self, kind: str) -> bool:
+        """Dateigröße auf den Kacheln dieser Bibliotheksart zeigen — nur auf
+        diesem Gerät, Voreinstellung an (wie im Browser)."""
+        if kind not in self.SIZE_KINDS:
+            return False
+        return self._data.get(f"showSize:{kind}", True) is not False
+
+    def set_show_size(self, kind: str, enabled: bool) -> None:
+        self._data[f"showSize:{kind}"] = bool(enabled)
+        self._save()
+
     def autoplay_next(self) -> bool:
         """Ob am Ende einer Serienfolge die nächste Folge angeboten wird.
 

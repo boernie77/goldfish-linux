@@ -332,6 +332,21 @@ class SettingsPage(Adw.NavigationPage):
         )
         group.add(self.alpha_switch)
 
+        # Dateigröße je Bibliotheksart (Browser seit Server 1.4.62, dort im
+        # Menü „Anzeige"). Rein lokal, Voreinstellung an; offene Ansichten
+        # übernehmen den Schalter beim nächsten Neuladen.
+        for kind, label in (("movies", "Film"), ("tv", "Serien"), ("private", "Privat")):
+            size_row = Adw.SwitchRow(
+                title=f"Dateigröße auf {label}-Kacheln",
+                subtitle="Nur auf diesem Gerät",
+                active=self.ctx.view_prefs.show_size(kind),
+            )
+            size_row.connect(
+                "notify::active",
+                lambda row, _p, k=kind: self.ctx.view_prefs.set_show_size(k, row.get_active()),
+            )
+            group.add(size_row)
+
         # Rein lokal (Gerät), nicht auf dem Server — manche Desktops (z. B.
         # Cinnamon auf Linux Mint) melden ihre Dunkelmodus-Einstellung nicht
         # über das Portal, das libadwaita sonst automatisch abfragt; ohne

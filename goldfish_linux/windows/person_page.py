@@ -130,6 +130,7 @@ class PersonPage(Adw.NavigationPage):
                 on_item=self._open_detail,
                 on_toggle_watched=lambda it, w: self._state_call(lambda: self.ctx.client.set_watched(it["id"], w)),
                 on_toggle_favorite=lambda it, f: self._state_call(lambda: self.ctx.client.set_favorite(it["id"], f)),
+                show_size=lambda it: self.ctx.size_visible(it, "movies"),
             )
             grid.set_content([], movies)
             outer.append(grid)
@@ -186,6 +187,7 @@ class PersonPage(Adw.NavigationPage):
             on_item=lambda it: self._open_episode_detail(it, episodes),
             on_toggle_watched=lambda it, w: self._state_call(lambda: self.ctx.client.set_watched(it["id"], w)),
             on_toggle_favorite=lambda it, f: self._state_call(lambda: self.ctx.client.set_favorite(it["id"], f)),
+            show_size=lambda it: self.ctx.size_visible(it, "tv"),
         )
         grid.set_content([], episodes)
         toolbar_view.set_content(grid)

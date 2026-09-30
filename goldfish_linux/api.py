@@ -629,6 +629,21 @@ class GoldfishClient:
         params = {"folder": folder} if folder else None
         return self.get(f"/api/libraries/{library_id}/stats", params) or {}
 
+    def library_catalog(self, library_id: int, folder: str, team: str = "") -> dict:
+        """Ermittler-Katalog eines Serien-Ordners (Server 1.4.65, Tatort).
+
+        * `folder="Tatort"` → `{available, groups:[{team, folder, total, owned}]}`
+        * `folder="Tatort/Batic und Leitmayr"` → `{available, teams, total,
+          owned, missing:[{nr, title, date, sender, ermittler}]}`
+        * `folder="Tatort", team="Brinkmann"` → dasselbe für genau dieses Team
+
+        `available: false` heißt: für diesen Ordner gibt es keinen Katalog —
+        ein regulärer Fall, kein Fehler."""
+        params = {"folder": folder}
+        if team:
+            params["team"] = team
+        return self.get(f"/api/libraries/{library_id}/catalog", params) or {}
+
     def genres(self, library_id: int) -> list[str]:
         """Trefferliste für den Genre-Filter, serverseitig pro Bibliothek
         gescoped: Filme/Serien aus `metadata.genres`, Musik aus `items.genre`.
@@ -761,6 +776,11 @@ class GoldfishClient:
     # -- Sammlungen --------------------------------------------------------
 
     def collections(self) -> list[dict]:
+        """TMDB-Filmreihen UND (seit Server 1.4.57) Ordner-Sammlungen.
+
+        Ordner-Sammlungen tragen `kind: "folder"`, eine NEGATIVE `id`,
+        `libraryId`, `folder`, `drilldown` und `movieCount` (= Dateien); ihr
+        Cover kommt ebenfalls über `/api/poster/collection/{id}`."""
         return self.get("/api/collections") or []
 
     def collection_parts(self, collection_id: int) -> list[dict]:

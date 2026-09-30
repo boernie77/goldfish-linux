@@ -1,3 +1,16 @@
+goldfish-linux (0.1.71-1) unstable; urgency=medium
+
+  * Ordner-Sammlungen wie "Tatort" erscheinen unter Sammlungen und oeffnen
+    den Ordner mit seinen Unterordnern.
+  * Tatort-Folgen zeigen den Kommissar als eigene Zeile; ein Klick darauf
+    listet alle Folgen dieses Teams nach Erstausstrahlung.
+  * Fehlende Folgen je Kommissar erscheinen als ausgegraute Kacheln, dazu
+    der Zaehler "vorhanden/gesamt" (braucht Server 1.4.65).
+  * Die Dateigroesse auf Film-, Serien- und Privat-Kacheln laesst sich in
+    den Einstellungen einzeln ausschalten.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 30 Sep 2026 22:03:45 +0200
+
 goldfish-linux (0.1.70-1) unstable; urgency=medium
 
   * Startseiten-Kacheln zeigen wieder grosse, kachelfuellende Bilder statt
