@@ -116,3 +116,9 @@ Personenseite (dort erscheinen derzeit nur die vorhandenen Titel) und die
 SSO-Anmeldung, die nur bis zum Laden der Authentik-Seite gegengeprüft ist,
 nicht bis zum Ende durchgespielt.
 
+
+
+## Suche: Genre-Sektion (2026-10-16)
+Server ab 1.5.12: `/api/items?genreSearch=` (siehe Skill `goldfish-playback`), getrennt von `search=`.
+Linux: `api.items(genre_search=)`, `_load_worker` in `windows/browse_page.py` mit zweitem `CardGrid` (scrollt getrennt vom Hauptraster; Commit 09f09f7).
+Platzhalter des Suchfelds: „Titel, Schauspieler oder Genre…“ (Musik unverändert).
