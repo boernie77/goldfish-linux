@@ -321,6 +321,7 @@ class GoldfishClient:
         genres: list[str] | None = None,
         person_id: int | None = None,
         match: str = "",
+        genre_search: str = "",
     ) -> list[dict]:
         """Die Hauptliste. Alle Filter sind optional und werden serverseitig
         mit UND verknüpft; `buckets` (Auflösung) und `genres` sind innerhalb
@@ -328,10 +329,16 @@ class GoldfishClient:
         `bucket=`/`genre=`-Parameter erwartet.
 
         `person_id` ist eine TMDB-Personen-ID und macht die Liste
-        bibliotheksübergreifend — alles, worin diese Person mitspielt."""
+        bibliotheksübergreifend — alles, worin diese Person mitspielt.
+
+        `genre_search` (Server ab 1.5.12, Query `genreSearch`): Filme/Serien,
+        deren TMDB-Genre mit dem Begriff beginnt — die Genre-Sektion der
+        Suche, im selben Bereich wie `search`."""
         params = self._items_params(
             library_id, folder, search, sort, sort_dir, watched, favorite, buckets, genres, person_id, match
         )
+        if genre_search:
+            params["genreSearch"] = genre_search
         return self.get("/api/items", params) or []
 
     @staticmethod

@@ -59,7 +59,11 @@ class BrowsePage(Adw.NavigationPage):
         # super().__init__() fertig gebaut sein.
         toolbar_view = Adw.ToolbarView()
         header = Adw.HeaderBar()
-        search_entry = Gtk.SearchEntry(placeholder_text="Suchen…")
+        search_entry = Gtk.SearchEntry(
+            placeholder_text="Suchen…"
+            if (library.get("kind") or "") == "music"
+            else "Titel, Schauspieler oder Genre…"
+        )
         header.set_title_widget(search_entry)
         toolbar_view.add_top_bar(header)
 
@@ -97,6 +101,11 @@ class BrowsePage(Adw.NavigationPage):
         self.content_box: Gtk.Box | None = None
         self.people_container: Gtk.Box | None = None
         self.people_row: Gtk.Widget | None = None
+        # Genre-Sektion der Suche (Server ab 1.5.12): Überschrift + eigenes
+        # Raster UNTER den Titeltreffern.
+        self.genre_box: Gtk.Box | None = None
+        self.genre_title: Gtk.Label | None = None
+        self.genre_grid: CardGrid | None = None
         self.alpha: AlphaSidebar | None = None
         self.all_folders: list[dict] = []
         self.all_items: list[dict] = []
@@ -188,13 +197,15 @@ class BrowsePage(Adw.NavigationPage):
         fuzzy_extra_count: int = 0,
         people: list[dict] | None = None,
         catalog: dict | None = None,
+        genre_items: list[dict] | None = None,
     ) -> None:
         if stats:
             self.stats = stats
         self._apply_catalog(catalog)
         self._fuzzy_extra_count = fuzzy_extra_count
         people = people or []
-        if not folders and not items and not self.catalog_teams:
+        genre_items = genre_items or []
+        if not folders and not items and not self.catalog_teams and not genre_items:
             # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
             # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
             active = self.filters.active_filter_count()
@@ -217,6 +228,7 @@ class BrowsePage(Adw.NavigationPage):
             self.content_box = None
             self.people_container = None
             self.people_row = None
+            self.genre_box = self.genre_title = self.genre_grid = None
             self.count_label = None
             self.alpha = None
             self.fuzzy_button = None
@@ -281,7 +293,29 @@ class BrowsePage(Adw.NavigationPage):
             self.content_box.append(self.count_label)
             self.content_box.append(grid_row)
             self.content_box.append(self.fuzzy_button)
+            # Genre-Sektion: gleiche Kachel-Aktionen wie das Hauptraster, aber
+            # mit fester Höhe (das Hauptraster behält den restlichen Platz).
+            self.genre_title = Gtk.Label(xalign=0, margin_start=16, margin_end=16, margin_top=8)
+            self.genre_title.add_css_class("heading")
+            self.genre_grid = CardGrid(
+                self.ctx.client,
+                self.library.get("kind") or "movies",
+                on_item=self._open_detail,
+                on_folder=self._open_folder,
+                on_toggle_watched=self._toggle_watched,
+                on_toggle_favorite=self._toggle_favorite,
+                on_open_group=self._open_group,
+                on_team=self._open_team,
+                show_size=lambda it: self.ctx.size_visible(it, self.library.get("kind") or ""),
+            )
+            self.genre_grid.set_vexpand(False)
+            self.genre_grid.set_min_content_height(300)
+            self.genre_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, visible=False)
+            self.genre_box.append(self.genre_title)
+            self.genre_box.append(self.genre_grid)
+            self.content_box.append(self.genre_box)
         self._update_people_row(people)
+        self._update_genre_section(genre_items)
         self._update_count()
         self._update_fuzzy_button()
         if self.toolbar_view.get_content() is not self.content_box:
@@ -301,6 +335,19 @@ class BrowsePage(Adw.NavigationPage):
             self.people_container.set_visible(True)
         else:
             self.people_container.set_visible(False)
+
+    def _update_genre_section(self, genre_items: list[dict]) -> None:
+        """Genre-Sektion unter den Titeltreffern — nur bei aktiver Suche und
+        mindestens einem Treffer sichtbar (Browser: „🏷 Genre · N")."""
+        if self.genre_box is None or self.genre_grid is None or self.genre_title is None:
+            return
+        if self.search_text and genre_items:
+            self.genre_title.set_text(f"🏷 Genre · {format_count(len(genre_items))}")
+            self.genre_grid.set_content([], genre_items)
+            self.genre_box.set_visible(True)
+        else:
+            self.genre_grid.set_content([], [])
+            self.genre_box.set_visible(False)
 
     def _open_person(self, person: dict) -> None:
         """Klick auf eine Schauspieler-Karte der Suchergebnisse öffnet dieselbe
@@ -529,6 +576,8 @@ class BrowsePage(Adw.NavigationPage):
         Info-Karte gerade entfernt wurde (User-Report 2026-09-18)."""
         if self.grid is not None:
             self.grid.apply_item_state(item_id, watched=watched, favorite=favorite)
+        if self.genre_grid is not None:
+            self.genre_grid.apply_item_state(item_id, watched=watched, favorite=favorite)
 
     def _toggle_watched(self, item: dict, watched: bool) -> None:
         """Die Kachel hat ihren Zustand schon selbst umgeschaltet; hier wird er
@@ -820,6 +869,21 @@ class BrowsePage(Adw.NavigationPage):
                 people = []
         if seq != self._load_seq:
             return
+        genre_items: list[dict] = []
+        if search and len(search.strip()) >= 3 and (self.library.get("kind") or "") != "music":
+            # Genre-Sektion (Server ab 1.5.12): eigener Aufruf im selben
+            # Bereich wie die Titelsuche; Fehler lassen sie nur leer. Titel-
+            # treffer (samt Varianten) nicht doppelt zeigen.
+            try:
+                title_ids = {v.get("id") for it in items for v in (it.get("_variants") or [it])}
+                genre_raw = client.items(
+                    lib_id, folder=self.folder, genre_search=search.strip(), sort="title", sort_dir="asc"
+                )
+                genre_items = group_variants([g for g in genre_raw if g.get("id") not in title_ids])
+            except Exception:  # noqa: BLE001 — ältere Server/Fehler: Sektion entfällt
+                genre_items = []
+        if seq != self._load_seq:
+            return
         catalog: dict | None = None
         if self._catalog_applies(search):
             # Eigener Versuch: ohne Katalog bleibt die Ansicht einfach wie
@@ -830,7 +894,7 @@ class BrowsePage(Adw.NavigationPage):
                 catalog = None
         if seq != self._load_seq:
             return
-        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people, catalog)
+        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people, catalog, genre_items)
 
 
 def _folder_label(folder: dict) -> str:
