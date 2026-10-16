@@ -1,3 +1,11 @@
+goldfish-linux (0.1.72-1) unstable; urgency=medium
+
+  * Die Suche zeigt unter den Titeltreffern eine eigene Sektion "Genre"
+    mit allen Filmen und Serien, deren Genre zum Suchbegriff passt
+    (braucht Server 1.5.12).
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Fri, 16 Oct 2026 12:16:47 +0200
+
 goldfish-linux (0.1.71-1) unstable; urgency=medium
 
   * Ordner-Sammlungen wie "Tatort" erscheinen unter Sammlungen und oeffnen
