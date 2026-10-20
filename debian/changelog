@@ -1,3 +1,12 @@
+goldfish-linux (0.1.73-1) unstable; urgency=medium
+
+  * Laufende Downloads lassen sich abbrechen, auf der Infoseite, in der
+    Download-Liste und bei Musik-Alben; die Teildatei wird dabei geloescht.
+  * Mehrere Versionen eines Films erscheinen als eine Kachel, und die
+    Versionsauswahl nennt Dateiname, Aufloesung, Groesse, Bitrate und Codecs.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Di., 20 Okt. 2026 13:12:21 +0200
+
 goldfish-linux (0.1.72-1) unstable; urgency=medium
 
   * Die Suche zeigt unter den Titeltreffern eine eigene Sektion "Genre"
