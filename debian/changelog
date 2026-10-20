@@ -1,3 +1,10 @@
+goldfish-linux (0.1.74-1) unstable; urgency=medium
+
+  * Auf der Startseite erscheint ein Film mit mehreren Dateien nur noch als
+    eine Kachel, in Fortsetzen, Als naechstes und Zuletzt hinzugefuegt.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Di., 20 Okt. 2026 13:26:42 +0200
+
 goldfish-linux (0.1.73-1) unstable; urgency=medium
 
   * Laufende Downloads lassen sich abbrechen, auf der Infoseite, in der

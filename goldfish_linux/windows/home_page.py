@@ -35,6 +35,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..variants import group_variants  # noqa: E402
 from ..widgets.card import CARD_WIDTH, CardWidget, ensure_card_css  # noqa: E402
 
 # Länger als das übliche Zeitlimit des Clients: 12 Sekunden sind hier gemessen
@@ -117,6 +118,10 @@ class HomePage(Adw.NavigationPage):
         # showLastActivity, wie im Browser) — addedAt der nächsten Folge sagt
         # nichts darüber, was gerade geschaut wird.
         all_next_up.sort(key=lambda it: stamp(it, "showLastActivity"), reverse=True)
+        # Mehrere Dateien desselben Films ergeben auch hier nur EINE Kachel
+        # (Browser `groupVariants` auf jedem Startseiten-Streifen).
+        all_continue = group_variants(all_continue)
+        all_next_up = group_variants(all_next_up)
 
         if show_continue and all_continue:
             any_content = True
@@ -133,7 +138,7 @@ class HomePage(Adw.NavigationPage):
 
         # Danach je Bibliothek nur noch das Neue.
         for section in sections:
-            recent = section.get("recent") or []
+            recent = group_variants(section.get("recent") or [])
             if not recent:
                 continue
             any_content = True
