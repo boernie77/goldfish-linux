@@ -24,6 +24,7 @@ gi.require_version("GstPbutils", "1.0")
 from gi.repository import Adw, GLib, Gst, GstPbutils, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError, PlaybackProfile  # noqa: E402
+from ..downloads import CANCELLED  # noqa: E402
 from ..formatting import (  # noqa: E402
     audio_stream_label,
     format_duration,
@@ -32,6 +33,7 @@ from ..formatting import (  # noqa: E402
     is_displayable_subtitle,
     subtitle_stream_label,
 )
+from ..variants import variant_label  # noqa: E402
 from ..widgets.card import ensure_card_css  # noqa: E402
 from ..widgets.cast import CastStrip  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
@@ -490,15 +492,7 @@ class DetailPage(Adw.NavigationPage):
         return False
 
     def _variant_row(self, variants: list[dict]) -> Gtk.Widget:
-        labels = []
-        for v in variants:
-            bits = [
-                (v.get("container") or "").upper(),
-                format_resolution(v.get("width") or 0, v.get("height") or 0),
-                format_size(v.get("sizeBytes") or 0),
-            ]
-            name = (v.get("relPath") or v.get("title") or "").rsplit("/", 1)[-1]
-            labels.append(f"{name} — {' · '.join(b for b in bits if b)}")
+        labels = [variant_label(v) for v in variants]
         drop = Gtk.DropDown.new_from_strings(labels)
         drop.set_selected(next((i for i, v in enumerate(variants) if int(v["id"]) == self.item_id), 0))
         drop.connect("notify::selected", self._on_variant_changed)
@@ -800,13 +794,12 @@ class DetailPage(Adw.NavigationPage):
             row.append(delete_button)
             self.download_box.append(row)
         elif self.ctx.downloads.is_downloading(self.item_id):
-            spinner = Gtk.Spinner()
-            label = Gtk.Label(label="Download läuft …")
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            row.append(spinner)
-            row.append(label)
-            self.download_box.append(row)
-            spinner.start()  # erst nach dem Einhängen, sonst fehlt die Frame-Clock
+            # Seite wurde während eines laufenden Downloads (neu) geöffnet:
+            # Fortschrittsbalken mit letztem bekannten Stand und Abbrechen-Knopf.
+            self._build_progress_row()
+            info = next((a for a in self.ctx.downloads.active_downloads() if a["id"] == self.item_id), None)
+            if info and info["fraction"] >= 0:
+                self._on_download_progress(self.item_id, info["fraction"])
         else:
             # Reiner Symbolknopf; die gewählte Qualität steht in der Kurzhilfe.
             download_button = Gtk.Button(icon_name="folder-download-symbolic", valign=Gtk.Align.CENTER)
@@ -825,8 +818,7 @@ class DetailPage(Adw.NavigationPage):
             nxt = child.get_next_sibling()
             self.download_box.remove(child)
             child = nxt
-        self.progress_bar = Gtk.ProgressBar(show_text=True)
-        self.download_box.append(self.progress_bar)
+        self._build_progress_row()
         if self.chosen_profile:
             # Mit gewählter Qualität wandelt der Server vorher um; das dauert
             # einmalig und ist am Fortschritt noch nicht zu sehen.
@@ -839,6 +831,26 @@ class DetailPage(Adw.NavigationPage):
             on_error=self._on_download_error,
             profile=self.chosen_profile,
         )
+
+    def _build_progress_row(self) -> None:
+        """Fortschrittsbalken plus Abbrechen-Knopf im Download-Bereich."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.progress_bar = Gtk.ProgressBar(show_text=True, valign=Gtk.Align.CENTER, hexpand=True)
+        self.progress_bar.set_text("Wird vorbereitet …")
+        row.append(self.progress_bar)
+        cancel_button = Gtk.Button(icon_name="process-stop-symbolic", valign=Gtk.Align.CENTER)
+        cancel_button.add_css_class("circular")
+        cancel_button.set_tooltip_text("Download abbrechen")
+        cancel_button.connect("clicked", self._on_cancel_download)
+        row.append(cancel_button)
+        self.download_box.append(row)
+
+    def _on_cancel_download(self, button: Gtk.Button) -> None:
+        # Der Worker stoppt beim nächsten Datenblock; der Bereich wird danach
+        # über `_on_download_state_changed` zurückgesetzt.
+        button.set_sensitive(False)
+        self.progress_bar.set_text("Wird abgebrochen …")
+        self.ctx.downloads.cancel_download(self.item_id)
 
     def _on_download_progress(self, item_id: int, fraction: float) -> bool:
         if item_id != self.item_id or not hasattr(self, "progress_bar"):
@@ -870,7 +882,10 @@ class DetailPage(Adw.NavigationPage):
     def _on_download_error(self, item_id: int, message: str) -> bool:
         # Den Download-Bereich setzt `_on_download_state_changed` zurück.
         if item_id == self.item_id:
-            self._toast(f"Download fehlgeschlagen: {message}")
+            if message == CANCELLED:
+                self._toast("Download abgebrochen.")
+            else:
+                self._toast(f"Download fehlgeschlagen: {message}")
         return False
 
     def _probe_download_resolution(self) -> None:

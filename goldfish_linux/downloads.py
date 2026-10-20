@@ -19,6 +19,10 @@ from .api import GoldfishAPIError, GoldfishClient
 
 _SANITIZE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
+# Meldung an `on_error`, wenn der Benutzer abbricht — Aufrufer (Album-Warteschlange)
+# erkennen daran, dass kein Fehler vorliegt und nicht weitergeladen werden soll.
+CANCELLED = "Abgebrochen"
+
 ProgressCB = Callable[[int, float], None]  # (item_id, fraction 0..1)
 DoneCB = Callable[[int, str], None]  # (item_id, local_path)
 ErrorCB = Callable[[int, str], None]  # (item_id, message)
@@ -30,11 +34,19 @@ def _sanitize_filename(name: str) -> str:
     return name or "video"
 
 
+class _Cancelled(Exception):
+    """Intern: der Benutzer hat den Download abgebrochen."""
+
+
 class DownloadManager:
     def __init__(self, client: GoldfishClient):
         self.client = client
         self._registry: dict[str, dict] = {}
         self._active: set[int] = set()
+        # Pro laufendem Download: Abbruch-Merker (vom Worker-Faden geprüft),
+        # Titel für die Downloads-Seite und letzter bekannter Fortschritt.
+        self._cancel: dict[int, threading.Event] = {}
+        self._active_info: dict[int, dict] = {}
         # Wer wissen will, ob ein Titel (nicht mehr) offline vorliegt — etwa
         # die Detailseite, deren Abspielen-Knopf dann auf "Offline abspielen"
         # wechselt. Die `on_done`-Rückrufe von `start_download` reichen dafür
@@ -96,6 +108,19 @@ class DownloadManager:
     def is_downloading(self, item_id: int) -> bool:
         return item_id in self._active
 
+    def active_downloads(self) -> list[dict]:
+        """Laufende/wartende Downloads: `{id, title, fraction}` (fraction -1 =
+        noch kein Fortschritt, etwa solange der Server umwandelt)."""
+        return [dict(info, id=i) for i, info in self._active_info.items() if i in self._active]
+
+    def cancel_download(self, item_id: int) -> None:
+        """Bricht einen laufenden Download ab. Der Worker-Faden stoppt beim
+        nächsten Datenblock, schließt die Verbindung und löscht die `.part`-Datei;
+        der Registry-Eintrag entsteht gar nicht erst. Danach meldet `_notify`."""
+        event = self._cancel.get(int(item_id))
+        if event is not None:
+            event.set()
+
     def local_path(self, item_id: int) -> Path | None:
         rec = self._registry.get(str(item_id))
         if rec and Path(rec["path"]).exists():
@@ -139,6 +164,12 @@ class DownloadManager:
 
     # -- Download ----------------------------------------------------------
 
+    def _finish(self, item_id: int) -> None:
+        """Räumt den Laufzeit-Zustand eines Downloads weg (Ende, Fehler, Abbruch)."""
+        self._active.discard(item_id)
+        self._cancel.pop(item_id, None)
+        self._active_info.pop(item_id, None)
+
     def start_download(
         self,
         item: dict,
@@ -158,6 +189,8 @@ class DownloadManager:
         if item_id in self._active:
             return
         self._active.add(item_id)
+        self._cancel[item_id] = threading.Event()
+        self._active_info[item_id] = {"title": item.get("title") or f"item-{item_id}", "fraction": -1.0}
         thread = threading.Thread(
             target=self._download_worker,
             args=(item, on_progress, on_done, on_error, profile),
@@ -174,14 +207,23 @@ class DownloadManager:
         profile: str = "",
     ) -> None:
         item_id = int(item["id"])
+        cancel = self._cancel.setdefault(item_id, threading.Event())
         try:
             # Mit Profil über die Kompatibilitätsprüfung des Servers, damit er
             # die kleinere Fassung erzeugt; ohne Profil unverändert.
             resp = self.client.download_response(item_id, compat=bool(profile), profile=profile)
         except GoldfishAPIError as exc:
-            self._active.discard(item_id)
+            self._finish(item_id)
             if on_error:
-                GLib.idle_add(on_error, item_id, str(exc))
+                GLib.idle_add(on_error, item_id, CANCELLED if cancel.is_set() else str(exc))
+            GLib.idle_add(self._notify, item_id)
+            return
+
+        if cancel.is_set():  # während der Server-Umwandlung abgebrochen
+            resp.close()
+            self._finish(item_id)
+            if on_error:
+                GLib.idle_add(on_error, item_id, CANCELLED)
             GLib.idle_add(self._notify, item_id)
             return
 
@@ -197,24 +239,38 @@ class DownloadManager:
         try:
             with resp, open(tmp_path, "wb") as fh:
                 for chunk in resp.iter_content(chunk_size=1024 * 256):
+                    if cancel.is_set():
+                        raise _Cancelled
                     if not chunk:
                         continue
                     fh.write(chunk)
                     downloaded += len(chunk)
-                    if on_progress and total > 0:
+                    if total > 0:
                         fraction = min(1.0, downloaded / total)
+                        info = self._active_info.get(item_id)
+                        if info is not None:
+                            info["fraction"] = fraction
+                    if on_progress and total > 0:
                         GLib.idle_add(on_progress, item_id, fraction)
             tmp_path.rename(final_path)
+        except _Cancelled:
+            # `with resp` hat die Verbindung schon geschlossen; Teildatei weg.
+            tmp_path.unlink(missing_ok=True)
+            self._finish(item_id)
+            if on_error:
+                GLib.idle_add(on_error, item_id, CANCELLED)
+            GLib.idle_add(self._notify, item_id)
+            return
         except OSError as exc:
             tmp_path.unlink(missing_ok=True)
-            self._active.discard(item_id)
+            self._finish(item_id)
             if on_error:
                 GLib.idle_add(on_error, item_id, f"Datei konnte nicht geschrieben werden: {exc}")
             GLib.idle_add(self._notify, item_id)
             return
         except Exception as exc:  # noqa: BLE001 — sonst bliebe "Download läuft" für immer stehen
             tmp_path.unlink(missing_ok=True)
-            self._active.discard(item_id)
+            self._finish(item_id)
             if on_error:
                 GLib.idle_add(on_error, item_id, f"Unerwarteter Fehler: {exc}")
             GLib.idle_add(self._notify, item_id)
@@ -229,7 +285,7 @@ class DownloadManager:
             "downloadedAt": GLib.DateTime.new_now_utc().format_iso8601(),
         }
         self._save()
-        self._active.discard(item_id)
+        self._finish(item_id)
         if on_done:
             GLib.idle_add(on_done, item_id, str(final_path))
         GLib.idle_add(self._notify, item_id)

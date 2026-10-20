@@ -26,6 +26,7 @@ from gi.repository import Gdk, Gtk, Pango  # noqa: E402
 from ..api import GoldfishClient  # noqa: E402
 from ..catalog import episode_group, format_catalog_date  # noqa: E402
 from ..formatting import format_date, format_duration, format_resolution, format_size  # noqa: E402
+from ..variants import variant_count  # noqa: E402
 from .poster import load_poster_async  # noqa: E402
 
 CARD_WIDTH = 168
@@ -527,7 +528,7 @@ class CardWidget(Gtk.Box):
         rating = metadata.get("rating") or 0
         self._set_badge(self.rating_label, f"★ {rating:.1f}" if rating else "")
 
-        variants = item.get("variantCount") or 0
+        variants = variant_count(item)
         self._set_badge(self.variant_label, f"×{variants}" if variants >= 2 else "")
 
         # Auflösung ist ein Video-Begriff — bei Musik irreführend, deshalb weg.

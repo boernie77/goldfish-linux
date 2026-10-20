@@ -139,6 +139,27 @@ class DownloadListenerTest(unittest.TestCase):
         self.assertEqual(self.events, [11])
         self.assertEqual(len(manager._listeners), 1)
 
+    def test_abbruch_raeumt_teildatei_und_registry_auf(self):
+        manager = downloads.DownloadManager(_FakeClient())
+        manager.add_listener(self.listener)
+        errors: list[str] = []
+
+        class _CancelResponse(_FakeResponse):
+            def iter_content(inner, chunk_size=0):
+                yield b"abc"
+                manager.cancel_download(12)  # Benutzer bricht nach dem ersten Block ab
+                yield b"def"
+
+        manager.client.download_response = lambda *a, **k: _CancelResponse()
+        manager._active.add(12)
+        manager._download_worker({"id": 12, "title": "Film"}, None, None, lambda i, m: errors.append(m))
+        self.assertEqual(errors, [downloads.CANCELLED])
+        self.assertEqual(self.events, [12])
+        self.assertFalse(manager.is_downloaded(12))
+        self.assertFalse(manager.is_downloading(12))
+        self.assertEqual(manager.active_downloads(), [])
+        self.assertEqual(list(config.DOWNLOADS_DIR.glob("*")), [])
+
 
 if __name__ == "__main__":
     unittest.main()

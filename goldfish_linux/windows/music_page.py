@@ -34,6 +34,7 @@ gi.require_version("Pango", "1.0")
 from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
+from ..downloads import CANCELLED  # noqa: E402
 from ..formatting import format_date, format_duration  # noqa: E402
 from ..widgets.card import _image_frame, ensure_card_css  # noqa: E402
 from ..widgets.column_list import ColumnList, ColumnSpec  # noqa: E402
@@ -1004,23 +1005,29 @@ class AlbumPage(Adw.NavigationPage):
         Alle auf einmal anzustoßen hieße bei diesem Album 19 gleichzeitige
         Übertragungen — deshalb hängt der jeweils nächste am Abschluss des
         vorherigen."""
+        # Läuft die Warteschlange schon, bricht ein erneuter Klick sie ab.
+        current = getattr(self, "_album_current_id", None)
+        if current is not None:
+            self.ctx.downloads.cancel_download(current)
+            return
         pending = [t for t in self.tracks if not self.ctx.downloads.is_downloaded(int(t["id"]))]
         if not pending:
             _toast(self, "Alle Titel liegen schon offline vor.")
             return
-        self.offline_button.set_sensitive(False)
         self._queue_next(pending, 0, len(pending))
 
     def _queue_next(self, pending: list[dict], index: int, total: int) -> None:
         if index >= len(pending):
+            self._album_current_id = None
             self.offline_button.set_sensitive(True)
             self.offline_button.set_tooltip_text("Alle Titel offline mitnehmen")
             _toast(self, f"{total} Titel liegen jetzt offline vor.")
             return
         # Fortschritt in die Kurzhilfe, nicht in die Beschriftung: der Knopf
         # trägt jetzt ein Symbol.
-        self.offline_button.set_tooltip_text(f"Lädt Titel {index + 1} von {total} …")
+        self.offline_button.set_tooltip_text(f"Lädt Titel {index + 1} von {total} … (Klick bricht ab)")
         track = pending[index]
+        self._album_current_id = int(track["id"])
         self.ctx.downloads.start_download(
             track,
             on_progress=lambda *_: False,
@@ -1029,6 +1036,13 @@ class AlbumPage(Adw.NavigationPage):
         )
 
     def _download_failed(self, message: str, pending: list[dict], index: int, total: int) -> None:
+        if message == CANCELLED:
+            # Vom Benutzer abgebrochen: ganze Warteschlange beenden, kein Fehler.
+            self._album_current_id = None
+            self.offline_button.set_sensitive(True)
+            self.offline_button.set_tooltip_text("Alle Titel offline mitnehmen")
+            _toast(self, "Download abgebrochen.")
+            return
         # Ein einzelner Fehlschlag hält das Album nicht auf — melden und weiter.
         _toast(self, f"Ein Titel ließ sich nicht laden: {message}")
         self._queue_next(pending, index + 1, total)

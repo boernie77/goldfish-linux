@@ -29,6 +29,40 @@ Regeln (1:1 wie im Browser):
 
 from __future__ import annotations
 
+from .formatting import format_resolution, format_size
+
+
+def variant_count(item: dict) -> int:
+    """Zahl der Dateien hinter einer Kachel (Badge „×N"). Wie im Browser
+    (`cards.js`): bevorzugt die lokal gebündelten `_variants`, sonst das
+    `variantCount` des Servers (zählt auch Geschwister in anderen Bibliotheken)."""
+    local = len(item.get("_variants") or [])
+    server = item.get("variantCount") or 0
+    return max(local if local > 1 else 0, server if server > 1 else 0)
+
+
+def variant_label(v: dict) -> str:
+    """Beschriftung einer Variante wie `variantLabel` im Browser: DATEINAME plus
+    technische Kenndaten. Der Dateiname ist nötig, weil „Teil 1/Teil 2" oder
+    „DVD 1/DVD 2" dieselbe `metadataId` und oft dieselbe Auflösung haben."""
+    name = (v.get("relPath") or v.get("path") or "").replace("\\", "/").rsplit("/", 1)[-1]
+    parts = [(v.get("container") or "").upper() or "?"]
+    res = format_resolution(v.get("width") or 0, v.get("height") or 0)
+    if res:
+        parts.append(res)
+    if v.get("sizeBytes"):
+        parts.append(format_size(v["sizeBytes"]))
+    if v.get("bitrateKbps"):
+        parts.append(f"{round(v['bitrateKbps'] / 100) / 10:g} Mbps")
+    if v.get("videoCodec"):
+        parts.append(str(v["videoCodec"]).upper())
+    if v.get("audioCodec"):
+        parts.append(str(v["audioCodec"]).upper())
+    if v.get("watched"):
+        parts.append("✓ gesehen")
+    tech = " · ".join(parts)
+    return f"{name}  —  {tech}" if name else tech
+
 
 def group_variants(items: list[dict]) -> list[dict]:
     """Fasst Items mit gleicher `metadataId` zu je einer Kachel zusammen."""

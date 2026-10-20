@@ -23,11 +23,46 @@ class DownloadsPage(Adw.NavigationPage):
         self.ctx = ctx
         self.nav_view = nav_view
         self.toolbar_view = toolbar_view
+        self._progress_rows: dict[int, Adw.ActionRow] = {}
+        self._timer = 0
+        # Schwach gehalten vom Manager — die gebundene Methode muss hier leben.
+        self._listener = self._on_downloads_changed
+        ctx.downloads.add_listener(self._listener)
+        self.connect("hiding", lambda *_: self._stop_timer())
+        self.connect("showing", lambda *_: self.refresh())
         self.refresh()
+
+    def _on_downloads_changed(self, _item_id: int) -> None:
+        self.refresh()
+
+    def _stop_timer(self) -> None:
+        if self._timer:
+            GLib.source_remove(self._timer)
+            self._timer = 0
+
+    def _tick(self) -> bool:
+        """Frischt die Fortschrittsanzeigen laufender Downloads auf."""
+        active = {a["id"]: a for a in self.ctx.downloads.active_downloads()}
+        for item_id, row in self._progress_rows.items():
+            info = active.get(item_id)
+            if info:
+                row.set_subtitle(self._progress_text(info))
+        if not self._progress_rows:
+            self._timer = 0
+            return False
+        return True
+
+    @staticmethod
+    def _progress_text(info: dict) -> str:
+        fraction = info.get("fraction", -1.0)
+        return f"Lädt … {int(fraction * 100)} %" if fraction >= 0 else "Wird vorbereitet …"
 
     def refresh(self) -> None:
         records = self.ctx.downloads.list_downloads()
-        if not records:
+        active = self.ctx.downloads.active_downloads()
+        self._progress_rows = {}
+        self._stop_timer()
+        if not records and not active:
             status = Adw.StatusPage(
                 icon_name="folder-download-symbolic",
                 title="Keine Downloads",
@@ -38,12 +73,37 @@ class DownloadsPage(Adw.NavigationPage):
 
         scrolled = Gtk.ScrolledWindow(vexpand=True)
         clamp = Adw.Clamp(maximum_size=900, margin_top=12, margin_bottom=24, margin_start=12, margin_end=12)
+        clamp_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        if active:
+            running = Adw.PreferencesGroup(title="Laufende Downloads")
+            for info in active:
+                running.add(self._build_active_row(info))
+            clamp_box.append(running)
+            self._timer = GLib.timeout_add_seconds(1, self._tick)
         group = Adw.PreferencesGroup()
         for rec in records:
             group.add(self._build_row(rec))
-        clamp.set_child(group)
+        clamp_box.append(group)
+        clamp.set_child(clamp_box)
         scrolled.set_child(clamp)
         self.toolbar_view.set_content(scrolled)
+
+    def _build_active_row(self, info: dict) -> Adw.ActionRow:
+        item_id = int(info["id"])
+        row = Adw.ActionRow(title=GLib.markup_escape_text(info.get("title") or f"Item {item_id}"))
+        row.set_subtitle(self._progress_text(info))
+        cancel_button = Gtk.Button(icon_name="process-stop-symbolic", valign=Gtk.Align.CENTER)
+        cancel_button.add_css_class("flat")
+        cancel_button.set_tooltip_text("Download abbrechen")
+        cancel_button.connect("clicked", self._cancel, item_id)
+        row.add_suffix(cancel_button)
+        self._progress_rows[item_id] = row
+        return row
+
+    def _cancel(self, button: Gtk.Button, item_id: int) -> None:
+        # Die Zeile verschwindet, sobald der Manager den Abbruch meldet.
+        button.set_sensitive(False)
+        self.ctx.downloads.cancel_download(item_id)
 
     def _build_row(self, rec: dict) -> Adw.ActionRow:
         title = rec.get("title") or f"Item {rec['id']}"
