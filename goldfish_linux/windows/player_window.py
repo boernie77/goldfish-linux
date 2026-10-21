@@ -46,7 +46,7 @@ gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Adw, Gdk, GdkPixbuf, Gio, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError, GoldfishClient, TrickplayCue  # noqa: E402
-from ..formatting import format_duration, format_resolution  # noqa: E402
+from ..formatting import format_duration, format_resolution, player_title  # noqa: E402
 from ..subtitles import SubtitleTrack, parse_vtt  # noqa: E402
 from ..widgets.stats_popover import (  # noqa: E402
     PlaybackStatsPopover,
@@ -280,8 +280,7 @@ class PlayerWindow(Adw.Window):
     def _title_for(item: dict, window_title: str | None) -> str:
         if window_title:
             return window_title
-        metadata = item.get("metadata") or {}
-        return metadata.get("title") or item.get("title") or "Wiedergabe"
+        return player_title(item)
 
     def _build_ui(self, title: str) -> None:
         self.header = Adw.HeaderBar()

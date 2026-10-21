@@ -166,3 +166,25 @@ def subtitle_stream_label(stream: dict) -> str:
 
 def is_displayable_subtitle(stream: dict) -> bool:
     return (stream.get("codec") or "").lower() not in BITMAP_SUBTITLE_CODECS
+
+
+def player_title(item: dict) -> str:
+    """Kopfzeile des Players: bei Folgen „Serie - Folgentitel - S01E02“.
+
+    Der Serienname kommt aus `metadata.showTitle`, sonst aus dem obersten
+    Ordner des relPath. Ohne Metadaten-Titel bleibt es beim Item-Titel.
+    """
+    metadata = item.get("metadata") or {}
+    title = metadata.get("title") or item.get("title") or "Wiedergabe"
+    season, episode = metadata.get("season"), metadata.get("episode")
+    if metadata.get("tmdbType") != "episode" and not (season and episode):
+        return title
+    rel = item.get("relPath") or ""
+    show = metadata.get("showTitle") or (rel.split("/", 1)[0] if "/" in rel else "")
+    parts = [show] if show and show != title else []
+    parts.append(title)
+    if season and episode:
+        end = item.get("episodeEnd") or 0
+        label = f"S{season:02d}E{episode:02d}"
+        parts.append(f"{label}-{end:02d}" if end > episode else label)
+    return " - ".join(parts)

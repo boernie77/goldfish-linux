@@ -1,3 +1,10 @@
+goldfish-linux (0.1.75-1) unstable; urgency=medium
+
+  * Die Kopfzeile des Players zeigt bei Serienfolgen "Serie - Titel -
+    S01E02" statt nur des Folgentitels.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 21 Oct 2026 18:23:40 +0200
+
 goldfish-linux (0.1.74-1) unstable; urgency=medium
 
   * Auf der Startseite erscheint ein Film mit mehreren Dateien nur noch als
