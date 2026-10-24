@@ -62,6 +62,15 @@ class HomePage(Adw.NavigationPage):
         self.nav_view = nav_view
         self.toolbar_view = toolbar_view
         self._reload()
+        # Zurück aus Detail/Player: Streifen still neu laden, sonst bleibt die eben
+        # beendete Folge unter "Als nächstes" stehen (User-Report 2026-10-23).
+        self._shown_once = False
+        self.connect("shown", self._on_shown)
+
+    def _on_shown(self, *_args) -> None:
+        if self._shown_once:
+            threading.Thread(target=self._load, daemon=True).start()
+        self._shown_once = True
 
     def _reload(self) -> None:
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)

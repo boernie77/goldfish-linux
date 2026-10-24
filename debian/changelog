@@ -1,3 +1,10 @@
+goldfish-linux (0.1.76-1) unstable; urgency=medium
+
+  * Die Startseite laedt neu, wenn man aus Infoseite oder Player zurueckkehrt;
+    Als naechstes zeigt dann die naechste Folge statt der eben gesehenen.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sa., 24 Okt. 2026 10:00:00 +0200
+
 goldfish-linux (0.1.75-1) unstable; urgency=medium
 
   * Die Kopfzeile des Players zeigt bei Serienfolgen "Serie - Titel -
