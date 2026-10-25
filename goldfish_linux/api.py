@@ -577,6 +577,16 @@ class GoldfishClient:
         einen zu kurzen Varianten-Dropdown)."""
         return self.get(f"/api/items/{item_id}/variants") or []
 
+    def item_collection(self, item_id: int) -> dict | None:
+        """„Teil X von Y"-Hinweis eines Films (Server >= 1.5.29): Teile der
+        TMDB-Sammlung mit vorhanden/fehlt. `None`, wenn der Film zu keiner
+        Sammlung gehört oder der Server den Endpoint noch nicht kennt."""
+        try:
+            data = self.get(f"/api/items/{item_id}/collection") or {}
+        except GoldfishAPIError:
+            return None
+        return data if data.get("available") else None
+
     def random_item(
         self,
         library_id: int | None = None,

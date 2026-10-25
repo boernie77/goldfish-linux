@@ -91,6 +91,23 @@ _CSS = b"""
   font-weight: bold;
 }
 .gf-badge-rating { background-color: alpha(#1c1c1c, 0.8); }
+/* Teil X von Y (Detailseite, Filme in einer Sammlung): Kreise je Teil. */
+.gf-part {
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 11px;
+  background-color: #16a34a;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: bold;
+  padding: 0;
+}
+.gf-part-cur { background-color: #3b82f6; border: 2px solid #93c5fd; }
+.gf-part-miss {
+  background-color: transparent;
+  border: 2px dashed #ef4444;
+  color: #ef4444;
+}
 /* Gruen wie im Browser (.collection-complete, rgba(22,163,74,.92)). Dieses
    Stylesheet ist ein bytes-Literal und darf deshalb nur ASCII enthalten. */
 .gf-badge-ok {

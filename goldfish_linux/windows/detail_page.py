@@ -165,6 +165,7 @@ class DetailPage(Adw.NavigationPage):
         row.append(self.picture)
 
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, hexpand=True)
+        self.head_text = text
         # Serienname klickbar machen, wenn es sich um eine Episode handelt
         # (User-Wunsch 2026-09-20: "der Serienname muss klickbar sein und zur
         # Staffelübersicht der Serie führen", überall in Goldfish gleich).
@@ -191,6 +192,8 @@ class DetailPage(Adw.NavigationPage):
         self.meta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._fill_meta_row()
         text.append(self.meta_row)
+        self.collection_slot = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        text.append(self.collection_slot)
 
         genres = metadata.get("genres") or ""
         if genres:
@@ -466,7 +469,11 @@ class DetailPage(Adw.NavigationPage):
             except GoldfishAPIError:
                 has_trailer = False
 
-        GLib.idle_add(self._apply_extras, info, profiles, variants, has_trailer)
+        collection = None
+        if metadata.get("tmdbType") == "movie":
+            collection = client.item_collection(self.item_id)
+
+        GLib.idle_add(self._apply_extras, info, profiles, variants, has_trailer, collection)
 
     def _apply_extras(
         self,
@@ -474,8 +481,11 @@ class DetailPage(Adw.NavigationPage):
         profiles: list[PlaybackProfile],
         variants: list[dict],
         has_trailer: bool,
+        collection: dict | None = None,
     ) -> bool:
         self.variants = variants
+        if collection:
+            self.collection_slot.append(self._collection_line(collection))
         streams = info.get("streams") or []
         audio = [s for s in streams if s.get("type") == "audio"]
         subs = [s for s in streams if s.get("type") == "subtitle" and is_displayable_subtitle(s)]
@@ -490,6 +500,75 @@ class DetailPage(Adw.NavigationPage):
             self.stream_box.append(self._profile_row(profiles))
         self.trailer_button.set_visible(has_trailer)
         return False
+
+    def _collection_line(self, col: dict) -> Gtk.Widget:
+        """Eine Zeile „Teil 2 von 4 · Sammlung ①②③④ Teil 3 und 4 fehlen"
+        (wie im Browser): grün vorhanden, blau dieser Film, rot gestrichelt
+        fehlt. Klick auf einen vorhandenen Teil öffnet dessen Seite, auf den
+        Namen die Sammlung."""
+        parts = col.get("parts") or []
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, halign=Gtk.Align.START)
+        row.append(Gtk.Label(label=f"📚 Teil {col['position']} von {col['total']} ·"))
+        link = Gtk.LinkButton(uri="#", label=col.get("name") or "Sammlung")
+        link.set_has_frame(False)
+        link.connect("activate-link", lambda _b: self._open_collection(col) or True)
+        row.append(link)
+        dots = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        for i, p in enumerate(parts):
+            dot = Gtk.Button(label=str(i + 1), valign=Gtk.Align.CENTER)
+            dot.set_has_frame(False)
+            dot.add_css_class("gf-part")
+            title = p.get("title") or ""
+            year = f" ({p['year']})" if p.get("year") else ""
+            if p.get("current"):
+                dot.add_css_class("gf-part-cur")
+                dot.set_tooltip_text(f"{title}{year} – dieser Film")
+            elif not p.get("owned"):
+                dot.add_css_class("gf-part-miss")
+                dot.set_tooltip_text(f"{title}{year} – fehlt")
+            else:
+                dot.set_tooltip_text(f"{title}{year}")
+            dot.connect("clicked", lambda _b, part=p: self._on_part_clicked(part))
+            dots.append(dot)
+        row.append(dots)
+        missing = [i + 1 for i, p in enumerate(parts) if not p.get("owned")]
+        if missing:
+            txt = (f"Teil {missing[0]} fehlt" if len(missing) == 1
+                   else "Teil " + ", ".join(map(str, missing[:-1])) + f" und {missing[-1]} fehlen")
+            label = Gtk.Label(label=txt)
+            label.add_css_class("error")
+        else:
+            label = Gtk.Label(label="✓ komplett")
+            label.add_css_class("success")
+        row.append(label)
+        return row
+
+    def _open_collection(self, col: dict) -> None:
+        from .collections_page import CollectionPartsPage
+
+        self.nav_view.push(CollectionPartsPage(self.ctx, self.nav_view, {"id": col["collectionId"], "name": col.get("name")}))
+
+    def _on_part_clicked(self, part: dict) -> None:
+        if part.get("current"):
+            return
+        if not part.get("owned"):
+            dialog = Adw.MessageDialog(
+                transient_for=self.get_root(),
+                heading=f"{part.get('title') or ''} ({part.get('year')})" if part.get("year") else (part.get("title") or ""),
+                body="Fehlt in der Bibliothek.",
+            )
+            dialog.add_response("ok", "OK")
+            dialog.present()
+            return
+
+        def work() -> None:
+            try:
+                item = self.ctx.client.item(int(part["itemId"]))
+            except GoldfishAPIError:
+                return
+            GLib.idle_add(lambda: self.nav_view.push(type(self)(self.ctx, self.nav_view, item)) and False)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _variant_row(self, variants: list[dict]) -> Gtk.Widget:
         labels = [variant_label(v) for v in variants]
