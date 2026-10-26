@@ -1,3 +1,10 @@
+goldfish-linux (1.0.4-1) unstable; urgency=medium
+
+  * Fix: Die Suche zeigt bei Serien eine Kachel pro Serie statt jeder
+    einzelnen Folge, wie im Browser.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 15:00:00 +0100
+
 goldfish-linux (1.0.3-1) unstable; urgency=medium
 
   * Neu: Die Infoseite einer Folge zeigt jetzt Staffel und Folgennummer.

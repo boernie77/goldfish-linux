@@ -749,7 +749,8 @@ class FolderCardWidget(Gtk.Box):
         # Eine nackte "1" unten rechts sah im ersten Test wie eine Laufzeit
         # aus — mit Einheit ist klar, dass es die Anzahl ist.
         count = folder.get("itemCount") or 0
-        self.count_label.set_text(f"{count} Titel" if count != 1 else "1 Titel")
+        unit = "Treffer" if folder.get("hits") else "Titel"
+        self.count_label.set_text(f"{count} {unit}" if count != 1 or unit == "Treffer" else "1 Titel")
         self.count_label.set_visible(count > 0)
 
         merged = bool(folder.get("mergedFolders"))

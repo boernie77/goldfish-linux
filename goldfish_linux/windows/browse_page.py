@@ -828,6 +828,11 @@ class BrowsePage(Adw.NavigationPage):
                 items, fuzzy_extra_count = client.get_items_with_fuzzy_count(
                     lib_id, folder=self.folder, search=search, **common
                 )
+                if not self.folder:
+                    # Wie im Browser (`appendSearchResultCards`): Folgen werden
+                    # pro Serie zu EINER Kachel zusammengefasst, nicht jede
+                    # Folge einzeln gezeigt.
+                    folders, items = collapse_episode_hits(items)
             elif f.is_flat or f.favorites_only or self._always_flat:
                 folders = []
                 items = client.items(lib_id, folder=self.folder, **common)
@@ -895,6 +900,38 @@ class BrowsePage(Adw.NavigationPage):
         if seq != self._load_seq:
             return
         GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people, catalog, genre_items)
+
+
+def collapse_episode_hits(items: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Trennt Suchtreffer in Serien-Ordnerkacheln und den Rest.
+
+    Eine Folge ist ein Treffer mit `metadata.tmdbType == "episode"` und einem
+    Serienordner als erstem Pfadteil. Je Serie entsteht ein Ordner-Eintrag mit
+    der Trefferzahl (`hits`); Poster kommt von `metadata.parentId`, sonst vom
+    Vorschaubild der ersten Folge. Alles andere (Filme, Privatvideos) bleibt
+    unverändert in der zweiten Liste."""
+    shows: dict[str, dict] = {}
+    rest: list[dict] = []
+    for item in items:
+        metadata = item.get("metadata") or {}
+        rel = item.get("relPath") or ""
+        if metadata.get("tmdbType") == "episode" and "/" in rel:
+            name = rel.split("/", 1)[0]
+            show = shows.get(name)
+            if show is None:
+                show = {
+                    "name": name,
+                    "metadataId": metadata.get("parentId") or 0,
+                    "thumbItemId": item.get("id"),
+                    "itemCount": 0,
+                    "hits": True,
+                }
+                shows[name] = show
+            show["itemCount"] += 1
+        else:
+            rest.append(item)
+    folders = sorted(shows.values(), key=lambda f: f["name"].casefold())
+    return folders, rest
 
 
 def _folder_label(folder: dict) -> str:
