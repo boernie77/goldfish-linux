@@ -1,3 +1,10 @@
+goldfish-linux (0.1.80-1) unstable; urgency=medium
+
+  * Serien-Infoseite: Staffelkacheln stehen eng beieinander statt ueber die
+    ganze Breite verteilt.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 12:00:00 +0100
+
 goldfish-linux (0.1.77-1) unstable; urgency=medium
 
   * Die Infoseite eines Films zeigt, wenn er zu einer Sammlung gehoert,

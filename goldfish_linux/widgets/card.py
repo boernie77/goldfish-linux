@@ -1002,6 +1002,9 @@ def card_flow(spacing: int = 16) -> Gtk.FlowBox:
         margin_top=12,
         margin_bottom=24,
         valign=Gtk.Align.START,
+        # Links bündig statt über die volle Breite gestreckt: sonst rücken
+        # die wenigen Staffelkacheln weit auseinander.
+        halign=Gtk.Align.START,
     )
     return flow
 
