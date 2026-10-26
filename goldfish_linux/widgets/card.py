@@ -1002,11 +1002,21 @@ def card_flow(spacing: int = 16) -> Gtk.FlowBox:
         margin_top=12,
         margin_bottom=24,
         valign=Gtk.Align.START,
-        # Links bündig statt über die volle Breite gestreckt: sonst rücken
-        # die wenigen Staffelkacheln weit auseinander.
-        halign=Gtk.Align.START,
     )
     return flow
+
+
+def flow_add(flow: Gtk.FlowBox, widget: Gtk.Widget) -> None:
+    """Kachel anhängen und ihre FlowBox-Zelle links bündig halten.
+
+    NICHT `halign` auf der FlowBox selbst: die bekommt dann nur ihre
+    Mindestbreite und stapelt alle Kacheln untereinander (1.0). Dehnbare
+    Zellen dagegen verteilen den Restplatz zwischen die wenigen Kacheln."""
+    flow.append(widget)
+    cell = widget.get_parent()
+    if cell is not None:
+        cell.set_halign(Gtk.Align.START)
+        cell.set_hexpand(False)
 
 
 class AlbumCardWidget(Gtk.Box):

@@ -26,7 +26,7 @@ from gi.repository import Adw, GLib, Gtk, Pango  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
 from ..formatting import format_duration  # noqa: E402
-from ..widgets.card import SimpleCard, card_flow  # noqa: E402
+from ..widgets.card import SimpleCard, card_flow, flow_add  # noqa: E402
 from ..widgets.cast import CastStrip  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
 
@@ -79,7 +79,7 @@ class SeasonsPage(Adw.NavigationPage):
 
         flow = card_flow(spacing=6)
         for season in seasons:
-            flow.append(self._season_card(season))
+            flow_add(flow, self._season_card(season))
         box.append(flow)
 
         scrolled = Gtk.ScrolledWindow(vexpand=True, child=box)
