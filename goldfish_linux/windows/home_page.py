@@ -232,6 +232,9 @@ class HomePage(Adw.NavigationPage):
             child=holder,
             vscrollbar_policy=Gtk.PolicyType.NEVER,
             propagate_natural_height=True,
+            # Überlagernde Leiste lag über Jahr/Größe der Kachelschrift; fest
+            # eingeblendet bekommt sie eigenen Platz UNTER den Kacheln.
+            overlay_scrolling=False,
         )
         # Die Kacheln dieses Streifens, für das Entfernen per ✕.
         cards: list[CardWidget] = []
