@@ -22,3 +22,12 @@ def test_show_falls_back_to_top_folder_and_double_episode():
 def test_movie_and_unmatched_keep_title():
     assert player_title({"title": "x.mkv", "metadata": {"title": "Inception"}}) == "Inception"
     assert player_title({"title": "x.mkv"}) == "x.mkv"
+
+
+def test_episode_label():
+    from goldfish_linux.formatting import episode_label
+
+    item = {"metadata": {"season": 2, "episode": 9}}
+    assert episode_label(item) == "Staffel 2 · Folge 9"
+    assert episode_label({**item, "episodeEnd": 10}) == "Staffel 2 · Folge 9–10"
+    assert episode_label({"metadata": {}}) == ""

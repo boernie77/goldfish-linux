@@ -168,6 +168,17 @@ def is_displayable_subtitle(stream: dict) -> bool:
     return (stream.get("codec") or "").lower() not in BITMAP_SUBTITLE_CODECS
 
 
+def episode_label(item: dict) -> str:
+    """„Staffel 2 · Folge 9“ (bei Doppelfolgen „Folge 9–10“); leer ohne Zählung."""
+    metadata = item.get("metadata") or {}
+    season, episode = metadata.get("season"), metadata.get("episode")
+    if not episode:
+        return ""
+    end = item.get("episodeEnd") or 0
+    number = f"{episode}\u2013{end}" if end > episode else f"{episode}"
+    return f"Staffel {season} \u00b7 Folge {number}" if season else f"Folge {number}"
+
+
 def player_title(item: dict) -> str:
     """Kopfzeile des Players: bei Folgen „Serie - Folgentitel - S01E02“.
 

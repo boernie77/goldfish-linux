@@ -27,6 +27,7 @@ from ..api import GoldfishAPIError, PlaybackProfile  # noqa: E402
 from ..downloads import CANCELLED  # noqa: E402
 from ..formatting import (  # noqa: E402
     audio_stream_label,
+    episode_label,
     format_duration,
     format_resolution,
     format_size,
@@ -220,6 +221,7 @@ class DetailPage(Adw.NavigationPage):
 
         metadata = self.item.get("metadata") or {}
         for text in (
+            episode_label(self.item) if metadata.get("tmdbType") == "episode" else "",
             str(metadata.get("year")) if metadata.get("year") else "",
             format_resolution(self.item.get("width") or 0, self.item.get("height") or 0),
             format_duration(self.item.get("durationSec") or 0),

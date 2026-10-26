@@ -1634,8 +1634,33 @@ def open_player(ctx, item: dict, **kwargs) -> "PlayerWindow":
     # transient_for-Kette zum Hauptfenster.
     window.connect("close-request", lambda *_: _forget_player(ctx, window))
     ctx.player_window = window
+    _cover_main_window(ctx, window)
     window.present()
     return window
+
+
+def _cover_main_window(ctx, window) -> None:
+    """Lässt das Wiedergabefenster genau auf dem Hauptfenster aufgehen.
+
+    User-Wunsch 2026-10-26: der Player landete „irgendwo auf der Fläche“ (der
+    Fenstermanager wählt die Lage eines neuen Fensters selbst, und GTK4 kann
+    unter X11 keine Position mehr vorgeben). Größe also vom Hauptfenster
+    übernehmen, und die Lage über die transient-Beziehung: der Fenstermanager
+    setzt ein transientes Fenster beim Anzeigen auf den Eltern. Danach wird die
+    Beziehung SOFORT wieder gelöst — dauerhaft blieb sie ein Vollbild-Hindernis
+    (siehe oben), und die Lage ändert sich nach dem Anzeigen nicht mehr."""
+    parent = getattr(ctx, "window", None)
+    if parent is None or not parent.get_mapped():
+        return
+    width, height = parent.get_width(), parent.get_height()
+    if width > 0 and height > 0:
+        window.set_default_size(width, height)
+    window.set_transient_for(parent)
+
+    def release(*_args) -> None:
+        GLib.idle_add(lambda: window.set_transient_for(None) or False)
+
+    window.connect("map", release)
 
 
 def _forget_player(ctx, window) -> bool:
