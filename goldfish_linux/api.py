@@ -997,6 +997,15 @@ class GoldfishClient:
         new_query = urlencode(query)
         return urlunparse(parts._replace(query=new_query))
 
+    def media_url(self, url_or_path: str) -> str:
+        """URL für GStreamer: wie `with_session_param`, aber über den lokalen
+        IPv4-Proxy (`media_proxy`). GStreamer verbindet sonst selbst und nimmt
+        bei einem unerreichbaren AAAA-Eintrag der Domain IPv6 — Browser und
+        dieser Client (IPv4-only) merken davon nichts."""
+        from .media_proxy import proxied_url
+
+        return proxied_url(self.with_session_param(url_or_path), self.base_url)
+
     def show_poster_path_for_episode(self, item: dict) -> str | None:
         """Serienposter statt Folgenbild (Startseite: „Als nächstes" und
         „Zuletzt hinzugefügt" wie im Browser seit Server 1.4.49, seit 0.1.69

@@ -740,7 +740,7 @@ class DetailPage(Adw.NavigationPage):
         open_player(
             self.ctx,
             self.item,
-            direct_url=self.ctx.client.with_session_param(path),
+            direct_url=self.ctx.client.media_url(path),
             window_title=f"Trailer: {title}",
         )
         return False

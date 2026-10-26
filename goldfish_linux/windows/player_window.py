@@ -614,7 +614,7 @@ class PlayerWindow(Adw.Window):
         if self._is_transcode:
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}start={start:.3f}&fresh=1&_t={self._fresh_token}"
-        return self.client.with_session_param(url)
+        return self.client.media_url(url)
 
     def _play_uri(self, uri: str, virtual_offset: float = 0.0) -> bool:
         # Das vorherige Medium sauber abklemmen. Ohne das melden seine Signale

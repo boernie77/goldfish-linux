@@ -1,3 +1,11 @@
+goldfish-linux (1.0.2-1) unstable; urgency=medium
+
+  * Fix: Videos, Trailer und Musik spielen wieder ab, wenn die Server-Domain
+    einen unerreichbaren IPv6-Eintrag hat; Medien laufen jetzt ueber einen
+    lokalen IPv4-Proxy statt direkt durch GStreamer.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 13:00:00 +0100
+
 goldfish-linux (1.0.1-1) unstable; urgency=medium
 
   * Fix: Staffelkacheln standen untereinander; jetzt nebeneinander, links

@@ -199,7 +199,7 @@ class MusicPlayer:
 
         container = (item.get("container") or "").lower()
         if container in _DIRECT_CONTAINERS:
-            url = self.client.with_session_param(f"/api/stream/{item['id']}")
+            url = self.client.media_url(f"/api/stream/{item['id']}")
             self._play_url(url)
         else:
             # Seltener Fall: ein Format, das GStreamer nicht kennt. Dann den
@@ -217,7 +217,7 @@ class MusicPlayer:
             return
         url = info.get("url")
         if url:
-            GLib.idle_add(self._play_url, self.client.with_session_param(url))
+            GLib.idle_add(self._play_url, self.client.media_url(url))
 
     def _play_url(self, url: str) -> bool:
         media = Gtk.MediaFile.new_for_file(Gio.File.new_for_uri(url))
