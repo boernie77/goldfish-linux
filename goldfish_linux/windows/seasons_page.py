@@ -77,7 +77,7 @@ class SeasonsPage(Adw.NavigationPage):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         box.append(self._build_header())
 
-        flow = card_flow()
+        flow = card_flow(spacing=6)
         for season in seasons:
             flow.append(self._season_card(season))
         box.append(flow)
