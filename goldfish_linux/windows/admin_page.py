@@ -138,13 +138,23 @@ class ActivityLogPage(Adw.NavigationPage):
         super().__init__(title="Protokoll", tag="admin-log", child=toolbar)
         self.ctx = ctx
         self.category = ""
+        self.username = ""
         self.last_id = 0
         self.exhausted = False
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=8, margin_bottom=8, margin_start=12, margin_end=12)
         self.filter = Gtk.DropDown.new_from_strings([label for label, _ in _CATEGORIES])
         self.filter.connect("notify::selected", lambda *_: self._on_filter())
-        outer.append(self.filter)
+        self.user_filter = Gtk.DropDown.new_from_strings(["Alle Benutzer"])
+        self.user_filter.connect("notify::selected", lambda *_: self._on_user_filter())
+        self._user_names: list[str] = []
+        filters = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self.filter.set_hexpand(True)
+        self.user_filter.set_hexpand(True)
+        filters.append(self.filter)
+        filters.append(self.user_filter)
+        outer.append(filters)
+        threading.Thread(target=self._load_users, daemon=True).start()
         self.listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.listbox.add_css_class("boxed-list")
         self.more = Gtk.Button(label="Ältere laden")
@@ -158,6 +168,27 @@ class ActivityLogPage(Adw.NavigationPage):
         toolbar.set_content(outer)
         self._load()
 
+    def _load_users(self) -> None:
+        try:
+            names = self.ctx.client.user_names()
+        except GoldfishAPIError:
+            return
+        GLib.idle_add(self._fill_users, names)
+
+    def _fill_users(self, names: list[str]) -> bool:
+        self._user_names = names
+        self._filling = True
+        self.user_filter.set_model(Gtk.StringList.new(["Alle Benutzer", *names]))
+        self._filling = False
+        return False
+
+    def _on_user_filter(self) -> None:
+        if getattr(self, "_filling", False):
+            return
+        index = self.user_filter.get_selected()
+        self.username = self._user_names[index - 1] if 0 < index <= len(self._user_names) else ""
+        self._on_filter()
+
     def _on_filter(self) -> None:
         self.category = _CATEGORIES[self.filter.get_selected()][1]
         self.last_id = 0
@@ -170,15 +201,15 @@ class ActivityLogPage(Adw.NavigationPage):
         self._load()
 
     def _load(self) -> None:
-        category, before = self.category, self.last_id
+        category, before, username = self.category, self.last_id, self.username
 
         def worker() -> None:
             try:
-                entries = self.ctx.client.activity_log(category, before, _PAGE)
+                entries = self.ctx.client.activity_log(category, before, _PAGE, username)
             except GoldfishAPIError as exc:
                 GLib.idle_add(self._error, str(exc))
                 return
-            GLib.idle_add(self._append, category, entries)
+            GLib.idle_add(self._append, category, username, entries)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -186,8 +217,8 @@ class ActivityLogPage(Adw.NavigationPage):
         self.listbox.append(Adw.ActionRow(title="Protokoll nicht abrufbar", subtitle=message))
         return False
 
-    def _append(self, category: str, entries: list[dict]) -> bool:
-        if category != self.category:
+    def _append(self, category: str, username: str, entries: list[dict]) -> bool:
+        if category != self.category or username != self.username:
             return False  # Filter wurde inzwischen gewechselt
         for entry in entries:
             who = entry.get("username") or "System"

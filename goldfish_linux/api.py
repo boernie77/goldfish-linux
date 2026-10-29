@@ -868,14 +868,21 @@ class GoldfishClient:
     def cancel_scan(self) -> None:
         self.post("/api/scan/cancel")
 
-    def activity_log(self, category: str = "", before_id: int = 0, limit: int = 100) -> list[dict]:
+    def activity_log(self, category: str = "", before_id: int = 0, limit: int = 100, username: str = "") -> list[dict]:
         params: dict = {"limit": limit}
         if category:
             params["category"] = category
+        if username:
+            params["username"] = username
         if before_id:
             params["beforeId"] = before_id
         data = self.get("/api/admin/activity-log", params) or {}
         return data.get("entries") or []
+
+    def user_names(self) -> list[str]:
+        """Alle Benutzernamen (nur Administratoren) — für den Protokoll-Filter."""
+        users = self.get("/api/users") or []
+        return sorted((u.get("username") or "" for u in users if u.get("username")), key=str.lower)
 
     # -- Playlists ---------------------------------------------------------
 

@@ -1,4 +1,4 @@
 """Goldfish Linux — nativer GTK4/libadwaita-Client für den Goldfish-Videoserver."""
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 APP_ID = "io.github.boernie77.GoldfishLinux"

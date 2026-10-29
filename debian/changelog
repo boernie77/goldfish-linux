@@ -1,3 +1,9 @@
+goldfish-linux (1.0.7-1) unstable; urgency=medium
+
+  * Protokoll: Filter nach Benutzer (zusaetzlich zur Kategorie).
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Do., 29 Okt. 2026 15:00:00 +0100
+
 goldfish-linux (1.0.6-1) unstable; urgency=medium
 
   * Verwaltung fuer Administratoren: Verschieben, Umbenennen, Zuordnung
