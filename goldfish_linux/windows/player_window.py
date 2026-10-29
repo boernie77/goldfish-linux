@@ -369,6 +369,120 @@ class PlayerWindow(Adw.Window):
         self.autoplay_box = box
         return box
 
+    # -- Favorit & Playlist ---------------------------------------------------
+
+    def _sync_item_buttons(self) -> None:
+        """Knopfzustand zum aktuellen Titel (auch nach dem Umschalten)."""
+        local = bool(self.item.get("local")) or self.local_path is not None
+        self._fav_syncing = True
+        self.favorite_button.set_active(bool(self.item.get("favorite")))
+        self._fav_syncing = False
+        self.favorite_button.set_tooltip_text(
+            "Favorit entfernen" if self.favorite_button.get_active() else "Als Favorit merken"
+        )
+        self.favorite_button.set_visible(not local)
+        self.playlist_button.set_visible(not local)
+
+    def _on_favorite_toggled(self, button: Gtk.ToggleButton) -> None:
+        if getattr(self, "_fav_syncing", False):
+            return
+        favorite = button.get_active()
+        item_id = self.item_id
+        self.item["favorite"] = favorite
+        button.set_tooltip_text("Favorit entfernen" if favorite else "Als Favorit merken")
+
+        def worker() -> None:
+            try:
+                self.client.set_favorite(item_id, favorite)
+            except GoldfishAPIError:
+                # Zurückdrehen, wenn der Server es nicht angenommen hat.
+                GLib.idle_add(self._revert_favorite, item_id, not favorite)
+                return
+            if self.ctx is not None:
+                GLib.idle_add(self.ctx.notify_item_state, item_id, None, favorite)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _revert_favorite(self, item_id: int, value: bool) -> bool:
+        if item_id == self.item_id:
+            self.item["favorite"] = value
+            self._sync_item_buttons()
+        return False
+
+    def _load_playlists(self) -> None:
+        """Popover füllen: passende Playlists (Video bzw. Musik) mit Häkchen."""
+        item_id = self.item_id
+        self.playlist_popover.set_child(Gtk.Label(label="Lade …", margin_top=12, margin_bottom=12, margin_start=16, margin_end=16))
+
+        def worker() -> None:
+            kind = "video"
+            if self.ctx is not None and self.ctx.library_kind(self.item.get("libraryId")) == "music":
+                kind = "music"
+            try:
+                playlists = self.client.playlists(kind)
+                current = {int(p["id"]) for p in self.client.playlists_for_item(item_id)}
+            except GoldfishAPIError as exc:
+                GLib.idle_add(self._fill_playlists, item_id, [], set(), kind, str(exc))
+                return
+            GLib.idle_add(self._fill_playlists, item_id, playlists, current, kind, "")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _fill_playlists(self, item_id: int, playlists: list[dict], current: set[int], kind: str, error: str) -> bool:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
+        box.set_size_request(280, -1)
+        if error:
+            box.append(Gtk.Label(label=f"Playlists nicht abrufbar: {error}", wrap=True))
+        elif playlists:
+            listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+            listbox.add_css_class("boxed-list")
+            for pl in playlists:
+                inside = int(pl["id"]) in current
+                row = Adw.ActionRow(
+                    title=pl.get("name") or "",
+                    subtitle="schon enthalten" if inside else f"{pl.get('itemCount') or 0} Titel",
+                    activatable=True,
+                )
+                icon = Gtk.Image(icon_name="object-select-symbolic" if inside else "list-add-symbolic")
+                row.add_suffix(icon)
+                row.connect("activated", lambda r, p=pl, i=icon: self._add_to_playlist(item_id, p, r, i))
+                listbox.append(row)
+            box.append(Gtk.ScrolledWindow(child=listbox, propagate_natural_height=True, max_content_height=300))
+        else:
+            box.append(Gtk.Label(label="Noch keine passende Playlist vorhanden.", wrap=True))
+        box.append(Gtk.Separator(margin_top=4))
+        entry = Gtk.Entry(placeholder_text="Neue Playlist anlegen und hinzufügen")
+        entry.connect("activate", lambda e: self._create_playlist_and_add(item_id, e.get_text().strip(), kind))
+        box.append(entry)
+        self.playlist_popover.set_child(box)
+        return False
+
+    def _add_to_playlist(self, item_id: int, playlist: dict, row: Adw.ActionRow, icon: Gtk.Image) -> None:
+        def worker() -> None:
+            try:
+                added = self.client.add_to_playlist(int(playlist["id"]), item_id)
+            except GoldfishAPIError as exc:
+                GLib.idle_add(row.set_subtitle, f"Fehler: {exc}")
+                return
+            GLib.idle_add(row.set_subtitle, "hinzugefügt" if added else "schon enthalten")
+            GLib.idle_add(icon.set_from_icon_name, "object-select-symbolic")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _create_playlist_and_add(self, item_id: int, name: str, kind: str) -> None:
+        if not name:
+            return
+
+        def worker() -> None:
+            try:
+                created = self.client.create_playlist(name, kind)
+                self.client.add_to_playlist(int(created["id"]), item_id)
+            except (GoldfishAPIError, KeyError, TypeError):
+                return
+            GLib.idle_add(self._load_playlists)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _build_bar(self) -> Gtk.Widget:
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         bar.add_css_class("gf-player-bar")
@@ -489,6 +603,23 @@ class PlayerWindow(Adw.Window):
         self.res_label.set_xalign(0.5)
         self.res_label.set_single_line_mode(True)
         bar.append(self.res_label)
+
+        # Favorit und Playlist (für alle Benutzer, nicht nur Admins). Lokale
+        # Offline-Videos haben keinen Server-Eintrag, dort bleiben beide weg.
+        self.favorite_button = Gtk.ToggleButton(icon_name="emblem-favorite-symbolic", has_frame=False)
+        self.favorite_button.connect("toggled", self._on_favorite_toggled)
+        bar.append(self.favorite_button)
+
+        self.playlist_popover = Gtk.Popover()
+        self.playlist_popover.connect("show", lambda *_: self._load_playlists())
+        self.playlist_button = Gtk.MenuButton(
+            icon_name="view-list-symbolic",
+            has_frame=False,
+            popover=self.playlist_popover,
+            tooltip_text="Zu Playlist hinzufügen",
+        )
+        bar.append(self.playlist_button)
+        self._sync_item_buttons()
 
         self.volume = Gtk.VolumeButton()
         self.volume.set_value(1.0)
@@ -1320,6 +1451,7 @@ class PlayerWindow(Adw.Window):
         # beim Umschalten muss das mitwandern, sonst spielt weiter dieselbe
         # Datei (bzw. es wird vergeblich der Server gefragt).
         self.local_path = item.get("path") if item.get("local") else None
+        self._sync_item_buttons()
         self._stop_reported = False
         self._start_reported = False
         self._watched_marked = False
