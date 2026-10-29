@@ -17,6 +17,7 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError  # noqa: E402
 from ..theme import apply_color_scheme  # noqa: E402
+from .admin_page import ActivityLogPage, ScanPage  # noqa: E402
 
 # Verweildauer der Startseiten-Streifen in Tagen (0 = unbegrenzt). Genau die
 # Werte, die der Server annimmt (`PUT /api/home/strips`), in dieser Reihenfolge.
@@ -47,9 +48,25 @@ class SettingsPage(Adw.NavigationPage):
         page.add(self._sync_group())
         page.add(self._playback_group())
         page.add(self._display_group())
+        if getattr(ctx, "is_admin", False):
+            page.add(self._admin_group())
         toolbar_view.set_content(page)
 
         threading.Thread(target=self._load_links, daemon=True).start()
+
+    # -- Verwaltung (nur Administratoren) --------------------------------
+
+    def _admin_group(self) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup(title="Verwaltung", description="Nur für Administratoren")
+        for title, subtitle, factory in (
+            ("Scan", "Bibliotheken scannen und Fortschritt ansehen", ScanPage),
+            ("Protokoll", "Anmeldungen, Wiedergaben, Verwaltung und Jobs", ActivityLogPage),
+        ):
+            row = Adw.ActionRow(title=title, subtitle=subtitle, activatable=True)
+            row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+            row.connect("activated", lambda _r, f=factory: self.nav_view.push(f(self.ctx, self.nav_view)))
+            group.add(row)
+        return group
 
     # -- Konto -----------------------------------------------------------
 

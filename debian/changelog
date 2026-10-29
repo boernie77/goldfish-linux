@@ -1,3 +1,11 @@
+goldfish-linux (1.0.6-1) unstable; urgency=medium
+
+  * Verwaltung fuer Administratoren: Verschieben, Umbenennen, Zuordnung
+    aendern und Metadaten bearbeiten (Menue auf der Infoseite), dazu Scan
+    und Protokoll unter Einstellungen > Verwaltung.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Do., 29 Okt. 2026 14:00:00 +0100
+
 goldfish-linux (1.0.5-1) unstable; urgency=medium
 
   * Player: Favoriten-Knopf und Playlist-Knopf in der Leiste (fuer alle

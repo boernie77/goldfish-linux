@@ -75,6 +75,12 @@ class AppContext:
         # Eine gemeinsame Instanz: die Seiten schreiben dieselbe Datei, und
         # zwei eigene Instanzen würden sich gegenseitig überschreiben.
         self.view_prefs = ViewPrefs()
+        # Administrator? Bestimmt, ob die Verwaltungsfunktionen (Verschieben,
+        # Umbenennen, Zuordnung, Scan, Protokoll) erscheinen. Wird einmal im
+        # Hintergrund gefragt; bis die Antwort da ist, bleiben sie ausgeblendet.
+        # Der Server sperrt die Routen unabhängig davon selbst.
+        self.is_admin = False
+        threading.Thread(target=self._load_admin_flag, daemon=True).start()
         # Art je Bibliothek, einmal beim Laden gefüllt — Seiten, die nur eine
         # Bibliotheks-ID kennen (etwa die Detailansicht), brauchen sie für
         # Entscheidungen wie Video- oder Musik-Playlist.
@@ -102,6 +108,12 @@ class AppContext:
         # werden ersetzt; eine starke Liste würde jede besuchte Seite für immer
         # festhalten.
         self._item_state_listeners: list = []
+
+    def _load_admin_flag(self) -> None:
+        try:
+            self.is_admin = bool(self.client.status().is_admin)
+        except Exception:  # noqa: BLE001 — ohne Antwort einfach kein Admin
+            self.is_admin = False
 
     def dialog_parent(self):
         """Das Fenster, über dem ein Dialog erscheinen soll: das gerade aktive,

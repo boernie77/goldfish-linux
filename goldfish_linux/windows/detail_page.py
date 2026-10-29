@@ -38,6 +38,7 @@ from ..variants import variant_label  # noqa: E402
 from ..widgets.card import ensure_card_css  # noqa: E402
 from ..widgets.cast import CastStrip  # noqa: E402
 from ..widgets.poster import load_poster_async  # noqa: E402
+from . import admin_dialogs  # noqa: E402
 from .player_window import close_player, open_player  # noqa: E402
 
 _gst_ready = False
@@ -319,7 +320,56 @@ class DetailPage(Adw.NavigationPage):
 
         # Herunterladen gehört in dieselbe Reihe wie die übrigen Handgriffe.
         row.append(self.download_box)
+
+        # Verwaltung: nur für Administratoren und nur für Server-Titel.
+        if getattr(self.ctx, "is_admin", False) and not self.item.get("local"):
+            row.append(self._build_admin_menu())
         return row
+
+    def _build_admin_menu(self) -> Gtk.Widget:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=4, margin_bottom=4, margin_start=4, margin_end=4)
+        popover = Gtk.Popover(child=box)
+        actions = [
+            ("Verschieben …", admin_dialogs.move_item),
+            ("Umbenennen …", admin_dialogs.rename_item),
+            ("Zuordnung ändern …", admin_dialogs.match_item),
+            ("Metadaten bearbeiten …", admin_dialogs.edit_metadata),
+        ]
+        for label, func in actions:
+            button = Gtk.Button(label=label, has_frame=False, halign=Gtk.Align.FILL)
+            button.get_child().set_xalign(0)
+
+            def clicked(_b, f=func) -> None:
+                popover.popdown()
+                f(self.ctx, self.item, self._reload_after_admin)
+
+            button.connect("clicked", clicked)
+            box.append(button)
+        menu = Gtk.MenuButton(
+            icon_name="emblem-system-symbolic",
+            popover=popover,
+            valign=Gtk.Align.CENTER,
+            tooltip_text="Verwaltung (Admin)",
+        )
+        menu.add_css_class("circular")
+        return menu
+
+    def _reload_after_admin(self) -> None:
+        """Nach einer Verwaltungsaktion den Titel frisch laden und die Seite ersetzen."""
+
+        def worker() -> None:
+            try:
+                fresh = self.ctx.client.item(self.item_id)
+            except GoldfishAPIError:
+                return
+            GLib.idle_add(self._replace_with, fresh)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _replace_with(self, fresh: dict) -> bool:
+        self.nav_view.pop()
+        self.nav_view.push(DetailPage(self.ctx, self.nav_view, fresh, queue=self.queue))
+        return False
 
     def _plays_offline(self) -> bool:
         """Spielt der Hauptknopf die heruntergeladene Datei? Musik nicht: die

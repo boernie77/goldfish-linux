@@ -816,6 +816,67 @@ class GoldfishClient:
     def collection_poster_path(self, collection_id: int) -> str:
         return f"/api/poster/collection/{collection_id}"
 
+    # -- Verwaltung (nur Administratoren; der Server prüft es selbst) -----
+
+    def rename_item(self, item_id: int) -> dict:
+        """Datei nach dem Namensschema umbenennen (aus der TMDB-Zuordnung)."""
+        return self.post(f"/api/items/{item_id}/rename") or {}
+
+    def move_preview(self, item_id: int, target_folder: str, target_library_id: int) -> dict:
+        return self.post(
+            "/api/items/move-preview",
+            {"ids": [item_id], "targetFolder": target_folder, "targetLibraryId": target_library_id},
+        ) or {}
+
+    def move_item(self, item_id: int, target_folder: str, target_library_id: int, allow_cross_device: bool = False) -> dict:
+        return self.post(
+            f"/api/items/{item_id}/move",
+            {
+                "targetFolder": target_folder,
+                "targetLibraryId": target_library_id,
+                "allowCrossDevice": allow_cross_device,
+            },
+        ) or {}
+
+    def search_metadata(self, query: str, kind: str = "movie", year: int = 0) -> list[dict]:
+        params: dict = {"q": query, "type": kind}
+        if year:
+            params["year"] = year
+        return self.get("/api/metadata/search", params) or []
+
+    def set_item_metadata(self, item_id: int, tmdb_type: str, tmdb_id: int, season: int = 0, episode: int = 0) -> None:
+        body: dict = {"tmdbType": tmdb_type, "tmdbId": tmdb_id}
+        if tmdb_type == "episode":
+            body["season"] = season
+            body["episode"] = episode
+        self.post(f"/api/items/{item_id}/metadata", body)
+
+    def unmatch_item(self, item_id: int) -> None:
+        self.post(f"/api/items/{item_id}/unmatch")
+
+    def update_metadata(self, metadata_id: int, fields: dict) -> None:
+        self.put(f"/api/metadata/{metadata_id}", fields)
+
+    def start_scan(self, library_id: int | None = None, force: bool = False) -> None:
+        """Eine Bibliothek (oder alle, wenn `library_id` None) scannen."""
+        path = f"/api/scan/{library_id}" if library_id else "/api/scan/all"
+        self.post(path + ("?force=true" if force else ""))
+
+    def scan_status(self) -> dict:
+        return self.get("/api/scan/status") or {}
+
+    def cancel_scan(self) -> None:
+        self.post("/api/scan/cancel")
+
+    def activity_log(self, category: str = "", before_id: int = 0, limit: int = 100) -> list[dict]:
+        params: dict = {"limit": limit}
+        if category:
+            params["category"] = category
+        if before_id:
+            params["beforeId"] = before_id
+        data = self.get("/api/admin/activity-log", params) or {}
+        return data.get("entries") or []
+
     # -- Playlists ---------------------------------------------------------
 
     def playlists(self, kind: str = "video") -> list[dict]:
