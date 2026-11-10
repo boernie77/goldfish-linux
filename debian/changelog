@@ -1,9 +1,9 @@
-goldfish-linux (1.0.8-1) unstable; urgency=medium
+goldfish-linux (1.0.9-1) unstable; urgency=medium
 
   * Downloads: Neuer Knopf "Alle gesehenen Downloads loeschen" (auch offline nutzbar).
   * Der Gesehen-Status der Downloads wird jetzt lokal mitgefuehrt.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Di., 10 Nov. 2026 12:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 10 Nov 2026 12:00:00 +0100
 
 goldfish-linux (1.0.7-1) unstable; urgency=medium
 
