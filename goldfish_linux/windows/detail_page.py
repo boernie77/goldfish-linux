@@ -21,7 +21,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Gst", "1.0")
 gi.require_version("GstPbutils", "1.0")
-from gi.repository import Adw, GLib, Gst, GstPbutils, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gst, GstPbutils, Gtk  # noqa: E402
 
 from ..api import GoldfishAPIError, PlaybackProfile  # noqa: E402
 from ..downloads import CANCELLED  # noqa: E402
@@ -773,15 +773,27 @@ class DetailPage(Adw.NavigationPage):
             # einer Datei zusammen; das dauert einige Sekunden. Eine einzelne
             # Datei-URL ist hier nötig, weil das Videowidget kein
             # YouTube-Einbetten kann — im Browser läuft das über ein iframe.
+            # Der Server hat /trailer-stream seit 2026-09-19 abgeschaltet
+            # (404) bzw. yt-dlp kann scheitern (502). Dann statt Fehler den
+            # YouTube-Trailer im Browser öffnen.
+            path = None
             try:
                 path = self.ctx.client.trailer_stream_path(int(metadata["id"]))
+            except GoldfishAPIError:
+                path = None
+            if path:
+                GLib.idle_add(self._trailer_ready, button, path)
+                return
+            try:
+                info = self.ctx.client.trailer(int(metadata["id"]))
             except GoldfishAPIError as exc:
                 GLib.idle_add(self._trailer_failed, button, str(exc))
                 return
-            if not path:
+            key = (info or {}).get("key")
+            if not key:
                 GLib.idle_add(self._trailer_failed, button, "Kein Trailer verfügbar.")
                 return
-            GLib.idle_add(self._trailer_ready, button, path)
+            GLib.idle_add(self._trailer_external, button, f"https://www.youtube.com/watch?v={key}")
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -795,6 +807,15 @@ class DetailPage(Adw.NavigationPage):
             direct_url=self.ctx.client.media_url(path),
             window_title=f"Trailer: {title}",
         )
+        return False
+
+    def _trailer_external(self, button: Gtk.Button, url: str) -> bool:
+        button.set_sensitive(True)
+        button.set_tooltip_text("Trailer ansehen")
+        try:
+            Gio.AppInfo.launch_default_for_uri(url, None)
+        except GLib.Error as exc:
+            self._toast(f"Trailer nicht abspielbar: {exc.message}")
         return False
 
     def _trailer_failed(self, button: Gtk.Button, message: str) -> bool:

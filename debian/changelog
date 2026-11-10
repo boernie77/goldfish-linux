@@ -1,3 +1,9 @@
+goldfish-linux (1.0.11-1) unstable; urgency=medium
+
+  * Trailer: Wenn der Server den Trailer nicht als Datei liefert, wird er jetzt auf YouTube im Browser geoeffnet statt mit einem Fehler abzubrechen.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 10 Nov 2026 14:00:00 +0100
+
 goldfish-linux (1.0.10-1) unstable; urgency=medium
 
   * Downloads: Neuer Knopf "Alle gesehenen Downloads loeschen" (auch offline nutzbar).
