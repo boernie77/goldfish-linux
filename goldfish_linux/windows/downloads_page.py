@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -17,9 +19,15 @@ class DownloadsPage(Adw.NavigationPage):
         # Adw.NavigationPage.child ist construct-only — toolbar_view muss
         # bereits vor super().__init__() existieren.
         toolbar_view = Adw.ToolbarView()
-        toolbar_view.add_top_bar(Adw.HeaderBar())
+        header = Adw.HeaderBar()
+        watched_button = Gtk.Button(icon_name="edit-clear-all-symbolic")
+        watched_button.set_tooltip_text("Alle gesehenen Downloads löschen")
+        header.pack_end(watched_button)
+        toolbar_view.add_top_bar(header)
 
         super().__init__(title="Downloads", tag="downloads", child=toolbar_view)
+        self._watched_button = watched_button
+        watched_button.connect("clicked", lambda *_: self._check_watched())
         self.ctx = ctx
         self.nav_view = nav_view
         self.toolbar_view = toolbar_view
@@ -161,4 +169,53 @@ class DownloadsPage(Adw.NavigationPage):
 
     def _delete(self, rec: dict) -> None:
         self.ctx.downloads.delete_download(rec["id"])
+        self.refresh()
+
+    # -- Alle gesehenen löschen ---------------------------------------------
+
+    def _check_watched(self) -> None:
+        """Fragt für jeden Download den aktuellen Gesehen-Status beim Server ab
+        (die lokale Registry kennt ihn nicht). Nicht erreichbare Titel zählen als
+        „nicht gesehen" — im Zweifel wird nichts gelöscht."""
+        self._watched_button.set_sensitive(False)
+        ids = [int(r["id"]) for r in self.ctx.downloads.list_downloads()]
+
+        def worker() -> None:
+            watched: list[int] = []
+            reached = 0
+            for item_id in ids:
+                try:
+                    item = self.ctx.client.item(item_id)
+                except Exception:  # noqa: BLE001 - offline/Serverfehler: überspringen
+                    continue
+                reached += 1
+                if item.get("watched"):
+                    watched.append(item_id)
+            GLib.idle_add(self._show_watched_dialog, watched, bool(ids) and reached == 0)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_watched_dialog(self, watched: list[int], unreachable: bool) -> bool:
+        self._watched_button.set_sensitive(True)
+        dialog = Adw.MessageDialog(transient_for=self.ctx.dialog_parent(), heading="Gesehene Downloads")
+        if unreachable:
+            dialog.set_body("Der Server ist nicht erreichbar – der Gesehen-Status kann gerade nicht geprüft werden.")
+            dialog.add_response("ok", "OK")
+        elif not watched:
+            dialog.set_body("Es gibt keine gesehenen Downloads.")
+            dialog.add_response("ok", "OK")
+        else:
+            dialog.set_heading("Gesehene Downloads löschen?")
+            dialog.set_body(f"Es werden {len(watched)} als gesehen markierte Downloads gelöscht.")
+            dialog.add_response("cancel", "Abbrechen")
+            dialog.add_response("delete", "Löschen")
+            dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_close_response("cancel")
+            dialog.connect("response", lambda _d, response: self._delete_watched(watched) if response == "delete" else None)
+        dialog.present()
+        return False
+
+    def _delete_watched(self, ids: list[int]) -> None:
+        for item_id in ids:
+            self.ctx.downloads.delete_download(item_id)
         self.refresh()
