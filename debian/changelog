@@ -1,4 +1,4 @@
-goldfish-linux (1.0.9-1) unstable; urgency=medium
+goldfish-linux (1.0.10-1) unstable; urgency=medium
 
   * Downloads: Neuer Knopf "Alle gesehenen Downloads loeschen" (auch offline nutzbar).
   * Der Gesehen-Status der Downloads wird jetzt lokal mitgefuehrt.
@@ -9,7 +9,7 @@ goldfish-linux (1.0.7-1) unstable; urgency=medium
 
   * Protokoll: Filter nach Benutzer (zusaetzlich zur Kategorie).
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Do., 29 Okt. 2026 15:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Thu, 29 Oct 2026 15:00:00 +0100
 
 goldfish-linux (1.0.6-1) unstable; urgency=medium
 
@@ -17,21 +17,21 @@ goldfish-linux (1.0.6-1) unstable; urgency=medium
     aendern und Metadaten bearbeiten (Menue auf der Infoseite), dazu Scan
     und Protokoll unter Einstellungen > Verwaltung.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Do., 29 Okt. 2026 14:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Thu, 29 Oct 2026 14:00:00 +0100
 
 goldfish-linux (1.0.5-1) unstable; urgency=medium
 
   * Player: Favoriten-Knopf und Playlist-Knopf in der Leiste (fuer alle
     Benutzer, nicht nur Admins).
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Do., 29 Okt. 2026 12:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Thu, 29 Oct 2026 12:00:00 +0100
 
 goldfish-linux (1.0.4-1) unstable; urgency=medium
 
   * Fix: Die Suche zeigt bei Serien eine Kachel pro Serie statt jeder
     einzelnen Folge, wie im Browser.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 15:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 26 Oct 2026 15:00:00 +0100
 
 goldfish-linux (1.0.3-1) unstable; urgency=medium
 
@@ -39,7 +39,7 @@ goldfish-linux (1.0.3-1) unstable; urgency=medium
   * Fix: Der Player oeffnet auf dem Hauptfenster, in dessen Lage und Groesse,
     statt irgendwo auf dem Bildschirm.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 14:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 26 Oct 2026 14:00:00 +0100
 
 goldfish-linux (1.0.2-1) unstable; urgency=medium
 
@@ -47,49 +47,49 @@ goldfish-linux (1.0.2-1) unstable; urgency=medium
     einen unerreichbaren IPv6-Eintrag hat; Medien laufen jetzt ueber einen
     lokalen IPv4-Proxy statt direkt durch GStreamer.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 13:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 26 Oct 2026 13:00:00 +0100
 
 goldfish-linux (1.0.1-1) unstable; urgency=medium
 
   * Fix: Staffelkacheln standen untereinander; jetzt nebeneinander, links
     buendig und mit engem, gleichem Abstand.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 12:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 26 Oct 2026 12:00:00 +0100
 
 goldfish-linux (1.0-1) unstable; urgency=medium
 
   * Release 1.0: Teil X von Y auf der Film-Infoseite, Scrollleiste der
     Startseiten-Reihen unter den Kacheln, engere Staffelkacheln.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 12:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 26 Oct 2026 12:00:00 +0100
 
 goldfish-linux (0.1.81-1) unstable; urgency=medium
 
   * Serien-Infoseite: Abstand zwischen den Staffelkacheln enger und immer
     gleich gross.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 12:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 26 Oct 2026 12:00:00 +0100
 
 goldfish-linux (0.1.80-1) unstable; urgency=medium
 
   * Serien-Infoseite: Staffelkacheln stehen eng beieinander statt ueber die
     ganze Breite verteilt.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mo., 26 Okt. 2026 12:00:00 +0100
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 26 Oct 2026 12:00:00 +0100
 
 goldfish-linux (0.1.77-1) unstable; urgency=medium
 
   * Die Infoseite eines Films zeigt, wenn er zu einer Sammlung gehoert,
     "Teil X von Y" mit Kreisen je Teil (vorhanden, dieser Film, fehlt).
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  So., 25 Okt. 2026 12:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 25 Oct 2026 12:00:00 +0200
 
 goldfish-linux (0.1.76-1) unstable; urgency=medium
 
   * Die Startseite laedt neu, wenn man aus Infoseite oder Player zurueckkehrt;
     Als naechstes zeigt dann die naechste Folge statt der eben gesehenen.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sa., 24 Okt. 2026 10:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sat, 24 Oct 2026 10:00:00 +0200
 
 goldfish-linux (0.1.75-1) unstable; urgency=medium
 
@@ -103,7 +103,7 @@ goldfish-linux (0.1.74-1) unstable; urgency=medium
   * Auf der Startseite erscheint ein Film mit mehreren Dateien nur noch als
     eine Kachel, in Fortsetzen, Als naechstes und Zuletzt hinzugefuegt.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Di., 20 Okt. 2026 13:26:42 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 20 Oct 2026 13:26:42 +0200
 
 goldfish-linux (0.1.73-1) unstable; urgency=medium
 
@@ -112,7 +112,7 @@ goldfish-linux (0.1.73-1) unstable; urgency=medium
   * Mehrere Versionen eines Films erscheinen als eine Kachel, und die
     Versionsauswahl nennt Dateiname, Aufloesung, Groesse, Bitrate und Codecs.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Di., 20 Okt. 2026 13:12:21 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 20 Oct 2026 13:12:21 +0200
 
 goldfish-linux (0.1.72-1) unstable; urgency=medium
 
@@ -258,6 +258,8 @@ goldfish-linux (0.1.60-1) unstable; urgency=medium
     hatte der Nutzer nie verlangt (Missverstaendnis auf Assistant-Seite).
     Reihenfolge ist wieder wie zuvor (aufsteigend nach Staffel/Folge).
 
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 23 Sep 2026 12:50:00 +0200
+
 goldfish-linux (0.1.58-1) unstable; urgency=medium
 
   * Filme-Sektion im Person-Filter hatte keine eigene Ueberschrift (nur
@@ -265,6 +267,8 @@ goldfish-linux (0.1.58-1) unstable; urgency=medium
     Ueberschrift mit Treffer-Zaehler.
   * Folgen innerhalb einer Serien-Sammelkachel sind jetzt nach Staffel/Folge
     absteigend sortiert, die neueste Folge steht zuerst.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 23 Sep 2026 12:49:00 +0200
 
 goldfish-linux (0.1.57-1) unstable; urgency=medium
 
@@ -274,6 +278,8 @@ goldfish-linux (0.1.57-1) unstable; urgency=medium
     gewaehlten Person.
   * Serienname im Detail-Dialog einer Episode ist jetzt klickbar und fuehrt
     zur Staffeluebersicht der Serie.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 23 Sep 2026 12:48:00 +0200
 
 goldfish-linux (0.1.56-1) unstable; urgency=medium
 
@@ -392,7 +398,7 @@ goldfish-linux (0.1.48-1) unstable; urgency=medium
     sind davon nicht betroffen, sie holen ihren Parent bereits dynamisch
     über das gerade aktive Fenster.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 16 Sep 2026 13:30:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 16 Sep 2026 13:30:00 +0200
 
 goldfish-linux (0.1.47-1) unstable; urgency=medium
 
@@ -406,7 +412,7 @@ goldfish-linux (0.1.47-1) unstable; urgency=medium
     jetzt erst über das "notify::fullscreened"-Signal aktualisiert,
     sobald der Fenstermanager den neuen Zustand bestätigt hat.
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Tue, 16 Sep 2026 12:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Wed, 16 Sep 2026 12:00:00 +0200
 
 goldfish-linux (0.1.46-1) unstable; urgency=medium
 
@@ -647,7 +653,7 @@ goldfish-linux (0.1.32-1) unstable; urgency=medium
     und Titellisten, ein-/ausblendbar über ein neues Spalten-Menü (analog
     zu Browser und Mac-App).
 
- -- boernie77 <115419572+boernie77@users.noreply.github.com>  Sun, 14 Sep 2026 10:00:00 +0200
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Mon, 14 Sep 2026 10:00:00 +0200
 
 goldfish-linux (0.1.31-1) unstable; urgency=medium
 
