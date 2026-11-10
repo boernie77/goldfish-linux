@@ -140,6 +140,7 @@ class GoldfishApplication(Adw.Application):
 
     def _show_main(self, username: str) -> bool:
         self.downloads = DownloadManager(self.client)
+        self.client.watched_hook = self.downloads.set_cached_watched
         self.main_window = MainWindow(self, self.client, self.downloads, username)
         self.main_window.present()
         GLib.timeout_add_seconds(UPDATE_CHECK_DELAY_S, self._start_silent_update_check)

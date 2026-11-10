@@ -152,6 +152,20 @@ class DownloadManager:
         rec["resumeSec"] = position_sec
         self._save()
 
+    def is_cached_watched(self, item_id: int) -> bool:
+        """Lokal bekannter Gesehen-Status (Stand der letzten Änderung/Server-Abfrage)."""
+        rec = self._registry.get(str(item_id))
+        return bool(rec and rec.get("watched"))
+
+    def set_cached_watched(self, item_id: int, watched: bool) -> None:
+        """Hält den Gesehen-Status im Registry-Eintrag aktuell (analog Apple
+        `updateCachedWatched`), damit „gesehene löschen" auch offline stimmt."""
+        rec = self._registry.get(str(item_id))
+        if rec is None or bool(rec.get("watched")) == bool(watched):
+            return
+        rec["watched"] = bool(watched)
+        self._save()
+
     def delete_download(self, item_id: int) -> None:
         rec = self._registry.pop(str(item_id), None)
         if rec:

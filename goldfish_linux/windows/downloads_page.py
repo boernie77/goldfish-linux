@@ -175,33 +175,30 @@ class DownloadsPage(Adw.NavigationPage):
 
     def _check_watched(self) -> None:
         """Fragt für jeden Download den aktuellen Gesehen-Status beim Server ab
-        (die lokale Registry kennt ihn nicht). Nicht erreichbare Titel zählen als
-        „nicht gesehen" — im Zweifel wird nichts gelöscht."""
+        (z. B. auf einem anderen Gerät gesehen) und gleicht die Registry an.
+        Ist der Server nicht erreichbar, zählt der lokal gespeicherte Stand."""
         self._watched_button.set_sensitive(False)
         ids = [int(r["id"]) for r in self.ctx.downloads.list_downloads()]
 
         def worker() -> None:
             watched: list[int] = []
-            reached = 0
             for item_id in ids:
+                is_watched = self.ctx.downloads.is_cached_watched(item_id)
                 try:
-                    item = self.ctx.client.item(item_id)
-                except Exception:  # noqa: BLE001 - offline/Serverfehler: überspringen
-                    continue
-                reached += 1
-                if item.get("watched"):
+                    is_watched = bool(self.ctx.client.item(item_id).get("watched"))
+                    self.ctx.downloads.set_cached_watched(item_id, is_watched)
+                except Exception:  # noqa: BLE001 - offline/Serverfehler: lokaler Stand
+                    pass
+                if is_watched:
                     watched.append(item_id)
-            GLib.idle_add(self._show_watched_dialog, watched, bool(ids) and reached == 0)
+            GLib.idle_add(self._show_watched_dialog, watched)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _show_watched_dialog(self, watched: list[int], unreachable: bool) -> bool:
+    def _show_watched_dialog(self, watched: list[int]) -> bool:
         self._watched_button.set_sensitive(True)
         dialog = Adw.MessageDialog(transient_for=self.ctx.dialog_parent(), heading="Gesehene Downloads")
-        if unreachable:
-            dialog.set_body("Der Server ist nicht erreichbar – der Gesehen-Status kann gerade nicht geprüft werden.")
-            dialog.add_response("ok", "OK")
-        elif not watched:
+        if not watched:
             dialog.set_body("Es gibt keine gesehenen Downloads.")
             dialog.add_response("ok", "OK")
         else:

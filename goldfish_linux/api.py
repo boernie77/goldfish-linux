@@ -170,6 +170,9 @@ class GoldfishClient:
 
     def __init__(self, server_url: str = "", session_token: str = ""):
         self.session = requests.Session()
+        # Wird vor jedem `set_watched` mit (item_id, watched) gerufen – der
+        # DownloadManager hält damit den Gesehen-Status der Downloads aktuell.
+        self.watched_hook = None
         self.session.headers["User-Agent"] = f"Goldfish-Linux/{__version__}"
         # Server-eigener Header (identisches Muster wie GoldfishApple):
         # `deviceLabel()` (internal/api/helpers.go) erkennt ohne diesen
@@ -560,6 +563,11 @@ class GoldfishClient:
             pass
 
     def set_watched(self, item_id: int, watched: bool) -> None:
+        if self.watched_hook is not None:
+            try:
+                self.watched_hook(item_id, watched)
+            except Exception:  # noqa: BLE001 - lokaler Cache darf den Aufruf nie stören
+                pass
         self.put(f"/api/items/{item_id}/watched", {"watched": watched})
 
     def set_favorite(self, item_id: int, favorite: bool) -> None:
