@@ -31,10 +31,17 @@ from .card import (  # noqa: E402
     AlbumCardWidget,
     CardWidget,
     FolderCardWidget,
+    ImageCardWidget,
     LocalCardWidget,
     PlaceholderCardWidget,
     ensure_card_css,
 )
+
+
+# Kennzeichen für Bilder (Bilder-Bibliotheken, Server 1.6.12+) — `set_content`
+# bekommt sie als `images=` und markiert sie, damit Bild und Video im selben
+# Modell unterscheidbar sind.
+IMAGE_KEY = "_gf_image"
 
 
 class GridRow(GObject.Object):
@@ -52,6 +59,8 @@ class GridRow(GObject.Object):
         self.is_folder = is_folder
         if is_folder:
             self.kind = "folder"
+        elif payload.get(IMAGE_KEY):
+            self.kind = "image"
         elif payload.get(TEAM_KEY):
             self.kind = "team"
         elif payload.get(MISSING_KEY):
@@ -74,11 +83,13 @@ class CardGrid(Gtk.ScrolledWindow):
         on_open_group: Callable[[dict], None] | None = None,
         on_team: Callable[[dict], None] | None = None,
         show_size: Callable[[dict], bool] | None = None,
+        on_image: Callable[[dict], None] | None = None,
     ) -> None:
         super().__init__(vexpand=True, hexpand=True)
         ensure_card_css()
         self.client = client
         self.kind = kind
+        self.on_image = on_image
         # Kommissar-Zeile, Ermittler-Kacheln und Dateigröße (siehe CardWidget/
         # PlaceholderCardWidget) — alle optional, `None` = aus.
         self.on_open_group = on_open_group
@@ -128,10 +139,11 @@ class CardGrid(Gtk.ScrolledWindow):
 
     # -- Inhalt ----------------------------------------------------------
 
-    def set_content(self, folders: list[dict], items: list[dict]) -> None:
-        """Ersetzt den Rasterinhalt. Ordner zuerst, dann Videos — dieselbe
-        Reihenfolge wie im Browser."""
+    def set_content(self, folders: list[dict], items: list[dict], images: list[dict] | None = None) -> None:
+        """Ersetzt den Rasterinhalt. Ordner zuerst, dann Videos, dann Bilder —
+        dieselbe Reihenfolge wie im Browser."""
         rows = [GridRow(f, True) for f in folders] + [GridRow(i, False) for i in items]
+        rows += [GridRow({**im, IMAGE_KEY: True}, False) for im in (images or [])]
         # splice() statt remove_all()+append(): ein einziger Modellwechsel,
         # damit der GridView nur einmal neu aufbaut statt pro Element.
         self.store.splice(0, self.store.get_n_items(), rows)
@@ -208,6 +220,8 @@ class CardGrid(Gtk.ScrolledWindow):
             self.client, aspect, on_activate=self._activate_folder, scroller=self
         )
         placeholder = PlaceholderCardWidget(aspect, on_team=self.on_team)
+        image_card = ImageCardWidget(self.client, aspect, on_activate=self._activate_image, scroller=self)
+        stack.add_named(image_card, "image")
         stack.add_named(card, "item")
         stack.add_named(folder_card, "folder")
         stack.add_named(placeholder, "placeholder")
@@ -219,6 +233,9 @@ class CardGrid(Gtk.ScrolledWindow):
         if row.is_folder:
             stack.set_visible_child_name("folder")
             stack.get_child_by_name("folder").bind(row.payload)
+        elif row.kind == "image":
+            stack.set_visible_child_name("image")
+            stack.get_child_by_name("image").bind(row.payload)
         elif row.kind in ("missing", "team"):
             stack.set_visible_child_name("placeholder")
             stack.get_child_by_name("placeholder").bind(row.payload, team=row.kind == "team")
@@ -245,6 +262,7 @@ class CardGrid(Gtk.ScrolledWindow):
         card.unbind()
         stack.get_child_by_name("folder").unbind()
         stack.get_child_by_name("placeholder").unbind()
+        stack.get_child_by_name("image").unbind()
 
     # -- Klicks weiterreichen --------------------------------------------
 
@@ -255,6 +273,10 @@ class CardGrid(Gtk.ScrolledWindow):
     def _activate_folder(self, folder: dict) -> None:
         if self.on_folder:
             self.on_folder(folder)
+
+    def _activate_image(self, image: dict) -> None:
+        if self.on_image:
+            self.on_image(image)
 
 
 class AlbumRow(GObject.Object):

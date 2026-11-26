@@ -308,8 +308,17 @@ class GoldfishClient:
     def libraries(self) -> list[dict]:
         return self.get("/api/libraries") or []
 
-    def folders(self, library_id: int, parent: str = "") -> list[dict]:
-        return self.get(f"/api/libraries/{library_id}/folders", {"parent": parent}) or []
+    def folders(self, library_id: int, parent: str = "", images: bool = False) -> list[dict]:
+        """`images=True` (nur Bibliotheken mit `imagesEnabled`, Server ab 1.6.12):
+        liefert zusätzlich reine Bild-Ordner und `imageCount`/`thumbImageId`."""
+        params = {"parent": parent}
+        if images:
+            params["images"] = "1"
+        return self.get(f"/api/libraries/{library_id}/folders", params) or []
+
+    def library_images(self, library_id: int, folder: str = "") -> list[dict]:
+        """Bilder, die DIREKT in `folder` liegen ("" = Wurzel). Server ab 1.6.12."""
+        return self.get(f"/api/libraries/{library_id}/images", {"folder": folder}) or []
 
     def items(
         self,

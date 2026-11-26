@@ -110,6 +110,7 @@ class BrowsePage(Adw.NavigationPage):
         self.all_folders: list[dict] = []
         self.all_items: list[dict] = []
         self.shown_items: list[dict] = []
+        self.shown_images: list[dict] = []
         # Zahlen der ganzen Bibliothek (aus /stats), für die Zeile über dem
         # Raster. Nur in der Wurzel gefüllt — in einem Ordner zählt, was
         # geladen wurde.
@@ -127,7 +128,11 @@ class BrowsePage(Adw.NavigationPage):
         self._fuzzy_extra_count = 0
         # Ein Film liegt fast immer in seinem eigenen Release-Ordner —
         # Ordnerkacheln wären dort sinnlos (siehe `_load_worker`).
-        self._always_flat = (library.get("kind") or "") == "movies"
+        # Bilder-Bibliotheken (Server 1.6.12+, `imagesEnabled`): Bilder gibt es
+        # nur ordnerweise — dort wird nie geflattet (Browser seit 1.6.20).
+        self._images_lib = bool(library.get("imagesEnabled")) and (library.get("kind") or "") != "music"
+        self._always_flat = (library.get("kind") or "") == "movies" and not self._images_lib
+        self.all_images: list[dict] = []
         # Zähler gegen überholte Antworten: tippt man schnell, kommen die
         # Antworten nicht zwangsläufig in der Reihenfolge zurück, in der sie
         # gestellt wurden. Nur die jeweils neueste darf ins Raster.
@@ -198,14 +203,16 @@ class BrowsePage(Adw.NavigationPage):
         people: list[dict] | None = None,
         catalog: dict | None = None,
         genre_items: list[dict] | None = None,
+        images: list[dict] | None = None,
     ) -> None:
         if stats:
             self.stats = stats
+        self.all_images = images or []
         self._apply_catalog(catalog)
         self._fuzzy_extra_count = fuzzy_extra_count
         people = people or []
         genre_items = genre_items or []
-        if not folders and not items and not self.catalog_teams and not genre_items:
+        if not folders and not items and not self.all_images and not self.catalog_teams and not genre_items:
             # Bei aktiven Filtern ist "leer" fast immer der Filter und nicht
             # der Ordner — sonst sucht man den Fehler an der falschen Stelle.
             active = self.filters.active_filter_count()
@@ -250,6 +257,7 @@ class BrowsePage(Adw.NavigationPage):
                 on_open_group=self._open_group,
                 on_team=self._open_team,
                 show_size=lambda it: self.ctx.size_visible(it, self.library.get("kind") or ""),
+                on_image=self._open_image,
             )
         # Varianten bündeln: derselbe Film in mehreren Auflösungen ist mehrere
         # Items mit gleicher metadataId — im Raster darf davon nur EINE Kachel
@@ -414,6 +422,18 @@ class BrowsePage(Adw.NavigationPage):
             extra.append(self.catalog_note)
         if self.catalog_teams and not letter:
             extra.append(f"{len(self.catalog_teams)} Ermittler ohne eigenen Ordner (am Ende)")
+        # Bilder-Bibliotheken: wie viele Ordner mit Bildern und Bilder auf
+        # dieser Ebene liegen (Browser „🖼 N Ordner mit Bildern · M Bilder").
+        if self._images_lib:
+            image_folders = sum(1 for x in self.grid_folder_count() if (x.get("imageCount") or 0) > 0)
+            n_images = len(self.shown_images)
+            img_parts = []
+            if image_folders:
+                img_parts.append(f"{format_count(image_folders)} Ordner mit Bildern")
+            if n_images:
+                img_parts.append(f"{format_count(n_images)} " + ("Bild" if n_images == 1 else "Bilder"))
+            if img_parts:
+                extra.append("🖼 " + " · ".join(img_parts))
         if extra:
             self.count_label.set_text(" · ".join([self.count_label.get_text(), *extra]))
 
@@ -501,14 +521,16 @@ class BrowsePage(Adw.NavigationPage):
         behandelt, sonst verschwände beim Filtern die halbe Ansicht."""
         letter = self.alpha.active if self.alpha is not None else None
         if letter is None:
-            self.grid.set_content(self.all_folders, self._with_catalog(self.all_items))
+            self.shown_images = self.all_images
+            self.grid.set_content(self.all_folders, self._with_catalog(self.all_items), self.all_images)
             self.shown_items = self.all_items
             self._update_count()
             return
         folders = [f for f in self.all_folders if first_letter(_folder_label(f)) == letter]
         items = [i for i in self.all_items if first_letter(_item_label(i)) == letter]
+        self.shown_images = [i for i in self.all_images if first_letter(i.get("title") or "") == letter]
         self.shown_items = items
-        self.grid.set_content(folders, items)
+        self.grid.set_content(folders, items, self.shown_images)
         self._update_count()
 
     # -- Ermittler-Katalog (Tatort, Server 1.4.65) ------------------------
@@ -642,6 +664,15 @@ class BrowsePage(Adw.NavigationPage):
             )
         )
 
+    def _open_image(self, image: dict) -> None:
+        """Bildbetrachter mit allen Bildern dieser Ebene (in Anzeigereihenfolge)."""
+        from .image_viewer import ImageViewerPage
+
+        images = self.shown_images or [image]
+        ids = [i.get("id") for i in images]
+        index = ids.index(image.get("id")) if image.get("id") in ids else 0
+        self.nav_view.push(ImageViewerPage(self.ctx, self.nav_view, images, index))
+
     def _open_detail(self, item: dict) -> None:
         # Die gerade gezeigte Liste als Warteschlange mitgeben, damit am Ende
         # eines Titels von selbst der nächste läuft.
@@ -672,7 +703,8 @@ class BrowsePage(Adw.NavigationPage):
         # In einer Film-Bibliothek stehen nie Ordnerkacheln, also kann eine
         # flache Sortierung dort auch nichts verstecken.
         shows_folder_tiles = (not self.folder or self.drilldown) and not self._always_flat
-        if self.filters.is_flat and shows_folder_tiles:
+        # Bilder-Bibliotheken flatten nie — dort darf jede Sortierung bleiben.
+        if self.filters.is_flat and shows_folder_tiles and not self._images_lib:
             self.view_prefs.clear_sort(self.library["id"], self.folder)
         else:
             self.view_prefs.set_sort(
@@ -833,14 +865,14 @@ class BrowsePage(Adw.NavigationPage):
                     # pro Serie zu EINER Kachel zusammengefasst, nicht jede
                     # Folge einzeln gezeigt.
                     folders, items = collapse_episode_hits(items)
-            elif f.is_flat or f.favorites_only or self._always_flat:
+            elif (f.is_flat and not self._images_lib) or f.favorites_only or self._always_flat:
                 folders = []
                 items = client.items(lib_id, folder=self.folder, **common)
             elif not self.folder:
-                folders = client.folders(lib_id)
+                folders = client.folders(lib_id, images=self._images_lib)
                 items = client.items(lib_id, folder="/", **common)
             elif self.drilldown:
-                folders = client.folders(lib_id, parent=self.folder)
+                folders = client.folders(lib_id, parent=self.folder, images=self._images_lib)
                 prefix = self.folder + "/"
                 items = [
                     it
@@ -848,9 +880,23 @@ class BrowsePage(Adw.NavigationPage):
                     if (it.get("relPath") or "").startswith(prefix)
                     and "/" not in it["relPath"][len(prefix) :]
                 ]
+            elif self._images_lib:
+                # Ordner ohne Drilldown: Videos rekursiv flach wie gewohnt, aber
+                # Unterordner MIT Bildern bleiben als Kachel erreichbar
+                # (Browser 1.6.21).
+                folders = [
+                    x
+                    for x in client.folders(lib_id, parent=self.folder, images=True)
+                    if (x.get("imageCount") or 0) > 0
+                ]
+                items = client.items(lib_id, folder=self.folder, **common)
             else:
                 folders = []
                 items = client.items(lib_id, folder=self.folder, **common)
+            images: list[dict] = []
+            if self._images_lib and not search and not f.favorites_only:
+                images = client.library_images(lib_id, self.folder)
+                sort_image_level(folders, images, f.sort, f.effective_ascending())
         except GoldfishAPIError as exc:
             if seq == self._load_seq:
                 GLib.idle_add(self._show_error, str(exc))
@@ -899,7 +945,25 @@ class BrowsePage(Adw.NavigationPage):
                 catalog = None
         if seq != self._load_seq:
             return
-        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people, catalog, genre_items)
+        GLib.idle_add(self._show_results, folders, items, stats, fuzzy_extra_count, people, catalog, genre_items, images)
+
+
+def _added_key(value) -> str:
+    """`addedAt` vergleichbar machen: Items/Ordner und Bilder liefern teils
+    "2026-11-26 10:00:00", teils "2026-11-26T10:00:00Z"."""
+    return str(value or "").replace("T", " ", 1)
+
+
+def sort_image_level(folders: list[dict], images: list[dict], sort: str, ascending: bool) -> None:
+    """Ordner und Bilder einer Ebene in Bilder-Bibliotheken nach dem Sortier-
+    Modus ordnen (Browser `sortImagesLevel`, 1.6.20): „Hinzugefügt" = jüngster
+    Inhalt zuerst, „Dateigröße" nur für Bilder; sonst bleibt die Server-
+    Reihenfolge (Name)."""
+    if sort == "added":
+        folders.sort(key=lambda x: _added_key(x.get("addedAt")), reverse=not ascending)
+        images.sort(key=lambda x: _added_key(x.get("addedAt")), reverse=not ascending)
+    elif sort == "size":
+        images.sort(key=lambda x: x.get("sizeBytes") or 0, reverse=not ascending)
 
 
 def collapse_episode_hits(items: list[dict]) -> tuple[list[dict], list[dict]]:

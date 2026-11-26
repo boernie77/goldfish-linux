@@ -749,9 +749,16 @@ class FolderCardWidget(Gtk.Box):
         # Eine nackte "1" unten rechts sah im ersten Test wie eine Laufzeit
         # aus — mit Einheit ist klar, dass es die Anzahl ist.
         count = folder.get("itemCount") or 0
+        images = folder.get("imageCount") or 0
         unit = "Treffer" if folder.get("hits") else "Titel"
-        self.count_label.set_text(f"{count} {unit}" if count != 1 or unit == "Treffer" else "1 Titel")
-        self.count_label.set_visible(count > 0)
+        parts = []
+        if count > 0:
+            parts.append(f"{count} {unit}" if count != 1 or unit == "Treffer" else "1 Titel")
+        if images > 0:
+            # Bilder-Bibliotheken (Server 1.6.12+): wie im Browser „N Bilder".
+            parts.append("1 Bild" if images == 1 else f"{images} Bilder")
+        self.count_label.set_text(" · ".join(parts))
+        self.count_label.set_visible(bool(parts))
 
         merged = bool(folder.get("mergedFolders"))
         self.marker_label.set_text("🔗" if merged else "")
@@ -764,6 +771,8 @@ class FolderCardWidget(Gtk.Box):
             path = f"/api/poster/metadata/{folder['metadataId']}"
         elif folder.get("thumbItemId"):
             path = f"/api/thumb/{folder['thumbItemId']}"
+        elif folder.get("thumbImageId"):
+            path = f"/api/images/{folder['thumbImageId']}/thumb"
         # Siehe `_thumb_decode_width`-Kommentar bei CardWidget.bind: dasselbe
         # Unschärfe-Problem betraf Ordner-Kacheln (Serien ohne Poster,
         # Privat-Ordner) genauso.
@@ -781,6 +790,62 @@ class FolderCardWidget(Gtk.Box):
     def _on_clicked(self, *_args) -> None:
         if self.folder and self.on_activate:
             self.on_activate(self.folder)
+
+
+class ImageCardWidget(Gtk.Box):
+    """Kachel für ein Bild einer Bilder-Bibliothek (Server 1.6.12+): Vorschau
+    über `/api/images/{id}/thumb`, darunter der Dateiname. Klick öffnet den
+    Betrachter (`windows.image_viewer`)."""
+
+    def __init__(
+        self,
+        client: GoldfishClient,
+        kind: str,
+        on_activate: Callable[[dict], None] | None = None,
+        scroller: Gtk.ScrolledWindow | None = None,
+    ) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.client = client
+        self._frame_width = CARD_WIDTH_WIDE if kind == "private" else CARD_WIDTH
+        self.on_activate = on_activate
+        self.image: dict | None = None
+        self.scroller = scroller
+        self.set_size_request(self._frame_width, -1)
+        self._frame_height = card_height_for(kind, self._frame_width)
+        self.overlay, self.picture = _image_frame(self._frame_width, self._frame_height)
+        self.append(self.overlay)
+        self.title_label = Gtk.Label(
+            xalign=0,
+            ellipsize=Pango.EllipsizeMode.END,
+            max_width_chars=1,
+            width_request=self._frame_width,
+        )
+        self.title_label.add_css_class("gf-card-title")
+        self.append(self.title_label)
+        click = Gtk.GestureClick()
+        click.connect("released", self._on_clicked)
+        self.picture.add_controller(click)
+
+    def bind(self, image: dict) -> None:
+        self.image = image
+        title = image.get("title") or (image.get("relPath") or "").rsplit("/", 1)[-1]
+        self.title_label.set_text(title)
+        self.set_tooltip_text(title)
+        load_poster_async(
+            self.picture,
+            self.client,
+            f"/api/images/{image.get('id')}/thumb",
+            decode_width=self._frame_width * 2,
+            scroller=self.scroller,
+        )
+
+    def unbind(self) -> None:
+        self.image = None
+        load_poster_async(self.picture, self.client, None)
+
+    def _on_clicked(self, *_args) -> None:
+        if self.image and self.on_activate:
+            self.on_activate(self.image)
 
 
 class PlaceholderCardWidget(Gtk.Box):

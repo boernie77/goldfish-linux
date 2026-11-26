@@ -1,3 +1,9 @@
+goldfish-linux (1.0.12-1) unstable; urgency=medium
+
+  * Bilder: Bibliotheken mit eingeschalteten Bildern (Server 1.6.12+) zeigen Bild-Ordner und Bilder, mit Betrachter (Pfeiltasten, Klick links/rechts) und Diashow (Leertaste). Zaehler "N Ordner mit Bildern", "Hinzugefuegt" sortiert Ordner und Bilder.
+
+ -- boernie77 <115419572+boernie77@users.noreply.github.com>  Thu, 26 Nov 2026 18:00:00 +0100
+
 goldfish-linux (1.0.11-1) unstable; urgency=medium
 
   * Trailer: Wenn der Server den Trailer nicht als Datei liefert, wird er jetzt auf YouTube im Browser geoeffnet statt mit einem Fehler abzubrechen.
